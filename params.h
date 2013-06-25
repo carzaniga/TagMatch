@@ -1,0 +1,10 @@
+#ifndef PARAMS_H_INCLUDED
+#define PARAMS_H_INCLUDED
+
+#define BLOOM_FILTER_SIZE	192
+#define BLOOM_FILTER_K		7
+
+// #define USING_STD_BITSET
+
+#endif
+

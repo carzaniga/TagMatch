@@ -1,0 +1,3 @@
+This program is part of the Siena Content-Based Networking System.
+This program implements the forwarding table of a content-based router
+that uses a routing scheme built on mutiple spanning trees.
