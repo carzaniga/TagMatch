@@ -1,4 +1,9 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <vector>
+#include <exception>
 #include <set>
 #include <iostream>
 #include <cstring>
@@ -9,7 +14,6 @@
 #include "timing.h"
 
 siena::FTAllocator Mem;
-siena::Timer match_timer;
 
 class TreeIffPair { 
 public:
@@ -42,10 +46,10 @@ public:
     TreeIffPair * ti;
     
 
-    node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(NULL) {};
+    node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(0) {};
 
    void addIff(int tree, int iff){
-        if (ti==NULL){
+        if (ti==0){
             ti = new (Mem) TreeIffPair();
         }
         ti->addTreeIff(tree,iff);
@@ -167,35 +171,32 @@ void predicate::findMatch(const filter & f, int tree) const {
     // DO SOMETHING WITH THE MATCH RESULT
 }
 
-int visit (const node * n) {
-    //printf("node %u treeMask %u set %s\n",(*n).pos,(*n).treeMask,(*n).set?"true":"false");
-    int count=1;
-    if(n->t!=NULL)
-        count+=visit(n->t);
-    if(n->f!=NULL)
-        count+=visit(n->f);
-    return count;
+static int count_nodes_r (const node * n) {
+    if (n == 0)
+	return 0;
+    else
+	return 1 + count_nodes_r(n->t) + count_nodes_r(n->f);
 }
 
-int countIff(const node * n){
+unsigned long predicate::count_nodes() const {
+    return count_nodes_r(root);
+}
+
+
+int count_interfaces_r(const node * n) {
+    if (n == 0)
+	return 0;
+
     int iff=0;
-    if(n->ti!=NULL){
-        for(int i=0; i<8; i++){
-            iff+=n->ti->treeIff[i].size();
-        }
+    if (n->ti != 0) {
+        for (int i=0; i<8; i++)
+            iff += n->ti->treeIff[i].size();
     }
-    if(n->t!=NULL)
-        iff+=countIff(n->t);
-    if(n->f!=NULL)
-        iff+=countIff(n->f);
-    return iff;
+    return iff + count_interfaces_r(n->t) + count_interfaces_r(n->f);
 }
 
-void predicate::treevisit() const{
-    int count = visit(root);
-    printf("number of nodes %u\n",count);
-    int iff = countIff(root);
-    printf("number of iff %u\n",iff);
+unsigned long predicate::count_interfaces() const {
+    return count_interfaces_r(root);
 }
 
 static void print_r(ostream & os, string & prefix, const node * n) {
@@ -229,8 +230,6 @@ ostream & predicate::print(ostream & os) const {
     return os;
 }
 
-#define HAVE_RDTSC
-
 #ifdef HAVE_RDTSC
     typedef unsigned long long cycles_t;
     
@@ -253,6 +252,9 @@ ostream & predicate::print(ostream & os) const {
     }
 #endif
 
+struct empty_filter : std::exception {
+    const char* what() const throw() {return "empty filter!\n";}
+};
 
 int main(int argc, char *argv[]) {
     filter f;
@@ -260,65 +262,86 @@ int main(int argc, char *argv[]) {
     bool quiet = false;
     unsigned long tot = 0;
     unsigned long added = 0;
-    unsigned long test =0 ;
-    cycles_t start, stop;
-    cycles_t tot_time=0;
-    cycles_t tot_hw=0;
-    
+
+    Timer match_timer;
+    Timer build_timer;
+
+    Timer::calibrate();		// this will cost us about 0.5 seconds
     
     if (argc > 1 && strcmp(argv[1], "-q") == 0)
 	quiet = true;
 
     try {
 	std::string l;
-    bool end=false;
-	while(getline(std::cin,l) && test<1000000) {
-	    if (l.size() > 0) {
-            if(l=="end"){
-                end=true;
-            }else{                
-                char del[] = " ";
-                std::string token = strtok( (char*) l.c_str(), del );
-                int tree = atoi(token.c_str());
-                token = strtok( NULL, del );
-                int iff = atoi(token.c_str());
-                f = strtok( NULL, del );
-                if(!end){
-                    //create the tree
-                    if(f.count()!=0){
-                       ++tot;
-                       ++added;	
-                       if((added%1000000)==0)
-                           cout << "added " << added << endl;
-                       p.add_filter(f,tree,iff);
-		    } 
-                }else{
-                    if((test%10000)==0){
-                        cout << "avg match time hw " << (test/10000)+6 << " " << (tot_hw/10000) << endl;
-                        tot_hw=0;
-                    }
-                   
-                    test++;
-                    start = rdtsc();
-                    p.findMatch(f,tree);
-                    
-                    stop = rdtsc();
-                    tot_hw+=(stop-start);
-                    tot_time+=(stop-start);
-                }
-            }
-        }
+	bool building;
+
+	while(getline(std::cin,l)) {
+	    if (l.size()==0) 
+		continue;
+	    if (l=="end")
+		break;
+
+	    istringstream is(l);
+	    int tree, iff;
+	    string fstr;
+	    is >> tree >> iff >> fstr;
+
+	    f = fstr;
+
+	    if (f.count()!=0) {
+		++tot;
+		++added;	
+		if((added&1023)==1000)
+		    cout << " added " << added << '\r';
+		build_timer.start();
+		p.add_filter(f,tree,iff);
+		build_timer.stop();
+	    } else {
+		throw(empty_filter());
+	    }
 	}
-        cout << "Memory: " << Mem.size() << endl;
-	p.treevisit();
-        cout << "Matching time: " << (tot_time/test) << endl;
-	    
+
 	if (quiet) {
 	    cout << ' ' << added << '/' << tot << endl;
 	} else {
 	    cout << p;
 	}
 
+        cout << "Memory: " << Mem.size() << endl;
+	cout << "Number of nodes: " << p.count_nodes() << std::endl;
+	cout << "Number of iff: " << p.count_interfaces() << std::endl;
+        cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
+
+	unsigned long count = 0;
+
+	while(getline(std::cin,l)) {
+	    if (l.size()==0) 
+		continue;
+
+	    istringstream is(l);
+	    int tree, iff;
+	    string fstr;
+	    is >> tree >> iff >> fstr;
+
+	    f = fstr;
+
+	    match_timer.start();
+	    p.findMatch(f,tree);
+	    match_timer.stop();
+	    ++count;
+
+	    if ((count & 1023) == 1000) {
+		cout << "\rAverage matching cycles (" << count << "): " 
+		     << (match_timer.read_microseconds() / count) << flush;
+	    }
+	}
+
+	if (count > 0) {
+	    cout << "\rTotal calls: " << count << endl;
+	    cout << "Average matching time (us): " 
+		 << (match_timer.read_microseconds() / count) << endl;
+	}
+	    
     } catch (int e) {
 	cerr << "bad format." << endl; 
     }

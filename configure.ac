@@ -11,10 +11,12 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_LANG(C++)
 #
-dnl AC_HEADER_TIME
+LT_INIT
 #
-dnl AC_CHECK_RDTSC([AC_DEFINE([HAVE_RDTSC], [], [Pentium II rdtsc instruction])])
-dnl AC_CHECK_MFTB([AC_DEFINE([HAVE_MFTB], [], [PPC64 mftb instruction])])
+AC_HEADER_TIME
+#
+AC_CHECK_RDTSC([AC_DEFINE([HAVE_RDTSC], [], [Intel rdtsc instruction])])
+AC_CHECK_RDTSCP([AC_DEFINE([HAVE_RDTSCP], [], [Intel rdtscp instruction])])
 #
 AC_CONFIG_FILES([Makefile])
 #

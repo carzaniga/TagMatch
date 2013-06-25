@@ -21,7 +21,8 @@ public:
     void add_filter(const filter & f, int tree, int iff);
     void findMatch(const filter & f,int tree) const;
     bool contains_subset(const filter & f) const;
-    void treevisit() const;
+    unsigned long count_nodes() const;
+    unsigned long count_interfaces() const;
 
     friend ostream & operator << (ostream &, const predicate &);
     ostream & print(ostream &) const;

@@ -20,6 +20,27 @@ case "$ac_cv_rdtsc" in
 esac
 ])
 dnl
+dnl AC_CHECK_RDTSCP([action-if-available [, action-if-not-available])
+dnl
+AC_DEFUN([AC_CHECK_RDTSCP], [
+AC_CACHE_CHECK([for the rdtscp instruction], [ac_cv_rdtscp], [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+long long int rdtscp() {
+    long long int x;
+    __asm__ volatile ("rdtscp" : "=A" (x));
+    return x;
+}
+]])], [ ac_cv_rdtscp=yes ], [ ac_cv_rdtscp=no ])])
+case "$ac_cv_rdtscp" in
+    yes)
+	ifelse([$1], , :, [$1])
+	;;
+    *)
+	ifelse([$2], , :, [$2])
+	;;
+esac
+])
+dnl
 dnl AC_CHECK_MFTB([action-if-available [, action-if-not-available])
 dnl
 AC_DEFUN([AC_CHECK_MFTB], [
