@@ -95,7 +95,7 @@ void predicate::add_filter(const filter & f, int tree, int iff) {
 	}
 	last->setMask(tree);
     }
-    last->addIff(tree,iff);
+//    last->addIff(tree,iff);
     last->set= true;
 }
 
@@ -292,13 +292,14 @@ int main(int argc, char *argv[]) {
 	    if (f.count()!=0) {
 		++tot;
 		++added;	
-		if((added&1023)==1000)
-		    cout << " added " << added << '\r';
+		if((added%1000000)==0)
+		    cout << " added " << added <<endl;// '\r';
 		build_timer.start();
 		p.add_filter(f,tree,iff);
 		build_timer.stop();
 	    } else {
-		throw(empty_filter());
+		continue;
+		//throw(empty_filter());
 	    }
 	}
 
