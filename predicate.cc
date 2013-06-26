@@ -43,17 +43,17 @@ public:
     bool set;
     node * t;
     node * f;
-    TreeIffPair * ti;
+//    TreeIffPair * ti;
     
 
-    node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(0) {};
-
-   void addIff(int tree, int iff){
+    //node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(0) {};
+	node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0) {};
+   /*void addIff(int tree, int iff){
         if (ti==0){
             ti = new (Mem) TreeIffPair();
         }
         ti->addTreeIff(tree,iff);
-    }
+    }*/
     
     bool matchTreeMask(int tree) const{
         unsigned char tmp = 0;
@@ -107,10 +107,10 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
     while (fi != end && n != 0 && n->matchTreeMask(tree)) {
         if(n->pos==*fi){
             if (n->set) {
-                const std::vector<int> & ifs = n->ti->treeIff[tree];
+                /*const std::vector<int> & ifs = n->ti->treeIff[tree];
                 for(std::vector<int>::const_iterator ii = ifs.begin(); ii != ifs.end(); ++ii) {
                     predicate::match_result.insert(*ii);
-                }
+                }*/
             }
             ++fi;
             match(n->f,fi,end,tree);
@@ -184,7 +184,8 @@ unsigned long predicate::count_nodes() const {
 
 
 int count_interfaces_r(const node * n) {
-    if (n == 0)
+	return 0;    
+/*if (n == 0)
 	return 0;
 
     int iff=0;
@@ -193,6 +194,7 @@ int count_interfaces_r(const node * n) {
             iff += n->ti->treeIff[i].size();
     }
     return iff + count_interfaces_r(n->t) + count_interfaces_r(n->f);
+*/
 }
 
 unsigned long predicate::count_interfaces() const {
