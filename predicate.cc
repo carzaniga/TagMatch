@@ -257,6 +257,7 @@ struct empty_filter : std::exception {
 };
 
 int main(int argc, char *argv[]) {
+    cout<<"25Cut"<<endl;	
     filter f;
     predicate p;
     bool quiet = false;
