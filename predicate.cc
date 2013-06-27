@@ -297,7 +297,8 @@ int main(int argc, char *argv[]) {
 		p.add_filter(f,tree,iff);
 		build_timer.stop();
 	    } else {
-		throw(empty_filter());
+		continue;
+		//throw(empty_filter());
 	    }
 	}
 

@@ -45,7 +45,7 @@ static const unsigned int ALIGNMENT = offsetof(
 						       long l;
 						       bool b;
 						       double d;
-						       long double ld;
+						       //long double ld;
 						       long long ll;
 						       void* vp;
 						       void(*vfp)(void);
