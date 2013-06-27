@@ -259,7 +259,7 @@ struct empty_filter : std::exception {
 };
 
 int main(int argc, char *argv[]) {
-    cout<<"25Cut"<<endl;	
+    cout<<"15Cut"<<endl;	
     filter f;
     predicate p;
     bool quiet = false;
@@ -311,7 +311,8 @@ int main(int argc, char *argv[]) {
 	    cout << p;
 	}
 
-        cout << "Memory: " << Mem.size() << endl;
+        cout << "Memory (allocated): " << Mem.size() << endl;
+        cout << "Memory (requested): " << Mem.requested_size() << endl;
 	cout << "Number of nodes: " << p.count_nodes() << std::endl;
 	cout << "Number of iff: " << p.count_interfaces() << std::endl;
         cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
@@ -341,7 +342,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (count > 0) {
-	    cout << "\rTotal calls: " << count << endl;
+	    cout << "Total calls: " << count << endl;
 	    cout << "Average matching time (us): " 
 		 << (match_timer.read_microseconds() / count) << endl;
 	}

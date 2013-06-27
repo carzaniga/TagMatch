@@ -59,6 +59,10 @@ public:
      **/
     size_t size() const;
 
+    /** @brief total number of bytes strictly requested by the application
+     **/
+    size_t requested_size() const { return req_size; }
+
     /** @brief total number of bytes allocated by this allocator 
      **/
     size_t allocated_size() const;
@@ -105,6 +109,8 @@ private:
     /** bytes allocated via malloc **/
     size_t		large_size;
 
+  size_t		req_size;
+
     /** pointer to the list of big blocks **/
     large_block *	largeblist;
 
@@ -116,7 +122,7 @@ private:
 
 inline FTAllocator::FTAllocator() 
     : blist(0), freeblist(0), free_pos(0), bcount(0), 
-	normal_size(0), large_size(0), largeblist(0), suballocs (0),
+      normal_size(0), large_size(0), req_size(0), largeblist(0), suballocs (0),
 	master (0), next(0) { }
 
 } // end namespace siena
