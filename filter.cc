@@ -15,7 +15,7 @@ filter & filter::operator=(const std::string & s) throw (int) {
 	switch (*c) {
 	case '1': 
 		  k++;
-		  if(k<25)
+		  if(k<22)
 			elements.push_back(p);
 	case '0': ++p; 
 	    break;
