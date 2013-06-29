@@ -298,7 +298,6 @@ int main(int argc, char *argv[]) {
 		build_timer.stop();
 	    } else {
 		continue;
-		//throw(empty_filter());
 	    }
 	}
 
