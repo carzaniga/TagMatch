@@ -13,7 +13,7 @@ public:
 class end_node: public node{
 public:
 	vector<long> v;// a[3];
-    vector<long [3]> ;
+    //vector<long [3]> ;
 	//bool status;
 	end_node():node(){};
 	void settrue(bool a){

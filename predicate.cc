@@ -124,6 +124,7 @@ void predicate::add_filter(const filter & f, int tree, int iff) {
 	    np = &((*np)->t);
 	    ++fi;
 	} else {
+		depth++;
 	    last=*np;
 	    np = &((*np)->t);
 	    ++fi;
