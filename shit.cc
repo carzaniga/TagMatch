@@ -26,8 +26,16 @@ public:
     node * t;
     node * f;
 };
-
+class end_node: public node{
+public:
+	bool status;
+	end_node():node(){};
+	void settrue(bool a){
+		status=a;
+	}
+};
 int main() {
+	
   std::cout << ALIGNMENT << std::endl;
   node A[2];
 
@@ -39,7 +47,7 @@ int main() {
   std::cout << p2 << std::endl;
   std::cout << p1 << std::endl;
 
-  for(int i = 1; i < 100; ++i) {
+  for(int i = 1; i < 5; ++i) {
     p1 = new char[3];
     p2 = new node();
     std::cout << p2 << ' ' << p1 << ' ' << (reinterpret_cast<char*>(p2)-reinterpret_cast<char*>(p1)) << std::endl;

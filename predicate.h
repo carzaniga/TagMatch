@@ -11,7 +11,7 @@ using namespace std;
 class TreeIffPair;
 
 class node;
-
+class end_node;
 class predicate {
 private:
     node * root;

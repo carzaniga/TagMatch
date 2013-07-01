@@ -1,14 +1,14 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-
+	
 #include <vector>
 #include <exception>
 #include <set>
 #include <iostream>
 #include <cstring>
 #include <sstream>
-
+#include <bitset>
 #include "predicate.h"
 #include "allocator.h"
 #include "timing.h"
@@ -45,7 +45,6 @@ public:
     node * f;
 //    TreeIffPair * ti;
     
-
     //node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(0) {};
 	node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0) {};
    /*void addIff(int tree, int iff){
@@ -64,17 +63,49 @@ public:
     void setMask (int tree){
         treeMask |= 1 << tree;
     }
+	//void addFilter(const vector<bool> & f);
     
 };
+class end_node:public node{
+public:
+	end_node(filter::pos_t p): node(p){};
+	//vector<bool> v;//(0,false);
+	//v.reserve(8);
+	vector< vector<bool> > list;
+	void addFilter(const filter & f, filter::pos_t offset){//const vector<bool> & f){
+		filter::const_iterator fi = f.begin();
+		vector <bool> temp(192-offset-1);		
+		for(filter::pos_t i=offset+1;i<192;i++){
+			if(*fi==i && fi!=f.end()){
+				temp.push_back(true);
+				fi++;
+			}
+			else{}
+				temp.push_back(false);
 
+		}
+		list.push_back(temp);
+		//cout<<"\r !!!";
+		//list.shrink_to_fit();
+	}
+	void test(bool a)
+	{
+		cout<<"test was successfull"<<endl;
+	}
+};
 void predicate::add_filter(const filter & f, int tree, int iff) {
+    int depth=0;
     node ** np = &root;
     filter::const_iterator fi = f.begin();
     
     node * last; //last node visited
-    while (fi != f.end()) {
+    while (fi != f.end() && depth<15) {
 	if (*np == 0) {
-	    *np = new (Mem) node(*fi);
+		++depth;
+		if(depth==15)
+			*np = new (Mem) end_node(*fi);
+	    else 
+			*np = new (Mem) node(*fi);
 	    last = *np;
 	    np = &((*np)->t);
 	    ++fi;
@@ -83,7 +114,11 @@ void predicate::add_filter(const filter & f, int tree, int iff) {
 	    np = &((*np)->f);
 	} else if ((*np)->pos > *fi) {
 	    node * tmp = *np;
-	    *np = new (Mem) node(*fi);
+		depth++;
+		if(depth==15)
+			*np = new (Mem) end_node(*fi);
+	    else
+			*np = new (Mem) node(*fi);
 	    last=*np;
 	    (*np)->f = tmp;
 	    np = &((*np)->t);
@@ -96,6 +131,11 @@ void predicate::add_filter(const filter & f, int tree, int iff) {
 	last->setMask(tree);
     }
 //    last->addIff(tree,iff);
+    if(fi!=f.end()){
+		end_node *temp=static_cast<end_node*>(last);
+        temp->addFilter(f,last->pos);
+		//temp->test(1);
+    }
     last->set= true;
 }
 
@@ -259,8 +299,12 @@ struct empty_filter : std::exception {
 };
 
 int main(int argc, char *argv[]) {
-    cout<<"15Cut"<<endl;	
-    filter f;
+    //end_node temp;
+	//temp->getzero(10);
+	//cout<< temp->v <<endl;
+	cout<<"15Cut size of node:"<<sizeof(node)<<endl;	
+    cout<<"size of end_node:"<<sizeof(end_node)<<endl;
+	filter f;
     predicate p;
     bool quiet = false;
     unsigned long tot = 0;
@@ -335,7 +379,7 @@ int main(int argc, char *argv[]) {
 	    match_timer.stop();
 	    ++count;
 
-	    if ((count & 1023) == 1000) {
+	    if ((count % 10000) == 0) {
 		cout << "\rAverage matching cycles (" << count << "): " 
 		     << (match_timer.read_microseconds() / count) << flush;
 	    }

@@ -10,13 +10,9 @@ filter::filter(const std::string & s) throw (int) {
 filter & filter::operator=(const std::string & s) throw (int) {
     elements.clear();
     pos_t p = 0;
-    int k=0;
     for(std::string::const_iterator c = s.begin(); c != s.end(); ++c) {
 	switch (*c) {
-	case '1': 
-		  k++;
-		  if(k<15)
-			elements.push_back(p);
+	case '1': elements.push_back(p);
 	case '0': ++p; 
 	    break;
 	default:
