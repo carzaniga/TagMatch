@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <bitset>
 using namespace std;
 
 class node {
@@ -21,10 +22,33 @@ public:
 		set=1;
 	}
 };
+
+struct mypairs{
+long c;//  *tete;
+long b;//*queue;
+long a;
+};
+
 int main() {
   cout<<sizeof(node)<<endl;
-  cout<<sizeof(end_node)<<endl<<endl;
-  
+  cout<<sizeof(end_node)<<endl;
+  cout<<sizeof(mypairs)<<endl<<endl;
+  mypairs mp;
+  mp.a=23;
+  mp.b=53;
+  mp.c=123;
+  mypairs *myp;
+  myp=&mp;
+  cout<<(*myp).c<<endl;
+  typedef long mytype[3];
+  mytype *krs;
+  (*krs)[1]=764;
+  cout<<"size of mytype "<<sizeof(krs)<<"\t"<<(*krs)[1]<<endl;
+  vector<mytype> myv;
+  cout<<sizeof(myv)<<endl;
+  bitset<192> *bs;
+  cout<<sizeof(*bs)<<endl; 
+
   node *p1 = new node();
   p1->set=1; 
   end_node *p2 = new end_node();

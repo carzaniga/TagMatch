@@ -41,6 +41,7 @@ public:
     filter::pos_t pos;
     unsigned char treeMask;
     bool set;
+//    unsigned short int n;
     node * t;
     node * f;
 //    TreeIffPair * ti;
@@ -68,10 +69,10 @@ public:
 };
 class end_node:public node{
 public:
-	end_node(filter::pos_t p): node(p){};
-	//vector<bool> v;//(0,false);
-	//v.reserve(8);
-	vector< vector<bool> > list;
+  vector< bitset<192> > bsv;
+  end_node(filter::pos_t p): node(p){};
+  void addFilter(const string & bitstring);
+	/*vector< vector<bool> > list;
 	void addFilter(const filter & f, filter::pos_t offset){//const vector<bool> & f){
 		filter::const_iterator fi = f.begin();
 		vector <bool> temp(192-offset-1);		
@@ -85,15 +86,21 @@ public:
 
 		}
 		list.push_back(temp);
-		//cout<<"\r !!!";
-		//list.shrink_to_fit();
-	}
-	void test(bool a)
-	{
-		cout<<"test was successfull"<<endl;
-	}
+	}*/
 };
-void predicate::add_filter(const filter & f, int tree, int iff) {
+
+void end_node::addFilter(const string & bitstring){
+  bitset<192> temp(bitstring);
+  for(vector< bitset<192> >::const_iterator i = bsv.begin(); i != bsv.end(); ++i) { 
+    if(*i==temp){
+      return;
+    }
+  }
+  bsv.push_back(temp);
+}
+
+
+void predicate::add_filter(const filter & f, int tree, int iff, const string & bitstring) {
     int depth=0;
     node ** np = &root;
     filter::const_iterator fi = f.begin();
@@ -134,7 +141,8 @@ void predicate::add_filter(const filter & f, int tree, int iff) {
 //    last->addIff(tree,iff);
     if(fi!=f.end()){
 		end_node *temp=static_cast<end_node*>(last);
-        temp->addFilter(f,last->pos);
+        //temp->addFilter(f,last->pos);
+		temp->addFilter(bitstring);
 		//temp->test(1);
     }
     last->set= true;
@@ -333,7 +341,7 @@ int main(int argc, char *argv[]) {
 	    int tree, iff;
 	    string fstr;
 	    is >> tree >> iff >> fstr;
-
+        
 	    f = fstr;
 
 	    if (f.count()!=0) {
@@ -342,7 +350,7 @@ int main(int argc, char *argv[]) {
 		if((added%1000000)==0)
 		    cout << " added " << added <<endl;// '\r';
 		build_timer.start();
-		p.add_filter(f,tree,iff);
+		p.add_filter(f,tree,iff,fstr);
 		build_timer.stop();
 	    } else {
 		continue;

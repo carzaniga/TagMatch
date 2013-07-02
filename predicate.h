@@ -18,8 +18,8 @@ private:
 
 public:
     predicate(): root(0) {};
-    void add_filter(const filter & f, int tree, int iff);
-    void findMatch(const filter & f,int tree) const;
+    void add_filter(const filter & f, int tree, int iff,const string & bitstring);
+	void findMatch(const filter & f,int tree) const;
     bool contains_subset(const filter & f) const;
     unsigned long count_nodes() const;
     unsigned long count_interfaces() const;
