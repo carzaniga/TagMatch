@@ -41,21 +41,24 @@ public:
     filter::pos_t pos;
     unsigned char treeMask;
     bool set;
-//    unsigned short int n;
-    node * t;
     node * f;
-//    TreeIffPair * ti;
+    union {
+	node * t;
+	end_node * ending;
+    };
+
+    TreeIffPair * ti;
     
-    //node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0), ti(0) {};
-	node(filter::pos_t p): pos(p), t(0), f(0), set(false), treeMask(0) {};
-   /*void addIff(int tree, int iff){
+    node(filter::pos_t p): pos(p), treeMask(0), set(false), f(0), t(0), ti(0) {};
+
+    void addIff(int tree, int iff) {
         if (ti==0){
             ti = new (Mem) TreeIffPair();
         }
         ti->addTreeIff(tree,iff);
-    }*/
-    
-    bool matchTreeMask(int tree) const{
+    }
+
+    bool matchTreeMask(int tree) const {
         unsigned char tmp = 0;
         tmp |= 1 << tree;
         return ((treeMask & tmp)==tmp);
@@ -64,41 +67,60 @@ public:
     void setMask (int tree){
         treeMask |= 1 << tree;
     }
-	//void addFilter(const vector<bool> & f);
-    
 };
-class end_node:public node{
+
+class end_node_entry {
 public:
-  vector< bitset<192> > bsv;
-  end_node(filter::pos_t p): node(p){};
-  void addFilter(const string & bitstring);
-	/*vector< vector<bool> > list;
-	void addFilter(const filter & f, filter::pos_t offset){//const vector<bool> & f){
-		filter::const_iterator fi = f.begin();
-		vector <bool> temp(192-offset-1);		
-		for(filter::pos_t i=offset+1;i<192;i++){
-			if(*fi==i && fi!=f.end()){
-				temp.push_back(true);
-				fi++;
-			}
-			else{}
-				temp.push_back(false);
+    bitset<192> bs;
+    TreeIffPair * ti;
 
-		}
-		list.push_back(temp);
-	}*/
+    end_node_entry(const string &s): bs(s), ti(0) {};
+
+    void addIff(int tree, int iff) {
+        if (ti==0){
+            ti = new (Mem) TreeIffPair();
+        }
+        ti->addTreeIff(tree,iff);
+    }
 };
 
-void end_node::addFilter(const string & bitstring){
-  bitset<192> temp(bitstring);
-  for(vector< bitset<192> >::const_iterator i = bsv.begin(); i != bsv.end(); ++i) { 
-    if(*i==temp){
-      return;
+class end_node {
+public:
+    vector<end_node_entry> v;
+    void addFilter(const string & bitstring, int tree, int iff);
+};
+
+#if 0
+vector< vector<bool> > list;
+void end_node::addFilter(const filter & f, filter::pos_t offset){//const vector<bool> & f){
+    filter::const_iterator fi = f.begin();
+    vector <bool> temp(192-offset-1);		
+    for(filter::pos_t i=offset+1;i<192;i++){
+	if(*fi==i && fi!=f.end()){
+	    temp.push_back(true);
+	    fi++;
+	}
+	else{}
+	temp.push_back(false);
     }
-  }
-  bsv.push_back(temp);
+    list.push_back(temp);
+}
+#endif
+
+void end_node::addFilter(const string & bitstring, int tree, int iff){
+    end_node_entry e(bitstring);
+
+    for(vector<end_node_entry>::iterator i = v.begin(); i != v.end(); ++i)
+	if(i->bs == e.bs) {
+	    i->addIff(tree,iff);
+	    return;
+	}
+
+    v.push_back(e);
+    v.back().addIff(tree,iff);
 }
 
+static const int DEPTH_THRESHOLD = 15;
 
 void predicate::add_filter(const filter & f, int tree, int iff, const string & bitstring) {
     int depth=0;
@@ -106,46 +128,39 @@ void predicate::add_filter(const filter & f, int tree, int iff, const string & b
     filter::const_iterator fi = f.begin();
     
     node * last; //last node visited
-    while (fi != f.end() && depth<15) {
+    while (fi != f.end() && depth<DEPTH_THRESHOLD) {
 	if (*np == 0) {
-		++depth;
-		if(depth==15)
-			*np = new (Mem) end_node(*fi);
-	    else 
-			*np = new (Mem) node(*fi);
+	    ++depth;
+	    *np = new (Mem) node(*fi);
 	    last = *np;
-	    np = &((*np)->t);
+	    np = &(last->t);
 	    ++fi;
 	} else if ((*np)->pos < *fi) {
 	    last=*np;
 	    np = &((*np)->f);
 	} else if ((*np)->pos > *fi) {
 	    node * tmp = *np;
-		depth++;
-		if(depth==15)
-			*np = new (Mem) end_node(*fi);
-	    else
-			*np = new (Mem) node(*fi);
+	    depth++;
+	    *np = new (Mem) node(*fi);
 	    last=*np;
-	    (*np)->f = tmp;
-	    np = &((*np)->t);
+	    last->f = tmp;
+	    np = &(last->t);
 	    ++fi;
 	} else {
-		depth++;
+	    depth++;
 	    last=*np;
-	    np = &((*np)->t);
+	    np = &(last->t);
 	    ++fi;
 	}
 	last->setMask(tree);
     }
-//    last->addIff(tree,iff);
     if(fi!=f.end()){
-		end_node *temp=static_cast<end_node*>(last);
-        //temp->addFilter(f,last->pos);
-		temp->addFilter(bitstring);
-		//temp->test(1);
+	last->ending = new (Mem) end_node();
+	last->ending->addFilter(bitstring,tree,iff);
+    } else {
+	last->set= true;
+	last->addIff(tree,iff);
     }
-    last->set= true;
 }
 
 
@@ -311,7 +326,7 @@ int main(int argc, char *argv[]) {
     //end_node temp;
 	//temp->getzero(10);
 	//cout<< temp->v <<endl;
-	cout<<"15Cut size of node:"<<sizeof(node)<<endl;	
+    cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
     cout<<"size of end_node:"<<sizeof(end_node)<<endl;
 	filter f;
     predicate p;
