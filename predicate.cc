@@ -17,7 +17,7 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 public:
-    vector<int> treeIff[8];
+    vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
     
     void addTreeIff(int tree, int iff){
         treeIff[tree].push_back(iff);
@@ -155,7 +155,8 @@ void predicate::add_filter(const filter & f, int tree, int iff, const string & b
 	last->setMask(tree);
     }
     if(fi!=f.end()){
-	last->ending = new (Mem) end_node();
+	if (!last->ending) 
+	    last->ending = new (Mem) end_node();
 	last->ending->addFilter(bitstring,tree,iff);
     } else {
 	last->set= true;

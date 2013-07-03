@@ -2,7 +2,6 @@
 #include <vector>
 #include <bitset>
 using namespace std;
-
 class node {
 public:
     unsigned char pos;
@@ -33,6 +32,7 @@ int main() {
   cout<<sizeof(node)<<endl;
   cout<<sizeof(end_node)<<endl;
   cout<<sizeof(mypairs)<<endl<<endl;
+  cout<<"size of different vectors="<<sizeof(vector<int>)<<"\t"<<sizeof(vector<unsigned char>)<<endl;
   mypairs mp;
   mp.a=23;
   mp.b=53;
