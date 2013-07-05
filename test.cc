@@ -9,6 +9,9 @@ public:
     bool set;
     node * t;
     node * f;
+  static vector<int> my_vec;
+  static int myval;
+
 };
 class end_node: public node{
 public:
@@ -19,6 +22,7 @@ public:
 	void settrue(bool a){
 	//	status=a;
 		set=1;
+		cout<<krs<<endl;
 	}
 };
 
@@ -28,7 +32,14 @@ long b;//*queue;
 long a;
 };
 
+int node::myval=12;
+int krs=15;
 int main() {
+  vector<int> myv2;
+  myv2.push_back(10);
+  cout<<myv2.size()<<endl;
+  cout<<node::myval<<endl;
+
   cout<<sizeof(node)<<endl;
   cout<<sizeof(end_node)<<endl;
   cout<<sizeof(mypairs)<<endl<<endl;

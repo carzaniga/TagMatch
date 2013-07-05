@@ -17,8 +17,9 @@ private:
     node * root;
 
 public:
+	vector<TreeIffPair> ti_vec	;
     predicate(): root(0) {};
-    void add_filter(const filter & f, int tree, int iff,const string & bitstring);
+    void add_filter(const filter & f, unsigned char tree, unsigned char iff,const string & bitstring);
 	void findMatch(const filter & f,int tree) const;
     bool contains_subset(const filter & f) const;
     unsigned long count_nodes() const;

@@ -17,13 +17,33 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 public:
-    vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
-    
-    void addTreeIff(int tree, int iff){
-        treeIff[tree].push_back(iff);
+    //vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
+	unsigned char n[8];
+	union v_or_p {
+		vector<short> *p;
+		unsigned short v[4];
+	} treeIff[8];
+   
+    void addTreeIff(unsigned short tree, unsigned short iff){
+		if(n[tree]<3)
+			treeIff[tree].v[n[tree]]=iff;
+		else {
+			if(n[tree]==3){
+				// i should copy previous ones here.
+				treeIff[tree].p=new (Mem) vector<short>;			
+				treeIff[tree].p->push_back(treeIff[tree].v[0]);
+				treeIff[tree].p->push_back(treeIff[tree].v[1]);
+				treeIff[tree].p->push_back(treeIff[tree].v[2]);
+				treeIff[tree].p->push_back(treeIff[tree].v[3]);
+			}
+			treeIff[tree].p->push_back(iff);
+		}
+		n[tree]+=1;
     }
+	TreeIffPair():n(){};
     
     string print() {
+/*
         stringstream out;
         for(int i=0; i<8;++i){
             out << " tree " << i << " : " ;
@@ -33,29 +53,46 @@ public:
         }
         out<< endl;
         return out.str();
+*/
     }
 };
+static vector<TreeIffPair> ti_vec ;
 
 class node {
 public:
     filter::pos_t pos;
     unsigned char treeMask;
-    bool set;
-    node * f;
+    unsigned char set;
+    int ti_pos;
+    //vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
+    node * f; 
     union {
 	node * t;
 	end_node * ending;
-    };
-
-    TreeIffPair * ti;
+	};
+//	static vector<TreeIffPair> ti_vec ;
+//    static int ti_index;
     
-    node(filter::pos_t p): pos(p), treeMask(0), set(false), f(0), t(0), ti(0) {};
 
-    void addIff(int tree, int iff) {
-        if (ti==0){
-            ti = new (Mem) TreeIffPair();
-        }
-        ti->addTreeIff(tree,iff);
+    //TreeIffPair * ti;
+    
+	/*void addTreeIff(int tree, int iff){
+        treeIff[tree].push_back(iff);
+    }*/
+    node(filter::pos_t p): pos(p), treeMask(0), set(0), f(0),ti_pos(-1), t(0) {};
+
+
+    void addIff(unsigned char tree, unsigned char iff) {
+		if(ti_pos<0){
+			ti_pos=ti_vec.size();//ti_index;
+			TreeIffPair *ti = new (Mem) TreeIffPair();
+			ti->addTreeIff(tree,iff);
+			ti_vec.push_back(*ti);
+//			ti_index++;
+			//ti_vec.at(ti_pos).addTreeIff(tree,iff);
+			return;
+		}
+ 		ti_vec.at(ti_pos).addTreeIff(tree,iff);
     }
 
     bool matchTreeMask(int tree) const {
@@ -72,22 +109,26 @@ public:
 class end_node_entry {
 public:
     bitset<192> bs;
-    TreeIffPair * ti;
+    //TreeIffPair * ti;
+    int ti_pos;
+    end_node_entry(const string &s): bs(s),ti_pos(-1) {};
 
-    end_node_entry(const string &s): bs(s), ti(0) {};
-
-    void addIff(int tree, int iff) {
-        if (ti==0){
-            ti = new (Mem) TreeIffPair();
-        }
-        ti->addTreeIff(tree,iff);
+    void addIff(unsigned char tree, unsigned char iff) {
+		if(ti_pos<0){
+			ti_pos=ti_vec.size();
+			TreeIffPair *ti = new (Mem) TreeIffPair();
+			ti->addTreeIff(tree,iff);
+			ti_vec.push_back(*ti);
+			return;
+		}
+		ti_vec.at(ti_pos).addTreeIff(tree,iff);
     }
 };
 
 class end_node {
 public:
     vector<end_node_entry> v;
-    void addFilter(const string & bitstring, int tree, int iff);
+    void addFilter(const string & bitstring, unsigned char tree, unsigned char iff);
 };
 
 #if 0
@@ -107,7 +148,7 @@ void end_node::addFilter(const filter & f, filter::pos_t offset){//const vector<
 }
 #endif
 
-void end_node::addFilter(const string & bitstring, int tree, int iff){
+void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned char iff){
     end_node_entry e(bitstring);
 
     for(vector<end_node_entry>::iterator i = v.begin(); i != v.end(); ++i)
@@ -115,14 +156,13 @@ void end_node::addFilter(const string & bitstring, int tree, int iff){
 	    i->addIff(tree,iff);
 	    return;
 	}
-
+	e.addIff(tree,iff);
     v.push_back(e);
-    v.back().addIff(tree,iff);
+    //v.back().addIff(tree,iff);
 }
 
 static const int DEPTH_THRESHOLD = 15;
-
-void predicate::add_filter(const filter & f, int tree, int iff, const string & bitstring) {
+void predicate::add_filter(const filter & f, unsigned char tree, unsigned char iff, const string & bitstring) {
     int depth=0;
     node ** np = &root;
     filter::const_iterator fi = f.begin();
@@ -158,8 +198,9 @@ void predicate::add_filter(const filter & f, int tree, int iff, const string & b
 	if (!last->ending) 
 	    last->ending = new (Mem) end_node();
 	last->ending->addFilter(bitstring,tree,iff);
-    } else {
-	last->set= true;
+    last->set=2;
+	} else {
+	last->set= 1;
 	last->addIff(tree,iff);
     }
 }
@@ -239,7 +280,9 @@ void predicate::findMatch(const filter & f, int tree) const {
 static int count_nodes_r (const node * n) {
     if (n == 0)
 	return 0;
-    else
+	//cout<< n->set <<endl;
+    if(n->set==2)
+		return 1+1+count_nodes_r(n->f); //we count end_node as one node.
 	return 1 + count_nodes_r(n->t) + count_nodes_r(n->f);
 }
 
@@ -324,6 +367,9 @@ struct empty_filter : std::exception {
 };
 
 int main(int argc, char *argv[]) {
+  	//ti_index=0;
+	//vector<int> nodeIndex(349040030);
+  
     //end_node temp;
 	//temp->getzero(10);
 	//cout<< temp->v <<endl;
@@ -387,7 +433,8 @@ int main(int argc, char *argv[]) {
         cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
 
 	unsigned long count = 0;
-
+	cout<<"sleeping for 20sec"<<endl;
+	sleep(20);
 	while(getline(std::cin,l)) {
 	    if (l.size()==0) 
 		continue;
