@@ -22,7 +22,7 @@ public:
 	void settrue(bool a){
 	//	status=a;
 		set=1;
-		cout<<krs<<endl;
+//		cout<<krs<<endl;
 	}
 };
 
@@ -35,6 +35,15 @@ long a;
 int node::myval=12;
 int krs=15;
 int main() {
+ bitset<5> *p = new bitset<5>(25);
+cout<<*p<<endl;
+
+  bitset<5> bsss(13);
+  bitset<5> bs2(17);
+ cout<<bsss<<"\t"<<bs2<<endl;
+  bitset<5> temp=bsss;
+  temp&=bs2;
+  cout<<temp<<"\t"<<bs2<<"\t"<<bsss<<endl;
   vector<int> myv2;
   myv2.push_back(10);
   cout<<myv2.size()<<endl;
