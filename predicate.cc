@@ -184,17 +184,14 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 	while (fi != end && n != 0){// && n->matchTreeMask(tree)) {
 		if(n->pos==*fi){
 			if (n->ti_pos>=0){//set) {
-				cout<<"found one"<<endl;
 				match_result.push_back(n->ti_pos);
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
 				if (n->ti_pos<0 && n->ending==0)
 					cout<<endl<<"errrrrrrror in the code"<<endl;
-				if (n->ti_pos>=0 && n->ending==0){
-					cout<<endl<<"math_result.size() should be larger than 1 right now"<<endl;
+				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw=15. 
 					return;
 				}
-				//cout<<n->ending.v.size()<<endl;
 				end_node *en= n->ending; 
 				bitset<192> temp;//=bs;
 				//bitset<192> *p = new bitset<192>;
@@ -204,7 +201,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					temp=bs;
 					temp&=i->bs;
 					if(temp==bs){//*p==bs){
-						cout<<endl<<"."<<endl<<endl;
+						cout<<endl<<"."<<endl;
 						match_result.push_back(i->ti_pos);
 					}
 					}
@@ -269,8 +266,8 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			bitset<192> bs(bitstring);
 			match(root,f.begin(),f.end(),tree,0,bs);
 			if(match_result.size()>0)
-				cout<<endl<<match_result.size()<<endl;
-			// DO SOMETHING WITH THE MATCH RESULT
+				cout<<"+";
+			 //DO SOMETHING WITH THE MATCH RESULT
 		}
 
 		static int count_nodes_r (const node * n,const int depth) {
@@ -441,8 +438,8 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					is >> tree >> iff >> fstr;
 
 					f = fstr;
-					if (count<740000)
-						continue;
+					//if (count<740000)
+					//	continue;
 
 					match_timer.start();
 					p.findMatch(f,0/*tree*/,fstr);

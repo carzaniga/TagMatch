@@ -17,8 +17,6 @@ private:
     node * root;
 
 public:
-    vector<TreeIffPair> ti_vec	;
-    vector<int> match_result;
     predicate(): root(0) {};
     void add_filter(const filter & f, unsigned char tree, unsigned char iff,const string & bitstring);
 	void findMatch(const filter & f,int tree, const string & bitstring);// const;
