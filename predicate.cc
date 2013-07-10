@@ -17,7 +17,18 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 	public:
+			vector<short> tf_pairs;
+	void addTreeIff(unsigned short tree, unsigned short iff){
+		unsigned short temp=0;
+		temp=tree<<13;
+		temp|=iff;
+//		if(tree>0)
+//				cout<<"tree="<<tree<<"\t iff="<<iff<<"\t temp="<<temp<<endl;
+		tf_pairs.push_back(temp);//tree*1000000+iff) ;
+		tf_pairs.resize(tf_pairs.size());
+	}
 		//vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
+/*
 		unsigned char n[8];
 		union v_or_p {
 			vector<short> *p;
@@ -40,8 +51,9 @@ class TreeIffPair {
 			}
 			n[tree]+=1;
 		}
-		TreeIffPair():n(){};
 
+		TreeIffPair():n(){};*/
+    TreeIffPair(){};
 		string print() {
 			/*
 				 stringstream out;
@@ -442,7 +454,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					//	continue;
 
 					match_timer.start();
-					p.findMatch(f,0/*tree*/,fstr);
+					p.findMatch(f,tree,fstr);
 					match_timer.stop();
 
 					if ((count % 10000) == 0) {
