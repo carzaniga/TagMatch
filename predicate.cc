@@ -405,7 +405,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 						if((added%1000000)==0)
 							cout << " added " << added <<endl;// '\r';
 						build_timer.start();
-						p.add_filter(f,0/*tree*/,iff,fstr);
+						p.add_filter(f,tree,iff,fstr);
 						build_timer.stop();
 					} else {
 						continue;
