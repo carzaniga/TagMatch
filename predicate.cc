@@ -17,43 +17,56 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 	public:
-			vector<short> tf_pairs;
-	void addTreeIff(unsigned short tree, unsigned short iff){
-		unsigned short temp=0;
-		temp=tree<<13;
-		temp|=iff;
-//		if(tree>0)
-//				cout<<"tree="<<tree<<"\t iff="<<iff<<"\t temp="<<temp<<endl;
-		tf_pairs.push_back(temp);//tree*1000000+iff) ;
-		tf_pairs.resize(tf_pairs.size());
-	}
-		//vector<int> treeIff[8];//these vectors store interface numbers. unsigned short is sufficient.
-/*
-		unsigned char n[8];
-		union v_or_p {
-			vector<short> *p;
+//		vector<unsigned short> tf_pairs;
+		union{
+			unsigned short *tf_array;
 			unsigned short v[4];
-		} treeIff[8];
-
+		};	
+		unsigned short size;
+		//tf_array=new int[size];
 		void addTreeIff(unsigned short tree, unsigned short iff){
-			if(n[tree]<4)
-				treeIff[tree].v[n[tree]]=iff;
-			else {
-				if(n[tree]==4){
-					// i should copy previous ones here.
-					treeIff[tree].p=new (Mem) vector<short>;			
-					treeIff[tree].p->push_back(treeIff[tree].v[0]);
-					treeIff[tree].p->push_back(treeIff[tree].v[1]);
-					treeIff[tree].p->push_back(treeIff[tree].v[2]);
-					treeIff[tree].p->push_back(treeIff[tree].v[3]);
-				}
-				treeIff[tree].p->push_back(iff);
+			unsigned short temp=0;
+			temp=tree<<13;
+			temp|=iff;
+			if (size<=4){
+				for(int k=0;k<size;k++)
+					if(v[k]==temp)
+						return;
 			}
-			n[tree]+=1;
-		}
+			else{
+				for(int k=0;k<size;k++)
+          if(tf_array[k]==temp)
+            return;
+			}
+			size++;
+			if(size<=4){
+				v[size-1]=temp;
+				return;
+			}
+			unsigned short *tf_array2=new unsigned short[size];
 
-		TreeIffPair():n(){};*/
-    TreeIffPair(){};
+			if(size==5){
+				for(int k=0;k<size-1;k++)
+					tf_array2[k]=v[k];
+				tf_array2[size-1]=temp;
+				tf_array=tf_array2;
+				return;
+			}
+			for(int k=0;k<size-1;k++)
+				tf_array2[k]=tf_array[k];
+			tf_array2[size-1]=temp;
+			tf_array=tf_array2;
+			//cout<<tf_pairs.size()<<"\t"<<tf_pairs.capacity()<<endl;
+			//		tree=1;
+			//			for(vector<unsigned short>::iterator i = tf_pairs.begin(); i != tf_pairs.end(); ++i){
+			//				if(*i==temp)
+			//					return;
+			//			}
+			//			tf_pairs.push_back(temp);
+			//			if(tf_pairs.capacity()-tf_pairs.size()>10)
+			//				cout<<tf_pairs.size()<<"\t"<<tf_pairs.capacity()<<endl;
+		}
+		TreeIffPair():size(0){};
 		string print() {
 			/*
 				 stringstream out;
@@ -279,7 +292,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			match(root,f.begin(),f.end(),tree,0,bs);
 			if(match_result.size()>0)
 				cout<<"+";
-			 //DO SOMETHING WITH THE MATCH RESULT
+			//DO SOMETHING WITH THE MATCH RESULT
 		}
 
 		static int count_nodes_r (const node * n,const int depth) {
