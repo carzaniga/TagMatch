@@ -54,8 +54,10 @@ class TreeIffPair {
 			}
 			for(int k=0;k<size-1;k++)
 				tf_array2[k]=tf_array[k];
+			delete [] tf_array;
 			tf_array2[size-1]=temp;
 			tf_array=tf_array2;
+			
 			//cout<<tf_pairs.size()<<"\t"<<tf_pairs.capacity()<<endl;
 			//		tree=1;
 			//			for(vector<unsigned short>::iterator i = tf_pairs.begin(); i != tf_pairs.end(); ++i){
