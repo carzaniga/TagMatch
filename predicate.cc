@@ -17,13 +17,11 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 	public:
-//		vector<unsigned short> tf_pairs;
 		union{
 			unsigned short *tf_array;
 			unsigned short v[4];
 		};	
-		unsigned short size;
-		//tf_array=new int[size];
+		unsigned short size; // I can still fit 3 more unsigned short here. because size of the object is 16 byte while only 10 is used right now.
 		void addTreeIff(unsigned short tree, unsigned short iff){
 			unsigned short temp=0;
 			temp=tree<<13;
@@ -57,30 +55,10 @@ class TreeIffPair {
 			delete [] tf_array;
 			tf_array2[size-1]=temp;
 			tf_array=tf_array2;
-			
-			//cout<<tf_pairs.size()<<"\t"<<tf_pairs.capacity()<<endl;
-			//		tree=1;
-			//			for(vector<unsigned short>::iterator i = tf_pairs.begin(); i != tf_pairs.end(); ++i){
-			//				if(*i==temp)
-			//					return;
-			//			}
-			//			tf_pairs.push_back(temp);
-			//			if(tf_pairs.capacity()-tf_pairs.size()>10)
-			//				cout<<tf_pairs.size()<<"\t"<<tf_pairs.capacity()<<endl;
 		}
+
 		TreeIffPair():size(0){};
 		string print() {
-			/*
-				 stringstream out;
-				 for(int i=0; i<8;++i){
-				 out << " tree " << i << " : " ;
-				 for(int j=0; j<treeIff[i].size(); ++j){
-				 out << " iff " << treeIff[i][j] << " ";
-				 }
-				 }
-				 out<< endl;
-				 return out.str();
-			 */
 		}
 };
 static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it up.
@@ -90,7 +68,6 @@ class node {
 	public:
 		filter::pos_t pos;
 		unsigned char treeMask;
-		//unsigned char set;
 		int ti_pos;
 		node * f; 
 		union {
@@ -103,7 +80,7 @@ class node {
 
 		void addIff(unsigned char tree, unsigned char iff) {
 			if(ti_pos<0){
-				ti_pos=ti_vec.size();//ti_index;
+				ti_pos=ti_vec.size();
 				TreeIffPair *ti = new (Mem) TreeIffPair();
 				ti->addTreeIff(tree,iff);
 				ti_vec.push_back(*ti);
@@ -127,7 +104,6 @@ class node {
 class end_node_entry {
 	public:
 		bitset<192> bs;
-		//TreeIffPair * ti;
 		int ti_pos;
 		end_node_entry(const string &s): bs(s),ti_pos(-1) {};
 
@@ -159,7 +135,6 @@ void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned 
 		}
 	e.addIff(tree,iff);
 	v.push_back(e);
-	//v.back().addIff(tree,iff);
 }
 
 static const int DEPTH_THRESHOLD = 15;
@@ -199,35 +174,30 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned char i
 		if (!last->ending) 
 			last->ending = new (Mem) end_node();
 		last->ending->addFilter(bitstring,tree,iff);
-		//last->set=2;
 	} else {
-		//last->set= 1;
 		last->addIff(tree,iff);
 	}
 }
 
 void match(const node *n, filter::const_iterator fi, filter::const_iterator end, int tree,int depth,const bitset<192> & bs)
 {
-	while (fi != end && n != 0){// && n->matchTreeMask(tree)) {
+	while (fi != end && n != 0){// && n->matchTreeMask(tree)) {// I should re-incorporate treeMask check.
 		if(n->pos==*fi){
-			if (n->ti_pos>=0){//set) {
+			if (n->ti_pos>=0){
 				match_result.push_back(n->ti_pos);
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
 				if (n->ti_pos<0 && n->ending==0)
 					cout<<endl<<"errrrrrrror in the code"<<endl;
-				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw=15. 
+				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw of filter is exactly 15. 
 					return;
 				}
 				end_node *en= n->ending; 
-				bitset<192> temp;//=bs;
-				//bitset<192> *p = new bitset<192>;
-				//*p=bs;
+				bitset<192> temp;
 				for(vector<end_node_entry>::iterator i = en->v.begin(); i != en->v.end(); ++i){
-					//*p&=i->bs;
 					temp=bs;
 					temp&=i->bs;
-					if(temp==bs){//*p==bs){
+					if(temp==bs){
 						cout<<endl<<"."<<endl;
 						match_result.push_back(i->ti_pos);
 					}
@@ -292,17 +262,16 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			match_result.clear();
 			bitset<192> bs(bitstring);
 			match(root,f.begin(),f.end(),tree,0,bs);
-			if(match_result.size()>0)
-				cout<<"+";
-			//DO SOMETHING WITH THE MATCH RESULT
+			if(match_result.size()>0){
+				//DO SOMETHING WITH THE MATCH RESULT
+			}
 		}
 
 		static int count_nodes_r (const node * n,const int depth) {
 			if (n == 0)
 				return 0;
-			//cout<< n->set <<endl;
 			if(depth+1==DEPTH_THRESHOLD)// +1 is for the matching of the current node. 
-				return 1+1+count_nodes_r(n->f,depth);//we count end_node as one node.
+				return 1+1+count_nodes_r(n->f,depth);//we count end_node as one node. may be I should change this!
 			return 1 + count_nodes_r(n->t,depth+1) + count_nodes_r(n->f,depth);
 		}
 
@@ -313,16 +282,6 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 
 		int count_interfaces_r(const node * n) {
 			return 0;    
-			/*if (n == 0)
-				return 0;
-
-				int iff=0;
-				if (n->ti != 0) {
-				for (int i=0; i<8; i++)
-				iff += n->ti->treeIff[i].size();
-				}
-				return iff + count_interfaces_r(n->t) + count_interfaces_r(n->f);
-			 */
 		}
 
 		unsigned long predicate::count_interfaces() const {
@@ -387,14 +346,9 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		};
 
 		int main(int argc, char *argv[]) {
-			//ti_index=0;
-			//vector<int> nodeIndex(349040030);
-
-			//end_node temp;
-			//temp->getzero(10);
-			//cout<< temp->v <<endl;
 			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
 			cout<<"size of end_node:"<<sizeof(end_node)<<endl;
+			cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
 			filter f;
 			predicate p;
 			bool quiet = false;
@@ -465,8 +419,6 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					is >> tree >> iff >> fstr;
 
 					f = fstr;
-					//if (count<740000)
-					//	continue;
 
 					match_timer.start();
 					p.findMatch(f,tree,fstr);
