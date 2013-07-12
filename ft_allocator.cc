@@ -64,6 +64,7 @@ void FTAllocator::attach_malloc_block (void *ptr) {
 }
 
 void * FTAllocator::allocate(size_t s) {
+    req_size += s;
     if (s > BSize) {
 	void *ptr = malloc(s);
 	if (ptr) {
@@ -122,6 +123,7 @@ void FTAllocator::recycle() {
     free_pos = 0;
     normal_size = 0;
     large_size = 0;
+    req_size = 0;
 }
 
 void FTAllocator::clear() {
@@ -152,6 +154,7 @@ void FTAllocator::clear() {
     assert (largeblist == 0);
     normal_size = 0;
     large_size = 0;
+    req_size = 0;
 }
 
 void FTAllocator::detach_sub_allocator (FTAllocator &mem) {
