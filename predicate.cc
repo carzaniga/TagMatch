@@ -56,13 +56,18 @@ class TreeIffPair {
 			tf_array2[size-1]=temp;
 			tf_array=tf_array2;
 		}
+		vector<unsigned short> match(const unsigned short tree){
+				vector<unsigned short> res;
+				//do something
+				return res;
+		}
 
 		TreeIffPair():size(0){};
 		string print() {
 		}
 };
 static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it up.
-static vector<int> match_result;
+static vector<unsigned short> match_result;
 
 class node {
 	public:
@@ -202,10 +207,14 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned char i
 
 void match(const node *n, filter::const_iterator fi, filter::const_iterator end, int tree,int depth,const bitset<192> & bs)
 {
+	vector<unsigned short> tempVec;
 	while (fi != end && n != 0 && n->matchTreeMask(tree)){
 		if(n->pos==*fi){
 			if (n->ti_pos>=0){
-				match_result.push_back(n->ti_pos);
+				tempVec=ti_vec.at(n->ti_pos).match(tree);
+				match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
+				//match_result.push_back(n->ti_pos);
+				tempVec.clear();
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
 				if (n->ti_pos<0 && n->ending==0)
@@ -220,22 +229,25 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					temp&=i->bs;
 					if(temp==bs){
 						cout<<endl<<"."<<endl;
-						match_result.push_back(i->ti_pos);
+						//match_result.push_back(i->ti_pos);
+						tempVec=ti_vec.at(i->ti_pos).match(tree);
+						match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
+						tempVec.clear();
 					}
-					}
-					break;
 				}
-				++fi;
-				match(n->f,fi,end,tree,depth,bs);
-				depth++;
-				n = n->t;		// equivalent to recursion: match(n->t,fi,end,tree);
-			} else if (n->pos > *fi) {
-				++fi;		// equivalent to recursion: match(n,++fi,end,tree);
-			} else {//(n->pos < *fi)
-				n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
+				break;
 			}
-			}
+			++fi;
+			match(n->f,fi,end,tree,depth,bs);
+			depth++;
+			n = n->t;		// equivalent to recursion: match(n->t,fi,end,tree);
+		} else if (n->pos > *fi) {
+			++fi;		// equivalent to recursion: match(n,++fi,end,tree);
+		} else {//(n->pos < *fi)
+			n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
 		}
+	}
+}
 
 
 
