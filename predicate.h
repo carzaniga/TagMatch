@@ -14,12 +14,12 @@ class node;
 class end_node;
 class predicate {
 private:
-    node * root;
-
+	node * root[192];
 public:
-    predicate(): root(0) {};
+    predicate(){};
+		void init();
     void add_filter(const filter & f, unsigned char tree, unsigned char iff,const string & bitstring);
-	void findMatch(const filter & f,int tree, const string & bitstring);// const;
+		void findMatch(const filter & f,int tree, const string & bitstring);// const;
     bool contains_subset(const filter & f) const;
     unsigned long count_nodes() const;
     unsigned long count_interfaces() const;

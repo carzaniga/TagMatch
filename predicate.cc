@@ -88,8 +88,7 @@ class node {
 			}
 			ti_vec.at(ti_pos).addTreeIff(tree,iff);
 		}
-
-		bool matchTreeMask(int tree) const {
+		bool matchTreeMask(int tree) const{
 			unsigned char tmp = 0;
 			tmp |= 1 << tree;
 			return ((treeMask & tmp)==tmp);
@@ -98,6 +97,23 @@ class node {
 		void setMask (int tree){
 			treeMask |= 1 << tree;
 		}
+
+		void initMask(unsigned char m){
+			treeMask |= m;
+		}
+
+//		void setBit (int index){
+//			final.set(index,1);
+//		}
+//
+//		void setAllBits(bitset<192> bs){
+//			final|=bs;
+//		}
+//
+//		bool matchFinalBitSet(bitset<192> msg) const{
+//			msg&=final;
+//			return msg.any();
+//		}
 };
 
 
@@ -136,13 +152,17 @@ void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned 
 	e.addIff(tree,iff);
 	v.push_back(e);
 }
+void predicate::init(){
+	for(int i=0;i<192;++i){
+		root[i]=new node(i);
+	}
+}
 
 static const int DEPTH_THRESHOLD = 15;
 void predicate::add_filter(const filter & f, unsigned char tree, unsigned char iff, const string & bitstring) {
 	int depth=0;
-	node ** np = &root;
 	filter::const_iterator fi = f.begin();
-
+	node ** np = &root[*fi];
 	node * last; //last node visited
 	while (fi != f.end() && depth<DEPTH_THRESHOLD) {
 		if (*np == 0) {
@@ -159,6 +179,7 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned char i
 			depth++;
 			*np = new (Mem) node(*fi);
 			last=*np;
+			last->initMask(tmp->treeMask);
 			last->f = tmp;
 			np = &(last->t);
 			++fi;
@@ -181,14 +202,14 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned char i
 
 void match(const node *n, filter::const_iterator fi, filter::const_iterator end, int tree,int depth,const bitset<192> & bs)
 {
-	while (fi != end && n != 0){// && n->matchTreeMask(tree)) {// I should re-incorporate treeMask check.
+	while (fi != end && n != 0 && n->matchTreeMask(tree)){
 		if(n->pos==*fi){
 			if (n->ti_pos>=0){
 				match_result.push_back(n->ti_pos);
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
 				if (n->ti_pos<0 && n->ending==0)
-					cout<<endl<<"errrrrrrror in the code"<<endl;
+					throw -1;
 				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw of filter is exactly 15. 
 					return;
 				}
@@ -254,14 +275,15 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 #endif
 		}
 
-		bool predicate::contains_subset(const filter & f) const {
-			return suffix_contains_subset(false, root, f.begin(), f.end());
-		}
-
+//		bool predicate::contains_subset(const filter & f) const {
+//			return suffix_contains_subset(false, root, f.begin(), f.end());
+//		}
+//
 		void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
 			match_result.clear();
 			bitset<192> bs(bitstring);
-			match(root,f.begin(),f.end(),tree,0,bs);
+			for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
+				match(root[*fi],fi,f.end(),tree,0,bs);
 			if(match_result.size()>0){
 				//DO SOMETHING WITH THE MATCH RESULT
 			}
@@ -276,7 +298,10 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		}
 
 		unsigned long predicate::count_nodes() const {
-			return count_nodes_r(root,0);
+			long tot=0;
+				for(int i=0;i<192;++i)
+							tot+=count_nodes_r(root[i],0);
+				    return tot;
 		}
 
 
@@ -285,7 +310,10 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		}
 
 		unsigned long predicate::count_interfaces() const {
-			return count_interfaces_r(root);
+			long tot=0;
+				for(int i=0;i<192;++i)
+							tot+=count_interfaces_r(root[i]);
+					return tot;
 		}
 
 		static void print_r(ostream & os, string & prefix, const node * n) {
@@ -314,8 +342,8 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		}
 
 		ostream & predicate::print(ostream & os) const {
-			string s;
-			print_r(os, s, root);
+////			string s;
+////			print_r(os, s, root);
 			return os;
 		}
 
@@ -346,11 +374,12 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		};
 
 		int main(int argc, char *argv[]) {
+			predicate p;
+			p.init();
 			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
 			cout<<"size of end_node:"<<sizeof(end_node)<<endl;
 			cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
 			filter f;
-			predicate p;
 			bool quiet = false;
 			unsigned long tot = 0;
 			unsigned long added = 0;
