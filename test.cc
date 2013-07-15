@@ -35,6 +35,10 @@ long a;
 int node::myval=12;
 int krs=15;
 int main() {
+	unsigned short aa=5;
+	unsigned short bb=0;
+	aa<<2;
+	cout<<aa<<"\t"<<bb<<endl;
  bitset<5> *p = new bitset<5>(25);
 cout<<*p<<endl;
 

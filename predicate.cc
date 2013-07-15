@@ -17,52 +17,44 @@ siena::FTAllocator Mem;
 
 class TreeIffPair { 
 	public:
-		union{
-			unsigned short *tf_array;
-			unsigned short v[4];
-		};	
-		unsigned short size; // I can still fit 3 more unsigned short here. because size of the object is 16 byte while only 10 is used right now.
+		unsigned short *tf_array; // the first element stores the size of the array.
 		void addTreeIff(unsigned short tree, unsigned short iff){
 			unsigned short temp=0;
 			temp=tree<<13;
 			temp|=iff;
-			if (size<=4){
-				for(int k=0;k<size;k++)
-					if(v[k]==temp)
-						return;
+			if(tf_array==0){
+				tf_array=new unsigned short[2];
+				tf_array[0]=2; //including the first element.
+				tf_array[1]=temp;
+				return;
 			}
-			else{
-				for(int k=0;k<size;k++)
-          if(tf_array[k]==temp)
-            return;
+			unsigned short size=tf_array[0];
+			for(int k=1;k<size;k++)
+				if(tf_array[k]==temp)
+					return;		
+			if(size==65535){
+				throw (-1); // means we haved reached the maximum size for our array. 			
 			}
 			size++;
-			if(size<=4){
-				v[size-1]=temp;
-				return;
-			}
 			unsigned short *tf_array2=new unsigned short[size];
 
-			if(size==5){
-				for(int k=0;k<size-1;k++)
-					tf_array2[k]=v[k];
-				tf_array2[size-1]=temp;
-				tf_array=tf_array2;
-				return;
-			}
-			for(int k=0;k<size-1;k++)
+			for(int k=1;k<size-1;k++)
 				tf_array2[k]=tf_array[k];
 			delete [] tf_array;
 			tf_array2[size-1]=temp;
+			tf_array2[0]=size;
 			tf_array=tf_array2;
 		}
 		vector<unsigned short> match(const unsigned short tree){
-				vector<unsigned short> res;
-				//do something
-				return res;
+			vector<unsigned short> res;
+			for(int i=1;i<tf_array[0];i++){
+				if (tree==tf_array[i]>>13)
+					res.push_back(tf_array[i]&8191); //8191 = 0001111111111111
+			}
+			return res;
 		}
 
-		TreeIffPair():size(0){};
+		TreeIffPair():tf_array(0){};
 		string print() {
 		}
 };
@@ -83,7 +75,7 @@ class node {
 		node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0) {};
 
 
-		void addIff(unsigned char tree, unsigned char iff) {
+		void addIff(unsigned char tree, unsigned short iff) {
 			if(ti_pos<0){
 				ti_pos=ti_vec.size();
 				TreeIffPair *ti = new (Mem) TreeIffPair();
@@ -106,19 +98,6 @@ class node {
 		void initMask(unsigned char m){
 			treeMask |= m;
 		}
-
-//		void setBit (int index){
-//			final.set(index,1);
-//		}
-//
-//		void setAllBits(bitset<192> bs){
-//			final|=bs;
-//		}
-//
-//		bool matchFinalBitSet(bitset<192> msg) const{
-//			msg&=final;
-//			return msg.any();
-//		}
 };
 
 
@@ -128,7 +107,7 @@ class end_node_entry {
 		int ti_pos;
 		end_node_entry(const string &s): bs(s),ti_pos(-1) {};
 
-		void addIff(unsigned char tree, unsigned char iff) {
+		void addIff(unsigned char tree, unsigned short iff) {
 			if(ti_pos<0){
 				ti_pos=ti_vec.size();
 				TreeIffPair *ti = new (Mem) TreeIffPair();
@@ -143,10 +122,10 @@ class end_node_entry {
 class end_node {
 	public:
 		vector<end_node_entry> v;
-		void addFilter(const string & bitstring, unsigned char tree, unsigned char iff);
+		void addFilter(const string & bitstring, unsigned char tree, unsigned short iff);
 };
 
-void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned char iff){
+void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned short iff){
 	end_node_entry e(bitstring);
 
 	for(vector<end_node_entry>::iterator i = v.begin(); i != v.end(); ++i)
@@ -164,7 +143,7 @@ void predicate::init(){
 }
 
 static const int DEPTH_THRESHOLD = 15;
-void predicate::add_filter(const filter & f, unsigned char tree, unsigned char iff, const string & bitstring) {
+void predicate::add_filter(const filter & f, unsigned char tree, unsigned short iff, const string & bitstring) {
 	int depth=0;
 	filter::const_iterator fi = f.begin();
 	node ** np = &root[*fi];
@@ -218,7 +197,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
 				if (n->ti_pos<0 && n->ending==0)
-					throw -1;
+					throw (-2);
 				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw of filter is exactly 15. 
 					return;
 				}
@@ -443,8 +422,9 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 
 				cout << "Memory (allocated): " << Mem.size() << endl;
 				cout << "Memory (requested): " << Mem.requested_size() << endl;
-				cout << "Number of nodes: " << p.count_nodes() << std::endl;
-				cout << "Number of iff: " << p.count_interfaces() << std::endl;
+				cout << "Number of nodes: " << p.count_nodes() << endl;
+				cout << "Number of iff: " << p.count_interfaces() << endl;
+				cout << "Size of Ti_vec: " << ti_vec.size()<< endl;
 				cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
 
 				unsigned long count = 0;
@@ -478,7 +458,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				}
 
 			} catch (int e) {
-				cerr << "bad format." << endl; 
+				cerr << "bad format. " <<e<< endl; 
 			}
 		}
 
