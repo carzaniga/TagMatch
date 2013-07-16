@@ -206,8 +206,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				for(vector<end_node_entry>::iterator i = en->v.begin(); i != en->v.end(); ++i){
 					temp=bs;
 					temp&=i->bs;
-					if(temp==bs){
-						cout<<endl<<"."<<endl;
+					if(temp==i->bs){
 						//match_result.push_back(i->ti_pos);
 						tempVec=ti_vec.at(i->ti_pos).match(tree);
 						match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
