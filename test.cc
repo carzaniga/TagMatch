@@ -34,7 +34,16 @@ long a;
 
 int node::myval=12;
 int krs=15;
+static vector<node> nd_vec;
 int main() {
+	node nn ;//= new node() ;
+	nn.pos=48;
+	cout<<"aa "<<nn.pos<<endl;
+	nd_vec.push_back(nn);
+	cout<<nd_vec.size()<<endl;
+	nd_vec.at(0).pos=52;
+	cout<<"asdasds"<<nd_vec.at(0).pos<<"+++"<<endl;
+	cout<<nn.pos<<endl;
 	unsigned short aa=5;
 	unsigned short bb=0;
 	aa<<2;

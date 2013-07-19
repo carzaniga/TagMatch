@@ -9,9 +9,9 @@
 using namespace std;
 
 class TreeIffPair;
-
+class end_node_entry;
 class node;
-class end_node;
+//class end_node;
 class predicate {
 private:
 	node * root[192];

@@ -65,15 +65,15 @@ class node {
 	public:
 		filter::pos_t pos;
 		unsigned char treeMask;
+		unsigned short size;//stores size of the endings array.
 		int ti_pos;
 		node * f; 
 		union {
 			node * t;
-			end_node * ending;
+			end_node_entry * endings;
 		};
 
-		node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0) {};
-
+		node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0),size(0) {};
 
 		void addIff(unsigned char tree, unsigned short iff) {
 			if(ti_pos<0){
@@ -90,22 +90,20 @@ class node {
 			tmp |= 1 << tree;
 			return ((treeMask & tmp)==tmp);
 		}
-
 		void setMask (int tree){
 			treeMask |= 1 << tree;
 		}
-
 		void initMask(unsigned char m){
 			treeMask |= m;
 		}
 };
-
 
 class end_node_entry {
 	public:
 		bitset<192> bs;
 		int ti_pos;
 		end_node_entry(const string &s): bs(s),ti_pos(-1) {};
+		end_node_entry():ti_pos(-1){};
 
 		void addIff(unsigned char tree, unsigned short iff) {
 			if(ti_pos<0){
@@ -118,24 +116,6 @@ class end_node_entry {
 			ti_vec.at(ti_pos).addTreeIff(tree,iff);
 		}
 };
-
-class end_node {
-	public:
-		vector<end_node_entry> v;
-		void addFilter(const string & bitstring, unsigned char tree, unsigned short iff);
-};
-
-void end_node::addFilter(const string & bitstring, unsigned char tree, unsigned short iff){
-	end_node_entry e(bitstring);
-
-	for(vector<end_node_entry>::iterator i = v.begin(); i != v.end(); ++i)
-		if(i->bs == e.bs) {
-			i->addIff(tree,iff);
-			return;
-		}
-	e.addIff(tree,iff);
-	v.push_back(e);
-}
 void predicate::init(){
 	for(int i=0;i<192;++i){
 		root[i]=new node(i);
@@ -145,6 +125,8 @@ void predicate::init(){
 static const int DEPTH_THRESHOLD = 15;
 void predicate::add_filter(const filter & f, unsigned char tree, unsigned short iff, const string & bitstring) {
 	int depth=0;
+	bitset<192> bs(bitstring);
+	
 	filter::const_iterator fi = f.begin();
 	node ** np = &root[*fi];
 	node * last; //last node visited
@@ -176,9 +158,32 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		last->setMask(tree);
 	}
 	if(fi!=f.end()){
-		if (!last->ending) 
-			last->ending = new (Mem) end_node();
-		last->ending->addFilter(bitstring,tree,iff);
+		if (!last->endings){ 
+			if(last->size==0){ // I used default alocator because the size of the object itself is 32. 
+				last->size++;
+				last->endings = new end_node_entry[1]; //its a dynamic array. first_element.size stores the size of the array.
+				last->endings[0].addIff(tree,iff);
+				last->endings[0].bs=bs; //(bitstring);
+				return;	
+			}	
+		}
+		for (int i=0;i<last->size;i++)
+			if(last->endings[i].bs==bs){
+				last->endings[i].addIff(tree,iff);
+				return;
+			}
+		if(last->size==65535)
+			throw (-3);
+		last->size++;
+		end_node_entry * temp_entry = new end_node_entry[last->size];
+		for (int i=0;i<last->size-1;i++){
+			temp_entry[i].bs=last->endings[i].bs;
+			temp_entry[i].ti_pos=last->endings[i].ti_pos;
+		}
+		delete [] last->endings ;
+		temp_entry[last->size-1].bs=bs;
+		temp_entry[last->size-1].addIff(tree,iff);
+		last->endings=temp_entry;
 	} else {
 		last->addIff(tree,iff);
 	}
@@ -192,23 +197,21 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			if (n->ti_pos>=0){
 				tempVec=ti_vec.at(n->ti_pos).match(tree);
 				match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
-				//match_result.push_back(n->ti_pos);
 				tempVec.clear();
 			}
 			if (depth+1==DEPTH_THRESHOLD) {
-				if (n->ti_pos<0 && n->ending==0)
+				if (n->ti_pos<0 && n->endings==0)
 					throw (-2);
-				if (n->ti_pos>=0 && n->ending==0){ //this happens when hw of filter is exactly 15. 
+				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly 15. 
 					return;
 				}
-				end_node *en= n->ending; 
+				end_node_entry *en= n->endings; 
 				bitset<192> temp;
-				for(vector<end_node_entry>::iterator i = en->v.begin(); i != en->v.end(); ++i){
+				for(int i = 0;i<n->size;++i){
 					temp=bs;
-					temp&=i->bs;
-					if(temp==i->bs){
-						//match_result.push_back(i->ti_pos);
-						tempVec=ti_vec.at(i->ti_pos).match(tree);
+					temp&=en[i].bs;
+					if(temp==en[i].bs){
+						tempVec=ti_vec.at(en[i].ti_pos).match(tree);
 						match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
 						tempVec.clear();
 					}
@@ -367,7 +370,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			predicate p;
 			p.init();
 			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
-			cout<<"size of end_node:"<<sizeof(end_node)<<endl;
+			cout<<"size of end_node_entry:"<<sizeof(end_node_entry)<<endl;
 			cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
 			filter f;
 			bool quiet = false;
