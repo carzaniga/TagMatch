@@ -159,9 +159,9 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 	}
 	if(fi!=f.end()){
 		if (!last->endings){ 
-			if(last->size==0){ // I used default alocator because the size of the object itself is 32. 
+			if(last->size==0){ // I used default alocator because the size of the object itself is 32 and to avoid dealocation problm later if want to delete stuff from the trie. 
 				last->size++;
-				last->endings = new end_node_entry[1]; //its a dynamic array. first_element.size stores the size of the array.
+				last->endings = new end_node_entry[1]; 
 				last->endings[0].addIff(tree,iff);
 				last->endings[0].bs=bs; //(bitstring);
 				return;	
@@ -199,7 +199,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
 				tempVec.clear();
 			}
-			if (depth+1==DEPTH_THRESHOLD) {
+			if (depth+1==DEPTH_THRESHOLD) { //or I can say if n->size>0
 				if (n->ti_pos<0 && n->endings==0)
 					throw (-2);
 				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly 15. 
