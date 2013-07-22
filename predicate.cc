@@ -377,10 +377,10 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			unsigned long tot = 0;
 			unsigned long added = 0;
 
+#ifdef WITH_TIMERS
 			Timer match_timer;
 			Timer build_timer;
-
-			Timer::calibrate();		// this will cost us about 0.5 seconds
+#endif
 
 			if (argc > 1 && strcmp(argv[1], "-q") == 0)
 				quiet = true;
@@ -407,9 +407,13 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 						++added;	
 						if((added%1000000)==0)
 							cout << " added " << added <<endl;// '\r';
+#ifdef WITH_TIMERS
 						build_timer.start();
+#endif
 						p.add_filter(f,tree,iff,fstr);
+#ifdef WITH_TIMERS
 						build_timer.stop();
+#endif
 					} else {
 						continue;
 						//throw(empty_filter());
@@ -427,11 +431,15 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				cout << "Number of nodes: " << p.count_nodes() << endl;
 				cout << "Number of iff: " << p.count_interfaces() << endl;
 				cout << "Size of Ti_vec: " << ti_vec.size()<< endl;
+#ifdef WITH_TIMERS
 				cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
+#endif
 
 				unsigned long count = 0;
 				cout<<"sleeping for 1sec"<<endl;
+#if 0 // is this really necessary
 				sleep(1);
+#endif
 				while(getline(std::cin,l)) {
 					if (l.size()==0) 
 						continue;
@@ -443,20 +451,29 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 
 					f = fstr;
 
+#ifdef WITH_TIMERS
 					match_timer.start();
+#endif
 					p.findMatch(f,tree,fstr);
+#ifdef WITH_TIMERS
 					match_timer.stop();
+#endif
 
+#ifdef WITH_TIMERS
 					if ((count % 10000) == 0) {
 						cout << "\rAverage matching cycles (" << count << "): " 
 							<< (match_timer.read_microseconds() / count) << flush;
 					}
+#endif
 				}
 
 				if (count > 0) {
 					cout << "Total calls: " << count << endl;
+#ifdef WITH_TIMERS
 					cout << "Average matching time (us): " 
 						<< (match_timer.read_microseconds() / count) << endl;
+#endif
+
 				}
 
 			} catch (int e) {
