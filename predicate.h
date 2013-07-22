@@ -17,20 +17,20 @@
 using namespace std;
 
 class TreeIffPair;
-
+class end_node_entry;
 class node;
-class end_node;
+//class end_node;
 class predicate {
 private:
-	node * root;
-
+	node * root[192];
 public:
-predicate(): root(0) {};
-	void add_filter(const filter & f, unsigned char tree, unsigned char iff,const string & bitstring);
-	void findMatch(const filter & f,int tree, const string & bitstring);// const;
-	bool contains_subset(const filter & f) const;
-	unsigned long count_nodes() const;
-	unsigned long count_interfaces() const;
+    predicate(){};
+		void init();
+    void add_filter(const filter & f, unsigned char tree, unsigned short iff,const string & bitstring);
+		void findMatch(const filter & f,int tree, const string & bitstring);// const;
+    bool contains_subset(const filter & f) const;
+    unsigned long count_nodes() const;
+    unsigned long count_interfaces() const;
 
 	friend ostream & operator << (ostream &, const predicate &);
 	ostream & print(ostream &) const;

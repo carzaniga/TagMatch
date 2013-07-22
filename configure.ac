@@ -15,8 +15,7 @@ LT_INIT
 #
 AC_HEADER_TIME
 #
-AC_CHECK_RDTSC([AC_DEFINE([HAVE_RDTSC], [], [Intel rdtsc instruction])])
-AC_CHECK_RDTSCP([AC_DEFINE([HAVE_RDTSCP], [], [Intel rdtscp instruction])])
+AC_OPT_TIMERS
 #
 AC_CONFIG_FILES([Makefile])
 #
