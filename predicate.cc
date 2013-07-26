@@ -45,13 +45,11 @@ class TreeIffPair {
 			tf_array2[0]=size;
 			tf_array=tf_array2;
 		}
-		vector<unsigned short> match(const unsigned short tree){
-			vector<unsigned short> res;
+		void match(vector<unsigned short> & match_result, const unsigned short tree){
 			for(int i=1;i<tf_array[0];i++){
 				if (tree==tf_array[i]>>13)
-					res.push_back(tf_array[i]&8191); //8191 = 0001111111111111
+					match_result.push_back(tf_array[i]&8191); //8191 = 0001111111111111
 			}
-			return res;
 		}
 
 		TreeIffPair():tf_array(0){};
@@ -60,6 +58,9 @@ class TreeIffPair {
 };
 static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it up.
 static vector<unsigned short> match_result;
+static int maxSize;
+static int leaves;
+static int collisions;
 
 class node {
 	public:
@@ -161,6 +162,10 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		if (!last->endings){ 
 			if(last->size==0){ // I used default alocator because the size of the object itself is 32 and to avoid dealocation problm later if want to delete stuff from the trie. 
 				last->size++;
+#undef Verbose	
+#ifdef Verbose				
+				leaves++;
+#endif
 				last->endings = new end_node_entry[1]; 
 				last->endings[0].addIff(tree,iff);
 				last->endings[0].bs=bs; //(bitstring);
@@ -169,6 +174,9 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		}
 		for (int i=0;i<last->size;i++)
 			if(last->endings[i].bs==bs){
+#ifdef Verbose
+				collisions++;
+#endif
 				last->endings[i].addIff(tree,iff);
 				return;
 			}
@@ -184,22 +192,27 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		temp_entry[last->size-1].bs=bs;
 		temp_entry[last->size-1].addIff(tree,iff);
 		last->endings=temp_entry;
+//#define MAX_CHECK 1
+//#ifdef MAX_CHECK
+		if(maxSize<last->size){
+			maxSize=last->size;
+		}
+#ifdef Verbose
+		cout<<endl<<"size is: "<<last->size<<endl;
+#endif
 	} else {
 		last->addIff(tree,iff);
 	}
 }
 
-void match(const node *n, filter::const_iterator fi, filter::const_iterator end, int tree,int depth,const bitset<192> & bs)
+void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bitset<192> & bs)
 {
-	vector<unsigned short> tempVec;
 	while (fi != end && n != 0 && n->matchTreeMask(tree)){
 		if(n->pos==*fi){
-			if (n->ti_pos>=0){
-				tempVec=ti_vec.at(n->ti_pos).match(tree);
-				match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
-				tempVec.clear();
-			}
-			if (depth+1==DEPTH_THRESHOLD) { //or I can say if n->size>0
+			if (n->ti_pos>=0)
+				ti_vec.at(n->ti_pos).match(match_result,tree);
+			
+			if (n->size>0){ 
 				if (n->ti_pos<0 && n->endings==0)
 					throw (-2);
 				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly 15. 
@@ -210,17 +223,13 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				for(int i = 0;i<n->size;++i){
 					temp=bs;
 					temp&=en[i].bs;
-					if(temp==en[i].bs){
-						tempVec=ti_vec.at(en[i].ti_pos).match(tree);
-						match_result.insert(match_result.end(),tempVec.begin(),tempVec.end()); 
-						tempVec.clear();
-					}
+					if(temp==en[i].bs)
+						ti_vec.at(en[i].ti_pos).match(match_result,tree);
 				}
 				break;
 			}
 			++fi;
-			match(n->f,fi,end,tree,depth,bs);
-			depth++;
+			match(n->f,fi,end,tree,bs);
 			n = n->t;		// equivalent to recursion: match(n->t,fi,end,tree);
 		} else if (n->pos > *fi) {
 			++fi;		// equivalent to recursion: match(n,++fi,end,tree);
@@ -276,7 +285,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			match_result.clear();
 			bitset<192> bs(bitstring);
 			for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
-				match(root[*fi],fi,f.end(),tree,0,bs);
+				match(root[*fi],fi,f.end(),tree,bs);
 			if(match_result.size()>0){
 				//DO SOMETHING WITH THE MATCH RESULT
 			}
@@ -367,6 +376,9 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		};
 
 		int main(int argc, char *argv[]) {
+			maxSize=0;
+			leaves=0;
+			collisions=0;
 			predicate p;
 			p.init();
 			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
@@ -378,6 +390,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 			unsigned long added = 0;
 
 #ifdef WITH_TIMERS
+			cout<<"timer is defined"<<endl;
 			Timer match_timer;
 			Timer build_timer;
 #endif
@@ -406,7 +419,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 						++tot;
 						++added;	
 						if((added%1000000)==0)
-							cout << " added " << added <<endl;// '\r';
+							cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<endl;// '\r';
 #ifdef WITH_TIMERS
 						build_timer.start();
 #endif
@@ -425,7 +438,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				} else {
 					cout << p;
 				}
-
+				cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
 				cout << "Memory (allocated): " << Mem.size() << endl;
 				cout << "Memory (requested): " << Mem.requested_size() << endl;
 				cout << "Number of nodes: " << p.count_nodes() << endl;
