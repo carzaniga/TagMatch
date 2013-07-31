@@ -8,12 +8,71 @@
 #include <iostream>
 #include <cstring>
 #include <sstream>
-#include <bitset>
 #include "predicate.h"
 #include "allocator.h"
 #include "timing.h"
+#include <set>
 
 siena::FTAllocator Mem;
+
+#define Verbose
+static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it upe
+static set<unsigned short> match_result;
+static int maxSize;
+static int leaves;
+static int collisions;
+static int maxTIF;
+
+class bv192 {
+	typedef unsigned long block_t;
+	//assuming sizeof(block_t) * CHAR_BIT = 64
+			block_t bv[3];
+	public:
+		bv192() { reset(); }
+		void set(unsigned int pos);
+		bv192(const string &s){
+			for(int i=0;i<192;i++)
+				if(s[i]=='1')
+					set(i);
+		}
+		bv192 & operator=(const bv192 &rhs);
+		bool operator==(const bv192 &rhs);
+		bool subset_of(const bv192 & x) const;
+		void add(const bv192 & x);
+		void reset() {
+#ifdef BV192_USE_MEMSET
+			memset(bv,0,sizeof(bv)); 
+#else
+			bv[0] = 0; bv[1] = 0; bv[2] = 0;
+#endif
+		}
+};
+void bv192::add(const bv192 & x) {
+	bv[0] |= x.bv[0];
+	bv[1] |= x.bv[1];
+	bv[2] |= x.bv[2];
+}
+bv192 & bv192::operator=(const bv192 &rhs){
+	bv[0] = rhs.bv[0];
+	bv[1] = rhs.bv[1];
+	bv[2] = rhs.bv[2];
+	return *this;
+}
+bool bv192::operator==(const bv192 &rhs){
+	return (bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] &&	bv[2] == rhs.bv[2]) ;
+}
+
+bool bv192::subset_of(const bv192 & x) const {
+	return (bv[0] & x.bv[0]) == bv[0]
+		&& (bv[1] & x.bv[1]) == bv[1]
+		&& (bv[2] & x.bv[2]) == bv[2];
+}
+
+void bv192::set(unsigned int pos) {
+	bv[pos >> 6] |= (1U << (pos && 63));
+}
+
+
 
 class TreeIffPair { 
 	public:
@@ -36,6 +95,10 @@ class TreeIffPair {
 				throw (-1); // means we haved reached the maximum size for our array. 			
 			}
 			size++;
+#ifdef Verbose
+			if(maxTIF<size)
+				maxTIF=size;
+#endif
 			unsigned short *tf_array2=new unsigned short[size];
 
 			for(int k=1;k<size-1;k++)
@@ -45,10 +108,10 @@ class TreeIffPair {
 			tf_array2[0]=size;
 			tf_array=tf_array2;
 		}
-		void match(vector<unsigned short> & match_result, const unsigned short tree){
+		void match(set<unsigned short> & match_result, const unsigned short tree){
 			for(int i=1;i<tf_array[0];i++){
 				if (tree==tf_array[i]>>13)
-					match_result.push_back(tf_array[i]&8191); //8191 = 0001111111111111
+					match_result.insert(tf_array[i]&8191); //8191 = 0001111111111111
 			}
 		}
 
@@ -56,12 +119,6 @@ class TreeIffPair {
 		string print() {
 		}
 };
-static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it up.
-static vector<unsigned short> match_result;
-static int maxSize;
-static int leaves;
-static int collisions;
-
 class node {
 	public:
 		filter::pos_t pos;
@@ -101,7 +158,7 @@ class node {
 
 class end_node_entry {
 	public:
-		bitset<192> bs;
+		bv192 bs;
 		int ti_pos;
 		end_node_entry(const string &s): bs(s),ti_pos(-1) {};
 		end_node_entry():ti_pos(-1){};
@@ -126,8 +183,8 @@ void predicate::init(){
 static const int DEPTH_THRESHOLD = 15;
 void predicate::add_filter(const filter & f, unsigned char tree, unsigned short iff, const string & bitstring) {
 	int depth=0;
-	bitset<192> bs(bitstring);
-	
+	bv192 bs(bitstring);
+
 	filter::const_iterator fi = f.begin();
 	node ** np = &root[*fi];
 	node * last; //last node visited
@@ -162,7 +219,6 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		if (!last->endings){ 
 			if(last->size==0){ // I used default alocator because the size of the object itself is 32 and to avoid dealocation problm later if want to delete stuff from the trie. 
 				last->size++;
-#undef Verbose	
 #ifdef Verbose				
 				leaves++;
 #endif
@@ -195,17 +251,18 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 //#define MAX_CHECK 1
 //#ifdef MAX_CHECK
 		if(maxSize<last->size){
+			cout<<endl<<"size is: "<<last->size<<endl;
 			maxSize=last->size;
 		}
 #ifdef Verbose
-		cout<<endl<<"size is: "<<last->size<<endl;
+		//cout<<endl<<"size is: "<<last->size<<endl;
 #endif
 	} else {
 		last->addIff(tree,iff);
 	}
 }
 
-void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bitset<192> & bs)
+void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bv192 & bs)
 {
 	while (fi != end && n != 0 && n->matchTreeMask(tree)){
 		if(n->pos==*fi){
@@ -219,12 +276,9 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 					return;
 				}
 				end_node_entry *en= n->endings; 
-				bitset<192> temp;
 				for(int i = 0;i<n->size;++i){
-					temp=bs;
-					temp&=en[i].bs;
-					if(temp==en[i].bs)
-						ti_vec.at(en[i].ti_pos).match(match_result,tree);
+					if(en[i].bs.subset_of(bs))
+							ti_vec.at(en[i].ti_pos).match(match_result,tree);
 				}
 				break;
 			}
@@ -283,7 +337,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 //
 		void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
 			match_result.clear();
-			bitset<192> bs(bitstring);
+			bv192 bs(bitstring);
 			for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
 				match(root[*fi],fi,f.end(),tree,bs);
 			if(match_result.size()>0){
@@ -376,9 +430,13 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		};
 
 		int main(int argc, char *argv[]) {
+#ifdef Verbose
+			cout<<"verbose mode"<<endl;
+#endif
 			maxSize=0;
 			leaves=0;
 			collisions=0;
+			maxTIF=0;
 			predicate p;
 			p.init();
 			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
@@ -419,7 +477,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 						++tot;
 						++added;	
 						if((added%1000000)==0)
-							cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<endl;// '\r';
+							cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<" maxTIff array size: "<<maxTIF<<endl;// '\r';
 #ifdef WITH_TIMERS
 						build_timer.start();
 #endif
@@ -438,7 +496,10 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				} else {
 					cout << p;
 				}
+#ifdef Verbose
 				cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
+				cout<<"maximum size of Tiff array: "<<maxTIF<<endl;
+#endif	
 				cout << "Memory (allocated): " << Mem.size() << endl;
 				cout << "Memory (requested): " << Mem.requested_size() << endl;
 				cout << "Number of nodes: " << p.count_nodes() << endl;
