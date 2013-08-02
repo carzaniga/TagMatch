@@ -26,26 +26,26 @@ static int maxTIF;
 class bv192 {
 	typedef unsigned long block_t;
 	//assuming sizeof(block_t) * CHAR_BIT = 64
-			block_t bv[3];
+	block_t bv[3];
 	public:
-		bv192() { reset(); }
-		void set(unsigned int pos);
-		bv192(const string &s){
-			for(int i=0;i<192;i++)
-				if(s[i]=='1')
-					set(i);
-		}
-		bv192 & operator=(const bv192 &rhs);
-		bool operator==(const bv192 &rhs);
-		bool subset_of(const bv192 & x) const;
-		void add(const bv192 & x);
-		void reset() {
+	bv192() { reset(); }
+	void set(unsigned int pos);
+	bv192(const string &s){
+		for(int i=0;i<192;i++)
+			if(s[i]=='1')
+				set(i);
+	}
+	bv192 & operator=(const bv192 &rhs);
+	bool operator==(const bv192 &rhs);
+	bool subset_of(const bv192 & x) const;
+	void add(const bv192 & x);
+	void reset() {
 #ifdef BV192_USE_MEMSET
-			memset(bv,0,sizeof(bv)); 
+		memset(bv,0,sizeof(bv)); 
 #else
-			bv[0] = 0; bv[1] = 0; bv[2] = 0;
+		bv[0] = 0; bv[1] = 0; bv[2] = 0;
 #endif
-		}
+	}
 };
 void bv192::add(const bv192 & x) {
 	bv[0] |= x.bv[0];
@@ -248,8 +248,8 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		temp_entry[last->size-1].bs=bs;
 		temp_entry[last->size-1].addIff(tree,iff);
 		last->endings=temp_entry;
-//#define MAX_CHECK 1
-//#ifdef MAX_CHECK
+		//#define MAX_CHECK 1
+		//#ifdef MAX_CHECK
 		if(maxSize<last->size){
 			cout<<endl<<"size is: "<<last->size<<endl;
 			maxSize=last->size;
@@ -265,10 +265,15 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bv192 & bs)
 {
 	while (fi != end && n != 0 && n->matchTreeMask(tree)){
+		while (n->pos>*fi){
+			++fi;
+			if(fi==end)
+				return;
+		}
 		if(n->pos==*fi){
 			if (n->ti_pos>=0)
 				ti_vec.at(n->ti_pos).match(match_result,tree);
-			
+
 			if (n->size>0){ 
 				if (n->ti_pos<0 && n->endings==0)
 					throw (-2);
@@ -278,16 +283,15 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				end_node_entry *en= n->endings; 
 				for(int i = 0;i<n->size;++i){
 					if(en[i].bs.subset_of(bs))
-							ti_vec.at(en[i].ti_pos).match(match_result,tree);
+						ti_vec.at(en[i].ti_pos).match(match_result,tree);
 				}
 				break;
 			}
 			++fi;
 			match(n->f,fi,end,tree,bs);
 			n = n->t;		// equivalent to recursion: match(n->t,fi,end,tree);
-		} else if (n->pos > *fi) {
-			++fi;		// equivalent to recursion: match(n,++fi,end,tree);
-		} else {//(n->pos < *fi)
+		}
+		else {//(n->pos < *fi)
 			n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
 		}
 	}
@@ -297,261 +301,264 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 
 #define TAIL_RECURSIVE_IS_ITERATIVE
 
-		bool suffix_contains_subset(bool prefix_is_good, const node * n, 
-				filter::const_iterator fi, filter::const_iterator end) {
+bool suffix_contains_subset(bool prefix_is_good, const node * n, 
+		filter::const_iterator fi, filter::const_iterator end) {
 #ifdef TAIL_RECURSIVE_IS_ITERATIVE
-			while(n != 0) {
-				if (fi == end) {
-					return false;
-				} else if (n->pos > *fi) {
-					++fi; 
-				} else if (n->pos < *fi) {
-					prefix_is_good = false;
-					n = n->f;
-				} else if (suffix_contains_subset(true, n->t, ++fi, end)) {
-					return true;
-				} else {
-					prefix_is_good = false;
-					n = n->f;
-				}
-			}
-			return prefix_is_good;
-#else
-			if (n == 0)
-				return prefix_is_good;
-			if (fi == end)
-				return false;
-			if (n->pos > *fi) 
-				return suffix_contains_subset(prefix_is_good, n, ++fi, end);
-			if (n->pos < *fi)
-				return suffix_contains_subset(false, n->f, fi, end);
-			++fi;
-			return suffix_contains_subset(true, n->t, fi, end)
-				|| suffix_contains_subset(false, n->f, fi, end);
-#endif
+	while(n != 0) {
+		if (fi == end) {
+			return false;
+		} else if (n->pos > *fi) {
+			++fi; 
+		} else if (n->pos < *fi) {
+			prefix_is_good = false;
+			n = n->f;
+		} else if (suffix_contains_subset(true, n->t, ++fi, end)) {
+			return true;
+		} else {
+			prefix_is_good = false;
+			n = n->f;
 		}
+	}
+	return prefix_is_good;
+#else
+	if (n == 0)
+		return prefix_is_good;
+	if (fi == end)
+		return false;
+	if (n->pos > *fi) 
+		return suffix_contains_subset(prefix_is_good, n, ++fi, end);
+	if (n->pos < *fi)
+		return suffix_contains_subset(false, n->f, fi, end);
+	++fi;
+	return suffix_contains_subset(true, n->t, fi, end)
+		|| suffix_contains_subset(false, n->f, fi, end);
+#endif
+}
 
 //		bool predicate::contains_subset(const filter & f) const {
 //			return suffix_contains_subset(false, root, f.begin(), f.end());
 //		}
 //
-		void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
-			match_result.clear();
-			bv192 bs(bitstring);
-			for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
-				match(root[*fi],fi,f.end(),tree,bs);
-			if(match_result.size()>0){
-				//DO SOMETHING WITH THE MATCH RESULT
-			}
-		}
+void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
+	match_result.clear();
+	bv192 bs(bitstring);
+	for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
+		match(root[*fi],fi,f.end(),tree,bs);
+	if(match_result.size()>0){
+		//DO SOMETHING WITH THE MATCH RESULT
+	}
+}
 
-		static int count_nodes_r (const node * n,const int depth) {
-			if (n == 0)
-				return 0;
-			if(depth+1==DEPTH_THRESHOLD)// +1 is for the matching of the current node. 
-				return 1+1+count_nodes_r(n->f,depth);//we count end_node as one node. may be I should change this!
-			return 1 + count_nodes_r(n->t,depth+1) + count_nodes_r(n->f,depth);
-		}
+static int count_nodes_r (const node * n,const int depth) {
+	if (n == 0)
+		return 0;
+	if(depth+1==DEPTH_THRESHOLD)// +1 is for the matching of the current node. 
+		return 1+1+count_nodes_r(n->f,depth);//we count end_node as one node. may be I should change this!
+	return 1 + count_nodes_r(n->t,depth+1) + count_nodes_r(n->f,depth);
+}
 
-		unsigned long predicate::count_nodes() const {
-			long tot=0;
-				for(int i=0;i<192;++i)
-							tot+=count_nodes_r(root[i],0);
-				    return tot;
-		}
+unsigned long predicate::count_nodes() const {
+	long tot=0;
+	for(int i=0;i<192;++i)
+		tot+=count_nodes_r(root[i],0);
+	return tot;
+}
 
 
-		int count_interfaces_r(const node * n) {
-			return 0;    
-		}
+int count_interfaces_r(const node * n) {
+	return 0;    
+}
 
-		unsigned long predicate::count_interfaces() const {
-			long tot=0;
-				for(int i=0;i<192;++i)
-							tot+=count_interfaces_r(root[i]);
-					return tot;
-		}
+unsigned long predicate::count_interfaces() const {
+	long tot=0;
+	for(int i=0;i<192;++i)
+		tot+=count_interfaces_r(root[i]);
+	return tot;
+}
 
-		static void print_r(ostream & os, string & prefix, const node * n) {
-			if (n == 0) {
-				os << prefix;
+static void print_r(ostream & os, string & prefix, const node * n) {
+	if (n == 0) {
+		os << prefix;
 #if 1
-				for(filter::pos_t p = prefix.size(); p < filter::FILTER_SIZE; ++p) {
-					os << '0';
-				}
+		for(filter::pos_t p = prefix.size(); p < filter::FILTER_SIZE; ++p) {
+			os << '0';
+		}
 #endif
-				os << std::endl;
-				return;
-			} else {
-				const filter::pos_t cur_pos = prefix.size();
-				prefix.append(n->pos - cur_pos, '0');
-				prefix.push_back('1');
-				print_r(os, prefix, n->t);
-				prefix.erase(prefix.size() - 1);
-				if (n->f != 0) {
-					prefix.push_back('0');
-					print_r(os, prefix, n->f);
-				}
-				if (prefix.size() >= cur_pos)
-					prefix.erase(cur_pos);
-			}
+		os << std::endl;
+		return;
+	} else {
+		const filter::pos_t cur_pos = prefix.size();
+		prefix.append(n->pos - cur_pos, '0');
+		prefix.push_back('1');
+		print_r(os, prefix, n->t);
+		prefix.erase(prefix.size() - 1);
+		if (n->f != 0) {
+			prefix.push_back('0');
+			print_r(os, prefix, n->f);
 		}
+		if (prefix.size() >= cur_pos)
+			prefix.erase(cur_pos);
+	}
+}
 
-		ostream & predicate::print(ostream & os) const {
-////			string s;
-////			print_r(os, s, root);
-			return os;
-		}
+ostream & predicate::print(ostream & os) const {
+	////			string s;
+	////			print_r(os, s, root);
+	return os;
+}
 
 #ifdef HAVE_RDTSC
-		typedef unsigned long long cycles_t;
+typedef unsigned long long cycles_t;
 
-		static cycles_t rdtsc() {
-			cycles_t x;
-			__asm__ volatile ("rdtsc" : "=A" (x));
-			return x;
-		}
+static cycles_t rdtsc() {
+	cycles_t x;
+	__asm__ volatile ("rdtsc" : "=A" (x));
+	return x;
+}
 #endif
 
 #ifdef HAVE_MFTB
-		typedef unsigned long long cycles_t;
+typedef unsigned long long cycles_t;
 
-		static inline cycles_t rdtsc(void) {
-			cycles_t ret;
+static inline cycles_t rdtsc(void) {
+	cycles_t ret;
 
-			__asm__ __volatile__("mftb %0" : "=r" (ret) : );
+	__asm__ __volatile__("mftb %0" : "=r" (ret) : );
 
-			return ret;
-		}
+	return ret;
+}
 #endif
 
-		struct empty_filter : std::exception {
-			const char* what() const throw() {return "empty filter!\n";}
-		};
+struct empty_filter : std::exception {
+	const char* what() const throw() {return "empty filter!\n";}
+};
 
-		int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
 #ifdef Verbose
-			cout<<"verbose mode"<<endl;
+	cout<<"verbose mode"<<endl;
 #endif
-			maxSize=0;
-			leaves=0;
-			collisions=0;
-			maxTIF=0;
-			predicate p;
-			p.init();
-			cout<< DEPTH_THRESHOLD << " Cut size of node:"<<sizeof(node)<<endl;	
-			cout<<"size of end_node_entry:"<<sizeof(end_node_entry)<<endl;
-			cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
-			filter f;
-			bool quiet = false;
-			unsigned long tot = 0;
-			unsigned long added = 0;
+	maxSize=0;
+	leaves=0;
+	collisions=0;
+	maxTIF=0;
+	predicate p;
+	p.init();
+	cout<<"Depth Threshold: "<< DEPTH_THRESHOLD << "size of node:"<<sizeof(node)<<endl;	
+	cout<<"size of end_node_entry:"<<sizeof(end_node_entry)<<endl;
+	cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
+	filter f;
+	bool quiet = false;
+	unsigned long tot = 0;
+	unsigned long added = 0;
 
 #ifdef WITH_TIMERS
-			cout<<"timer is defined"<<endl;
-			Timer match_timer;
-			Timer build_timer;
+	cout<<"timer is defined"<<endl;
+	Timer match_timer;
+	Timer build_timer;
 #endif
 
-			if (argc > 1 && strcmp(argv[1], "-q") == 0)
-				quiet = true;
+	if (argc > 1 && strcmp(argv[1], "-q") == 0)
+		quiet = true;
 
-			try {
-				std::string l;
-				bool building;
+	try {
+		std::string l;
+		bool building;
 
-				while(getline(std::cin,l)) {
-					if (l.size()==0) 
-						continue;
-					if (l=="end")
-						break;
+		while(getline(std::cin,l)) {
+			if (l.size()==0) 
+				continue;
+			if (l=="end")
+				break;
 
-					istringstream is(l);
-					int tree, iff;
-					string fstr;
-					is >> tree >> iff >> fstr;
+			istringstream is(l);
+			int tree, iff;
+			string fstr;
+			is >> tree >> iff >> fstr;
 
-					f = fstr;
+			f = fstr;
 
-					if (f.count()!=0) {
-						++tot;
-						++added;	
-						if((added%1000000)==0)
-							cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<" maxTIff array size: "<<maxTIF<<endl;// '\r';
+			if (f.count()!=0) {
+				++tot;
+				++added;	
+				if((added%1000000)==0)
+					cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<" maxTIff array size: "<<maxTIF<<endl;// '\r';
 #ifdef WITH_TIMERS
-						build_timer.start();
+				build_timer.start();
 #endif
-						p.add_filter(f,tree,iff,fstr);
+				p.add_filter(f,tree,iff,fstr);
 #ifdef WITH_TIMERS
-						build_timer.stop();
+				build_timer.stop();
 #endif
-					} else {
-						continue;
-						//throw(empty_filter());
-					}
-				}
-
-				if (quiet) {
-					cout << ' ' << added << '/' << tot << endl;
-				} else {
-					cout << p;
-				}
-#ifdef Verbose
-				cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
-				cout<<"maximum size of Tiff array: "<<maxTIF<<endl;
-#endif	
-				cout << "Memory (allocated): " << Mem.size() << endl;
-				cout << "Memory (requested): " << Mem.requested_size() << endl;
-				cout << "Number of nodes: " << p.count_nodes() << endl;
-				cout << "Number of iff: " << p.count_interfaces() << endl;
-				cout << "Size of Ti_vec: " << ti_vec.size()<< endl;
-#ifdef WITH_TIMERS
-				cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
-#endif
-
-				unsigned long count = 0;
-				cout<<"sleeping for 1sec"<<endl;
-#if 0 // is this really necessary
-				sleep(1);
-#endif
-				while(getline(std::cin,l)) {
-					if (l.size()==0) 
-						continue;
-					++count;
-					istringstream is(l);
-					int tree, iff;
-					string fstr;
-					is >> tree >> iff >> fstr;
-
-					f = fstr;
-
-#ifdef WITH_TIMERS
-					match_timer.start();
-#endif
-					p.findMatch(f,tree,fstr);
-#ifdef WITH_TIMERS
-					match_timer.stop();
-#endif
-
-#ifdef WITH_TIMERS
-					if ((count % 10000) == 0) {
-						cout << "\rAverage matching cycles (" << count << "): " 
-							<< (match_timer.read_microseconds() / count) << flush;
-					}
-#endif
-				}
-
-				if (count > 0) {
-					cout << "Total calls: " << count << endl;
-#ifdef WITH_TIMERS
-					cout << "Average matching time (us): " 
-						<< (match_timer.read_microseconds() / count) << endl;
-#endif
-
-				}
-
-			} catch (int e) {
-				cerr << "bad format. " <<e<< endl; 
+			} else {
+				continue;
+				//throw(empty_filter());
 			}
 		}
+		unsigned int sumTreeIff=0;
+		for(int i=0;i<ti_vec.size();i++)
+			sumTreeIff+=ti_vec.at(i).tf_array[0];
+		if (quiet) {
+			cout << ' ' << added << '/' << tot << endl;
+		} else {
+			cout << p;
+		}
+#ifdef Verbose
+		cout<<"average size of tf_array(in TreeIffPair): "<<sumTreeIff*1.0/ti_vec.size()<<endl;
+		cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
+		cout<<"maximum size of Tiff array: "<<maxTIF<<endl;
+#endif	
+		cout << "Memory (allocated): " << Mem.size() << endl;
+		cout << "Memory (requested): " << Mem.requested_size() << endl;
+		cout << "Number of nodes: " << p.count_nodes() << endl;
+		cout << "Number of iff: " << p.count_interfaces() << endl;
+		cout << "Size of Ti_vec: " << ti_vec.size()<< endl;
+#ifdef WITH_TIMERS
+		cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
+#endif
+
+		unsigned long count = 0;
+		cout<<"sleeping for 1sec"<<endl;
+#if 0 // is this really necessary
+		sleep(1);
+#endif
+		while(getline(std::cin,l)) {
+			if (l.size()==0) 
+				continue;
+			++count;
+			istringstream is(l);
+			int tree, iff;
+			string fstr;
+			is >> tree >> iff >> fstr;
+
+			f = fstr;
+
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
+			p.findMatch(f,tree,fstr);
+#ifdef WITH_TIMERS
+			match_timer.stop();
+#endif
+
+#ifdef WITH_TIMERS
+			if ((count % 10000) == 0) {
+				cout << "\rAverage matching cycles (" << count << "): " 
+					<< (match_timer.read_microseconds() / count) << flush;
+			}
+#endif
+		}
+
+		if (count > 0) {
+			cout << "Total calls: " << count << endl;
+#ifdef WITH_TIMERS
+			cout << "Average matching time (us): " 
+				<< (match_timer.read_microseconds() / count) << endl;
+#endif
+
+		}
+
+	} catch (int e) {
+		cerr << "bad format. " <<e<< endl; 
+	}
+}
 
