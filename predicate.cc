@@ -16,6 +16,7 @@
 siena::FTAllocator Mem;
 
 #define Verbose
+#undef Match_old
 static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it upe
 static set<unsigned short> match_result;
 static int maxSize;
@@ -39,6 +40,8 @@ class bv192 {
 	bool operator==(const bv192 &rhs);
 	bool subset_of(const bv192 & x) const;
 	void add(const bv192 & x);
+	bool at(unsigned int pos)const;
+	unsigned char lastpos();
 	void reset() {
 #ifdef BV192_USE_MEMSET
 		memset(bv,0,sizeof(bv)); 
@@ -70,6 +73,17 @@ bool bv192::subset_of(const bv192 & x) const {
 
 void bv192::set(unsigned int pos) {
 	bv[pos >> 6] |= (1U << (pos && 63));
+}
+bool bv192::at(unsigned int pos) const {
+	return bv[pos >> 6] & (1U << (pos && 63)); //if 0 returns false if not zero return ture(?).
+}
+unsigned char bv192::lastpos(){
+	//returns the index of most significat bit.
+	if(bv[2]!=0)
+		return 128+(63-__builtin_clzl(bv[2]));
+	if(bv[1]!=0)
+		return 64+(63-__builtin_clzl(bv[1]));
+	return (63-__builtin_clzl(bv[0]));
 }
 
 
@@ -248,8 +262,6 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 		temp_entry[last->size-1].bs=bs;
 		temp_entry[last->size-1].addIff(tree,iff);
 		last->endings=temp_entry;
-		//#define MAX_CHECK 1
-		//#ifdef MAX_CHECK
 		if(maxSize<last->size){
 			cout<<endl<<"size is: "<<last->size<<endl;
 			maxSize=last->size;
@@ -262,6 +274,7 @@ void predicate::add_filter(const filter & f, unsigned char tree, unsigned short 
 	}
 }
 
+#ifdef Match_old
 void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bv192 & bs)
 {
 	while (fi != end && n != 0 && n->matchTreeMask(tree)){
@@ -275,9 +288,7 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 				ti_vec.at(n->ti_pos).match(match_result,tree);
 
 			if (n->size>0){ 
-				if (n->ti_pos<0 && n->endings==0)
-					throw (-2);
-				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly 15. 
+				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly equal to Depth_Threshold. 
 					return;
 				}
 				end_node_entry *en= n->endings; 
@@ -296,7 +307,33 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		}
 	}
 }
-
+#else
+void match(const node *n, const int tree,const bv192 & bs,const string & bitstring,unsigned char lastonePos)
+{
+	while ( n != 0 && n->matchTreeMask(tree) && n->pos<=lastonePos){
+		if(bitstring[n->pos]=='1'){
+			if (n->ti_pos>=0)
+				ti_vec.at(n->ti_pos).match(match_result,tree);
+			if (n->size>0){ 
+				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly equal to the Depth_Threshold. 
+					return;
+				}
+				end_node_entry *en= n->endings; 
+				for(int i = 0;i<n->size;++i){
+					if(en[i].bs.subset_of(bs))
+						ti_vec.at(en[i].ti_pos).match(match_result,tree);
+				}
+				break;
+			}
+			match(n->f,tree,bs,bitstring,lastonePos);
+			n=n->t;
+		}
+		else{
+			n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
+		}
+	}
+}
+#endif
 
 
 #define TAIL_RECURSIVE_IS_ITERATIVE
@@ -342,8 +379,13 @@ bool suffix_contains_subset(bool prefix_is_good, const node * n,
 void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
 	match_result.clear();
 	bv192 bs(bitstring);
+#ifdef Match_old	
 	for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
 		match(root[*fi],fi,f.end(),tree,bs);
+#else
+	for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
+		match(root[*fi],tree,bs,bitstring,bs.lastpos());
+#endif
 	if(match_result.size()>0){
 		//DO SOMETHING WITH THE MATCH RESULT
 	}
@@ -443,7 +485,7 @@ int main(int argc, char *argv[]) {
 	maxTIF=0;
 	predicate p;
 	p.init();
-	cout<<"Depth Threshold: "<< DEPTH_THRESHOLD << "size of node:"<<sizeof(node)<<endl;	
+	cout<<"Depth Threshold: "<< DEPTH_THRESHOLD << " size of node:"<<sizeof(node)<<endl;	
 	cout<<"size of end_node_entry:"<<sizeof(end_node_entry)<<endl;
 	cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
 	filter f;
@@ -496,14 +538,14 @@ int main(int argc, char *argv[]) {
 		}
 		unsigned int sumTreeIff=0;
 		for(int i=0;i<ti_vec.size();i++)
-			sumTreeIff+=ti_vec.at(i).tf_array[0];
+			sumTreeIff+=(ti_vec.at(i).tf_array[0]-1);
 		if (quiet) {
 			cout << ' ' << added << '/' << tot << endl;
 		} else {
 			cout << p;
 		}
 #ifdef Verbose
-		cout<<"average size of tf_array(in TreeIffPair): "<<sumTreeIff*1.0/ti_vec.size()<<endl;
+		cout<<"average size of tf_array(in TreeIffPair): "<<sumTreeIff*1.0/ti_vec.size()<<"total sum: "<<sumTreeIff<<endl;
 		cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
 		cout<<"maximum size of Tiff array: "<<maxTIF<<endl;
 #endif	
