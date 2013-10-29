@@ -1,11 +1,3 @@
-// EMACS indentation settings (please, do not delete)
-//
-// Local Variables:
-// c-file-style: "linux"
-// indent-tabs-mode: t
-// tab-width: 8
-// End:
-//
 #ifndef PREDICATE_H_INCLUDED
 #define PREDICATE_H_INCLUDED
 
@@ -25,9 +17,9 @@ private:
 	node * root[192];
 public:
     predicate(){};
-		void init();
-    void add_filter(const filter & f, unsigned char tree, unsigned short iff,const string & bitstring);
-		void findMatch(const filter & f,int tree, const string & bitstring);// const;
+	void init();
+    void add_filter(const filter & f, unsigned char tree, unsigned short iff, const string & bitstring);
+	void findMatch(const filter & f, int tree, const string & bitstring);// const;
     bool contains_subset(const filter & f) const;
     unsigned long count_nodes() const;
     unsigned long count_interfaces() const;

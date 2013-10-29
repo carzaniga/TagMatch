@@ -28,7 +28,7 @@ class bv192 {
 	typedef unsigned long block_t;
 	//assuming sizeof(block_t) * CHAR_BIT = 64
 	block_t bv[3];
-	public:
+public:
 	bv192() { reset(); }
 	void set(unsigned int pos);
 	bv192(const string &s){
@@ -50,17 +50,20 @@ class bv192 {
 #endif
 	}
 };
+
 void bv192::add(const bv192 & x) {
 	bv[0] |= x.bv[0];
 	bv[1] |= x.bv[1];
 	bv[2] |= x.bv[2];
 }
+
 bv192 & bv192::operator=(const bv192 &rhs){
 	bv[0] = rhs.bv[0];
 	bv[1] = rhs.bv[1];
 	bv[2] = rhs.bv[2];
 	return *this;
 }
+
 bool bv192::operator==(const bv192 &rhs){
 	return (bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] &&	bv[2] == rhs.bv[2]) ;
 }
@@ -74,10 +77,12 @@ bool bv192::subset_of(const bv192 & x) const {
 void bv192::set(unsigned int pos) {
 	bv[pos >> 6] |= (1U << (pos && 63));
 }
+
 bool bv192::at(unsigned int pos) const {
 	return bv[pos >> 6] & (1U << (pos && 63)); //if 0 returns false if not zero return ture(?).
 }
-unsigned char bv192::lastpos(){
+
+unsigned char bv192::lastpos() {
 	//returns the index of most significat bit.
 	if(bv[2]!=0)
 		return 128+(63-__builtin_clzl(bv[2]));
@@ -87,107 +92,111 @@ unsigned char bv192::lastpos(){
 }
 
 
-
 class TreeIffPair { 
-	public:
-		unsigned short *tf_array; // the first element stores the size of the array.
-		void addTreeIff(unsigned short tree, unsigned short iff){
-			unsigned short temp=0;
-			temp=tree<<13;
-			temp|=iff;
-			if(tf_array==0){
-				tf_array=new unsigned short[2];
-				tf_array[0]=2; //including the first element.
-				tf_array[1]=temp;
-				return;
-			}
-			unsigned short size=tf_array[0];
-			for(int k=1;k<size;k++)
-				if(tf_array[k]==temp)
-					return;		
-			if(size==65535){
-				throw (-1); // means we haved reached the maximum size for our array. 			
-			}
-			size++;
+public:
+	unsigned short *tf_array; // the first element stores the size of the array.
+	void addTreeIff(unsigned short tree, unsigned short iff){
+		unsigned short temp=0;
+		temp=tree<<13;
+		temp|=iff;
+		if(tf_array==0){
+			tf_array=new unsigned short[2];
+			tf_array[0]=2; //including the first element.
+			tf_array[1]=temp;
+			return;
+		}
+		unsigned short size=tf_array[0];
+		for(int k=1;k<size;k++)
+			if(tf_array[k]==temp)
+				return;		
+		if(size==65535){
+			throw (-1); // means we haved reached the maximum size for our array. 			
+		}
+		size++;
 #ifdef Verbose
-			if(maxTIF<size)
-				maxTIF=size;
+		if(maxTIF<size)
+			maxTIF=size;
 #endif
-			unsigned short *tf_array2=new unsigned short[size];
+		unsigned short *tf_array2=new unsigned short[size];
 
-			for(int k=1;k<size-1;k++)
-				tf_array2[k]=tf_array[k];
-			delete [] tf_array;
-			tf_array2[size-1]=temp;
-			tf_array2[0]=size;
-			tf_array=tf_array2;
+		for(int k=1;k<size-1;k++)
+			tf_array2[k]=tf_array[k];
+		delete [] tf_array;
+		tf_array2[size-1]=temp;
+		tf_array2[0]=size;
+		tf_array=tf_array2;
+	}
+	void match(set<unsigned short> & match_result, const unsigned short tree){
+		for(int i=1;i<tf_array[0];i++){
+			if (tree==tf_array[i]>>13)
+				match_result.insert(tf_array[i]&8191); //8191 = 0001111111111111
 		}
-		void match(set<unsigned short> & match_result, const unsigned short tree){
-			for(int i=1;i<tf_array[0];i++){
-				if (tree==tf_array[i]>>13)
-					match_result.insert(tf_array[i]&8191); //8191 = 0001111111111111
-			}
-		}
+	}
 
-		TreeIffPair():tf_array(0){};
-		string print() {
-		}
+	TreeIffPair():tf_array(0){};
+	string print() {
+	}
 };
+
 class node {
-	public:
-		filter::pos_t pos;
-		unsigned char treeMask;
-		unsigned short size;//stores size of the endings array.
-		int ti_pos;
-		node * f; 
-		union {
-			node * t;
-			end_node_entry * endings;
-		};
+public:
+	filter::pos_t pos;
+	unsigned char treeMask;
+	unsigned short size;		//stores size of the endings array.
+	int ti_pos;
+	node * f; 
+	union {
+		node * t;
+		end_node_entry * endings;
+	};
 
-		node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0),size(0) {};
+	node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0),size(0) {};
 
-		void addIff(unsigned char tree, unsigned short iff) {
-			if(ti_pos<0){
-				ti_pos=ti_vec.size();
-				TreeIffPair *ti = new (Mem) TreeIffPair();
-				ti->addTreeIff(tree,iff);
-				ti_vec.push_back(*ti);
-				return;
-			}
-			ti_vec.at(ti_pos).addTreeIff(tree,iff);
+	void addIff(unsigned char tree, unsigned short iff) {
+		if(ti_pos<0){
+			ti_pos=ti_vec.size();
+			TreeIffPair *ti = new (Mem) TreeIffPair();
+			ti->addTreeIff(tree,iff);
+			ti_vec.push_back(*ti);
+			return;
 		}
-		bool matchTreeMask(int tree) const{
-			unsigned char tmp = 0;
-			tmp |= 1 << tree;
-			return ((treeMask & tmp)==tmp);
-		}
-		void setMask (int tree){
-			treeMask |= 1 << tree;
-		}
-		void initMask(unsigned char m){
-			treeMask |= m;
-		}
+		ti_vec.at(ti_pos).addTreeIff(tree,iff);
+	}
+
+	bool matchTreeMask(int tree) const{
+		unsigned char tmp = 0;
+		tmp |= 1 << tree;
+		return ((treeMask & tmp)==tmp);
+	}
+
+	void setMask (int tree){
+		treeMask |= 1 << tree;
+	}
+
+	void initMask(unsigned char m){
+		treeMask |= m;
+	}
 };
 
 class end_node_entry {
-	public:
-		bv192 bs;
-		int ti_pos;
-		end_node_entry(const string &s): bs(s),ti_pos(-1) {};
-		end_node_entry():ti_pos(-1){};
+public:
+	bv192 bs;
+	int ti_pos;
+	end_node_entry(const string &s): bs(s),ti_pos(-1) {};
+	end_node_entry():ti_pos(-1){};
 
-		void addIff(unsigned char tree, unsigned short iff) {
-			if(ti_pos<0){
-				ti_pos=ti_vec.size();
-				TreeIffPair *ti = new (Mem) TreeIffPair();
-				ti->addTreeIff(tree,iff);
-				ti_vec.push_back(*ti);
-				return;
-			}
-			ti_vec.at(ti_pos).addTreeIff(tree,iff);
+	void addIff(unsigned char tree, unsigned short iff) {
+		if(ti_pos<0){
+			ti_pos=ti_vec.size();
+			TreeIffPair *ti = new (Mem) TreeIffPair();
+			ti->addTreeIff(tree,iff);
+			ti_vec.push_back(*ti);
+			return;
 		}
+		ti_vec.at(ti_pos).addTreeIff(tree,iff);
+	}
 };
+
 void predicate::init(){
 	for(int i=0;i<192;++i){
 		root[i]=new node(i);
@@ -339,7 +348,7 @@ void match(const node *n, const int tree,const bv192 & bs,const string & bitstri
 #define TAIL_RECURSIVE_IS_ITERATIVE
 
 bool suffix_contains_subset(bool prefix_is_good, const node * n, 
-		filter::const_iterator fi, filter::const_iterator end) {
+							filter::const_iterator fi, filter::const_iterator end) {
 #ifdef TAIL_RECURSIVE_IS_ITERATIVE
 	while(n != 0) {
 		if (fi == end) {
@@ -585,7 +594,7 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			if ((count % 10000) == 0) {
 				cout << "\rAverage matching cycles (" << count << "): " 
-					<< (match_timer.read_microseconds() / count) << flush;
+					 << (match_timer.read_microseconds() / count) << flush;
 			}
 #endif
 		}
@@ -594,7 +603,7 @@ int main(int argc, char *argv[]) {
 			cout << "Total calls: " << count << endl;
 #ifdef WITH_TIMERS
 			cout << "Average matching time (us): " 
-				<< (match_timer.read_microseconds() / count) << endl;
+				 << (match_timer.read_microseconds() / count) << endl;
 #endif
 
 		}
@@ -603,4 +612,3 @@ int main(int argc, char *argv[]) {
 		cerr << "bad format. " <<e<< endl; 
 	}
 }
-
