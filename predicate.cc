@@ -180,8 +180,15 @@ public:
 
 class end_node_entry {
 public:
-	bv192 bs;
-	int ti_pos;
+	// bitset representing the full (Bloom) filter
+    bv192 bs;
+
+    // each entry represents a filter and consists of a set of
+	// (tree,interface) pairs associated with the filter.  ti_pos is
+	// the index into vector ti_vec, which contains a list of
+	// (tree,interface) pairs
+    int ti_pos;	
+
 	end_node_entry(const string &s): bs(s),ti_pos(-1) {};
 	end_node_entry():ti_pos(-1){};
 
