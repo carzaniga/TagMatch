@@ -37,33 +37,11 @@ typedef uint8_t tree_t;
 
 class tree_interface_pair {
 public:
-	tree_interface_pair(tree_t t, interface_t i): pair((t << TREE_BIT_OFFSET) | i) {};
+	tree_interface_pair(tree_t t, interface_t ifx)
+		: tree(t), interface(ifx) {};
 	
-	tree_t tree() const {
-		return pair >> TREE_BIT_OFFSET;
-	}
-
-	interface_t interface() const {
-		return pair & INTERFACE_MASK;
-	}
-
-	void set(tree_t t, interface_t i) {
-		pair = (t << TREE_BIT_OFFSET) | i;
-	}
-
-	bool operator == (const tree_interface_pair & x) const {
-		return pair == x.pair;
-	}
-
-	bool operator < (const tree_interface_pair & x) const {
-		return pair < x.pair;
-	}
-
-private:
-	static const uint16_t TREE_BIT_OFFSET = 13;
-	static const uint16_t INTERFACE_MASK = (1U << TREE_BIT_OFFSET) - 1;
-
-	uint16_t pair;
+	tree_t tree : 3;
+	interface_t interface : 13;
 };
 
 // A table of tree--interface pairs.  This is essentially a wrapper
@@ -140,7 +118,7 @@ tree_interface_table::ti_array::add_pair(ti_array * entry, tree_t t, interface_t
 			allocated_bytes += ALLOCATION_UNIT_SIZE;
 		}
 	}
-	entry->pairs[entry->size].set(t,i);
+	entry->pairs[entry->size] = tree_interface_pair(t,i);
 	entry->size += 1;
 	return entry;
 }
@@ -320,8 +298,8 @@ void predicate::destroy() {
 
 bool predicate::tree_matcher::handle_filter(const bv192 & filter, const tree_interface_table & table) {
 	for(const tree_interface_pair * ti = table.begin(); ti != table.end(); ++ti)
-		if (ti->tree() == tree)
-			if (matcher.match(filter, tree, ti->interface()))
+		if (ti->tree == tree)
+			if (matcher.match(filter, tree, ti->interface))
 				return true;
 	return false;
 }
@@ -352,8 +330,8 @@ void predicate::match(const bv192 & x, tree_t t) const {
 		const node * n = S[--head];
 		if (n->key.subset_of(x)) {
 			for(const tree_interface_pair * ti = n->ti_table.begin(); ti != n->ti_table.end(); ++ti)
-				if (ti->tree() == t)
-					std::cout << ' ' << ti->interface();
+				if (ti->tree == t)
+					std::cout << ' ' << ti->interface;
 		}
 		if (n->pos > n->left->pos) 
 			S[head++] = n->left;
