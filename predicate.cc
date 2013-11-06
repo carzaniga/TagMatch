@@ -1,621 +1,597 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-	
-#include <vector>
-#include <exception>
-#include <set>
+
 #include <iostream>
-#include <cstring>
-#include <sstream>
-#include "predicate.h"
-#include "allocator.h"
-#include "timing.h"
-#include <set>
+#include <string>
+#include <cstdint>
+#include <cstddef>
+#include <cstdlib>
+#include <cassert>
 
-siena::FTAllocator Mem;
+#include <malloc.h>
 
-#define Verbose
-#undef Match_old
-static vector<TreeIffPair> ti_vec ;//I shoud initialize the capacity of this vector to speed it upe
-static set<unsigned short> match_result;
-static int maxSize;
-static int leaves;
-static int collisions;
-static int maxTIF;
-
-class bv192 {
-	typedef unsigned long block_t;
-	//assuming sizeof(block_t) * CHAR_BIT = 64
-	block_t bv[3];
-public:
-	bv192() { reset(); }
-	void set(unsigned int pos);
-	bv192(const string &s){
-		for(int i=0;i<192;i++)
-			if(s[i]=='1')
-				set(i);
-	}
-	bv192 & operator=(const bv192 &rhs);
-	bool operator==(const bv192 &rhs);
-	bool subset_of(const bv192 & x) const;
-	void add(const bv192 & x);
-	bool at(unsigned int pos)const;
-	unsigned char lastpos();
-	void reset() {
-#ifdef BV192_USE_MEMSET
-		memset(bv,0,sizeof(bv)); 
-#else
-		bv[0] = 0; bv[1] = 0; bv[2] = 0;
+#ifndef NODE_USES_MALLOC
+#define NODE_USES_MALLOC
 #endif
+
+#ifdef NODE_USES_MALLOC
+#include <new>
+#endif
+
+#include "bv192.h"
+
+#define NDEBUG
+
+// this is to explicitly keep track of our own memory allocations
+// 
+static size_t allocated_bytes = 0;
+
+// ASSUMPTION: the router has at most 2^13 = 8192 interfaces
+// 
+typedef uint16_t interface_t;
+
+// ASSUMPTION: the are at most 2^3 = 8 interfaces
+// 
+typedef uint8_t tree_t;
+
+class tree_interface_pair {
+public:
+	tree_interface_pair(tree_t t, interface_t i): pair((t << TREE_BIT_OFFSET) | i) {};
+	
+	tree_t tree() const {
+		return pair >> TREE_BIT_OFFSET;
 	}
+
+	interface_t interface() const {
+		return pair & INTERFACE_MASK;
+	}
+
+	void set(tree_t t, interface_t i) {
+		pair = (t << TREE_BIT_OFFSET) | i;
+	}
+
+	bool operator == (const tree_interface_pair & x) const {
+		return pair == x.pair;
+	}
+
+	bool operator < (const tree_interface_pair & x) const {
+		return pair < x.pair;
+	}
+
+private:
+	static const uint16_t TREE_BIT_OFFSET = 13;
+	static const uint16_t INTERFACE_MASK = (1U << TREE_BIT_OFFSET) - 1;
+
+	uint16_t pair;
 };
 
-void bv192::add(const bv192 & x) {
-	bv[0] |= x.bv[0];
-	bv[1] |= x.bv[1];
-	bv[2] |= x.bv[2];
-}
-
-bv192 & bv192::operator=(const bv192 &rhs){
-	bv[0] = rhs.bv[0];
-	bv[1] = rhs.bv[1];
-	bv[2] = rhs.bv[2];
-	return *this;
-}
-
-bool bv192::operator==(const bv192 &rhs){
-	return (bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] &&	bv[2] == rhs.bv[2]) ;
-}
-
-bool bv192::subset_of(const bv192 & x) const {
-	return (bv[0] & x.bv[0]) == bv[0]
-		&& (bv[1] & x.bv[1]) == bv[1]
-		&& (bv[2] & x.bv[2]) == bv[2];
-}
-
-void bv192::set(unsigned int pos) {
-	bv[pos >> 6] |= (1U << (pos && 63));
-}
-
-bool bv192::at(unsigned int pos) const {
-	return bv[pos >> 6] & (1U << (pos && 63)); //if 0 returns false if not zero return ture(?).
-}
-
-unsigned char bv192::lastpos() {
-	//returns the index of most significat bit.
-	if(bv[2]!=0)
-		return 128+(63-__builtin_clzl(bv[2]));
-	if(bv[1]!=0)
-		return 64+(63-__builtin_clzl(bv[1]));
-	return (63-__builtin_clzl(bv[0]));
-}
-
-
-class TreeIffPair { 
+// A table of tree--interface pairs.  This is essentially a wrapper
+// for a pointer to an array of tree_interface_pair objects plus a
+// size.
+//
+class tree_interface_table {
 public:
-	unsigned short *tf_array; // the first element stores the size of the array.
-	void addTreeIff(unsigned short tree, unsigned short iff){
-		unsigned short temp=0;
-		temp=tree<<13;
-		temp|=iff;
-		if(tf_array==0){
-			tf_array=new unsigned short[2];
-			tf_array[0]=2; //including the first element.
-			tf_array[1]=temp;
-			return;
-		}
-		unsigned short size=tf_array[0];
-		for(int k=1;k<size;k++)
-			if(tf_array[k]==temp)
-				return;		
-		if(size==65535){
-			throw (-1); // means we haved reached the maximum size for our array. 			
-		}
-		size++;
-#ifdef Verbose
-		if(maxTIF<size)
-			maxTIF=size;
-#endif
-		unsigned short *tf_array2=new unsigned short[size];
-
-		for(int k=1;k<size-1;k++)
-			tf_array2[k]=tf_array[k];
-		delete [] tf_array;
-		tf_array2[size-1]=temp;
-		tf_array2[0]=size;
-		tf_array=tf_array2;
-	}
-	void match(set<unsigned short> & match_result, const unsigned short tree){
-		for(int i=1;i<tf_array[0];i++){
-			if (tree==tf_array[i]>>13)
-				match_result.insert(tf_array[i]&8191); //8191 = 0001111111111111
-		}
+	tree_interface_table(): table(0) {};
+	~tree_interface_table() {
+		if (table)
+			free(table);
 	}
 
-	TreeIffPair():tf_array(0){};
-	string print() {
+	void add_tree_interface_pair(tree_t t, interface_t i) {
+		table = ti_array::add_pair(table, t, i);
 	}
-};
 
-class node {
-public:
-	filter::pos_t pos;
-	unsigned char treeMask;
-	unsigned short size;		//stores size of the endings array.
-	int ti_pos;
-	node * f; 
-	union {
-		node * t;
-		end_node_entry * endings;
+	const tree_interface_pair * begin() const {
+		if (!table)
+			return 0;
+		return table->begin();
+	}
+
+	const tree_interface_pair * end() const {
+		if (!table)
+			return 0;
+		return table->end();
+	}
+
+private:
+	class ti_array {
+		uint16_t size;
+		tree_interface_pair pairs[1];
+
+	public:
+		static ti_array * add_pair(ti_array * entry, tree_t t, interface_t i);
+
+		const tree_interface_pair * begin() const {
+			return pairs;
+		}
+
+		const tree_interface_pair * end() const {
+			return pairs + size;
+		}
+		
+	private:
+		ti_array();
+		static const uint16_t ALLOCATION_UNIT_SIZE = 16; // bytes
 	};
 
-	node(filter::pos_t p): pos(p), treeMask(0),f(0),ti_pos(-1), t(0),size(0) {};
-
-	void addIff(unsigned char tree, unsigned short iff) {
-		if(ti_pos<0){
-			ti_pos=ti_vec.size();
-			TreeIffPair *ti = new (Mem) TreeIffPair();
-			ti->addTreeIff(tree,iff);
-			ti_vec.push_back(*ti);
-			return;
-		}
-		ti_vec.at(ti_pos).addTreeIff(tree,iff);
-	}
-
-	bool matchTreeMask(int tree) const{
-		unsigned char tmp = 0;
-		tmp |= 1 << tree;
-		return ((treeMask & tmp)==tmp);
-	}
-
-	void setMask (int tree){
-		treeMask |= 1 << tree;
-	}
-
-	void initMask(unsigned char m){
-		treeMask |= m;
-	}
+	ti_array * table;
 };
 
-class end_node_entry {
+tree_interface_table::ti_array * 
+tree_interface_table::ti_array::add_pair(ti_array * entry, tree_t t, interface_t i) {
+	if (!entry) {
+		entry = (ti_array *)malloc(ALLOCATION_UNIT_SIZE);
+		allocated_bytes += ALLOCATION_UNIT_SIZE;
+		entry->size = 0;
+	} else {
+		assert(entry->size < 0xffff);
+
+#ifdef PARANOIA_CHECKS
+		tree_interface_pair ti(t,i);
+		for(const tree_interface_pair * i = entry->begin(); i != entry->end(); ++i) 
+			if (*i == ti)
+				return entry;
+#endif
+
+		size_t byte_pos = offsetof(ti_array, pairs) + entry->size * sizeof(tree_interface_pair);
+		if (byte_pos % ALLOCATION_UNIT_SIZE == 0) {// full table
+			entry = (ti_array *)realloc(entry, byte_pos + ALLOCATION_UNIT_SIZE);
+			allocated_bytes += ALLOCATION_UNIT_SIZE;
+		}
+	}
+	entry->pairs[entry->size].set(t,i);
+	entry->size += 1;
+	return entry;
+}
+
+// 
+// GENERIC DESIGN OF THE PREDICATE DATA STRUCTURE:
+// 
+// the predicate class is intended to be generic with respect to the
+// processing of filter entries.  What this means is that the
+// predicate class implements generic methods to add or find filters,
+// or to find subsets or supersets of a given filter.  However, the
+// predicate class does not itself implement the actual matching or
+// processing functions that operate on the marching or subset or
+// superset filters.  Those are instead delegated to some "handler"
+// functions defined in the following three interface classes.
+// 
+class filter_handler {
 public:
-	// bitset representing the full (Bloom) filter
-    bv192 bs;
-
-    // each entry represents a filter and consists of a set of
-	// (tree,interface) pairs associated with the filter.  ti_pos is
-	// the index into vector ti_vec, which contains a list of
-	// (tree,interface) pairs
-    int ti_pos;	
-
-	end_node_entry(const string &s): bs(s),ti_pos(-1) {};
-	end_node_entry():ti_pos(-1){};
-
-	void addIff(unsigned char tree, unsigned short iff) {
-		if(ti_pos<0){
-			ti_pos=ti_vec.size();
-			TreeIffPair *ti = new (Mem) TreeIffPair();
-			ti->addTreeIff(tree,iff);
-			ti_vec.push_back(*ti);
-			return;
-		}
-		ti_vec.at(ti_pos).addTreeIff(tree,iff);
-	}
+	// this will be called by predicate::find_subsets_of()
+	// and predicate::find_supersets_of().  The return value
+	// indicates whether the search for subsets or supersets should
+	// stop.  So, if this function returns TRUE, find_subsets_of or
+	// find_supersets_of will terminate immediately.
+	// 
+	virtual bool handle_filter(const bv192 & filter, tree_interface_table & table) = 0;
 };
 
-void predicate::init(){
-	for(int i=0;i<192;++i){
-		root[i]=new node(i);
-	}
-}
+class filter_const_handler {
+public:
+	// this will be called by predicate::find_subsets_of()
+	// and predicate::find_supersets_of().  The return value
+	// indicates whether the search for subsets or supersets should
+	// stop.  So, if this function returns TRUE, find_subsets_of or
+	// find_supersets_of will terminate immediately.
+	// 
+	virtual bool handle_filter(const bv192 & filter, const tree_interface_table & table) = 0;
+};
 
-static const int DEPTH_THRESHOLD = 15;
-void predicate::add_filter(const filter & f, unsigned char tree, unsigned short iff, const string & bitstring) {
-	int depth=0;
-	bv192 bs(bitstring);
+class match_handler {
+public:
+	// this will be called by predicate::match().  The return value
+	// indicates whether the search for matching filters should stop.
+	// So, if this function returns TRUE, match() will terminate
+	// immediately.
+	// 
+	virtual bool match(const bv192 & filter, tree_t tree, interface_t ifx) = 0;
+};
 
-	filter::const_iterator fi = f.begin();
-	node ** np = &root[*fi];
-	node * last; //last node visited
-	while (fi != f.end() && depth<DEPTH_THRESHOLD) {
-		if (*np == 0) {
-			++depth;
-			*np = new (Mem) node(*fi);
-			last = *np;
-			np = &(last->t);
-			++fi;
-		} else if ((*np)->pos < *fi) {
-			last=*np;
-			np = &((*np)->f);
-		} else if ((*np)->pos > *fi) {
-			node * tmp = *np;
-			depth++;
-			*np = new (Mem) node(*fi);
-			last=*np;
-			last->initMask(tmp->treeMask);
-			last->f = tmp;
-			np = &(last->t);
-			++fi;
-		} else {
-			depth++;
-			last=*np;
-			np = &(last->t);
-			++fi;
-		}
-		last->setMask(tree);
+class predicate {
+public:
+    predicate(): root(), size(0) {};
+    ~predicate() { destroy(); }
+
+	// non-modular, basic matching function
+	//
+	void match(const bv192 & x, tree_t t) const;
+	void add(const bv192 & x, tree_t t, interface_t i);
+
+	// modular matching function
+	//
+	void match(const bv192 & x, tree_t t, match_handler & h) const;
+
+	void find_subsets_of(const bv192 & x, filter_const_handler & h) const;
+	void find_supersets_of(const bv192 & x, filter_const_handler & h) const;
+	void find_subsets_of(const bv192 & x, filter_handler & h);
+	void find_supersets_of(const bv192 & x, filter_handler & h);
+
+	void clear() {
+		destroy();
+		root.left = &root;
+		root.right = &root;
+		size = 0;
 	}
-	if(fi!=f.end()){
-		if (!last->endings){ 
-			if(last->size==0){ // I used default alocator because the size of the object itself is 32 and to avoid dealocation problm later if want to delete stuff from the trie. 
-				last->size++;
-#ifdef Verbose				
-				leaves++;
-#endif
-				last->endings = new end_node_entry[1]; 
-				last->endings[0].addIff(tree,iff);
-				last->endings[0].bs=bs; //(bitstring);
-				return;	
-			}	
-		}
-		for (int i=0;i<last->size;i++)
-			if(last->endings[i].bs==bs){
-#ifdef Verbose
-				collisions++;
-#endif
-				last->endings[i].addIff(tree,iff);
-				return;
+
+	static size_t sizeof_node() {
+		return sizeof(node);
+	}
+
+	unsigned long get_size() const {
+		return size;
+	}
+
+private:
+    class node {
+    public:
+		bv192::pos_t pos;
+		const bv192 key;
+		tree_interface_table ti_table;
+		node * left;
+		node * right;
+
+		// creates a stand-alone NULL node, this constructor is used
+		// ONLY for the root node of the PATRICIA trie.
+		//
+		node() 
+			: pos(bv192::NULL_POSITION), key(), left(this), right(this) {}
+
+		// creates a new node connected to another (child) node
+		//
+		node(bv192::pos_t p, const bv192 & k, node * next) 
+			: pos(p), key(k) {
+			if (k[p]) {
+				left = next;
+				right = this;
+			} else {
+				left = this;
+				right = next;
 			}
-		if(last->size==65535)
-			throw (-3);
-		last->size++;
-		end_node_entry * temp_entry = new end_node_entry[last->size];
-		for (int i=0;i<last->size-1;i++){
-			temp_entry[i].bs=last->endings[i].bs;
-			temp_entry[i].ti_pos=last->endings[i].ti_pos;
 		}
-		delete [] last->endings ;
-		temp_entry[last->size-1].bs=bs;
-		temp_entry[last->size-1].addIff(tree,iff);
-		last->endings=temp_entry;
-		if(maxSize<last->size){
-			cout<<endl<<"size is: "<<last->size<<endl;
-			maxSize=last->size;
+
+#ifdef NODE_USES_MALLOC
+		static void * operator new (size_t s) {
+			allocated_bytes += s;
+			return malloc(s);
 		}
-#ifdef Verbose
-		//cout<<endl<<"size is: "<<last->size<<endl;
-#endif
-	} else {
-		last->addIff(tree,iff);
-	}
-}
 
-#ifdef Match_old
-void match(const node *n, filter::const_iterator fi, filter::const_iterator end, const int tree,const bv192 & bs)
-{
-	while (fi != end && n != 0 && n->matchTreeMask(tree)){
-		while (n->pos>*fi){
-			++fi;
-			if(fi==end)
-				return;
-		}
-		if(n->pos==*fi){
-			if (n->ti_pos>=0)
-				ti_vec.at(n->ti_pos).match(match_result,tree);
-
-			if (n->size>0){ 
-				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly equal to Depth_Threshold. 
-					return;
-				}
-				end_node_entry *en= n->endings; 
-				for(int i = 0;i<n->size;++i){
-					if(en[i].bs.subset_of(bs))
-						ti_vec.at(en[i].ti_pos).match(match_result,tree);
-				}
-				break;
-			}
-			++fi;
-			match(n->f,fi,end,tree,bs);
-			n = n->t;		// equivalent to recursion: match(n->t,fi,end,tree);
-		}
-		else {//(n->pos < *fi)
-			n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
-		}
-	}
-}
-#else
-void match(const node *n, const int tree,const bv192 & bs,const string & bitstring,unsigned char lastonePos)
-{
-	while ( n != 0 && n->matchTreeMask(tree) && n->pos<=lastonePos){
-		if(bitstring[n->pos]=='1'){
-			if (n->ti_pos>=0)
-				ti_vec.at(n->ti_pos).match(match_result,tree);
-			if (n->size>0){ 
-				if (n->ti_pos>=0 && n->endings==0){ //this happens when hw of filter is exactly equal to the Depth_Threshold. 
-					return;
-				}
-				end_node_entry *en= n->endings; 
-				for(int i = 0;i<n->size;++i){
-					if(en[i].bs.subset_of(bs))
-						ti_vec.at(en[i].ti_pos).match(match_result,tree);
-				}
-				break;
-			}
-			match(n->f,tree,bs,bitstring,lastonePos);
-			n=n->t;
-		}
-		else{
-			n = n->f;		// equivalent to recursion: match(n->f,fi,end,tree);
-		}
-	}
-}
-#endif
-
-
-#define TAIL_RECURSIVE_IS_ITERATIVE
-
-bool suffix_contains_subset(bool prefix_is_good, const node * n, 
-							filter::const_iterator fi, filter::const_iterator end) {
-#ifdef TAIL_RECURSIVE_IS_ITERATIVE
-	while(n != 0) {
-		if (fi == end) {
-			return false;
-		} else if (n->pos > *fi) {
-			++fi; 
-		} else if (n->pos < *fi) {
-			prefix_is_good = false;
-			n = n->f;
-		} else if (suffix_contains_subset(true, n->t, ++fi, end)) {
-			return true;
-		} else {
-			prefix_is_good = false;
-			n = n->f;
-		}
-	}
-	return prefix_is_good;
-#else
-	if (n == 0)
-		return prefix_is_good;
-	if (fi == end)
-		return false;
-	if (n->pos > *fi) 
-		return suffix_contains_subset(prefix_is_good, n, ++fi, end);
-	if (n->pos < *fi)
-		return suffix_contains_subset(false, n->f, fi, end);
-	++fi;
-	return suffix_contains_subset(true, n->t, fi, end)
-		|| suffix_contains_subset(false, n->f, fi, end);
-#endif
-}
-
-//		bool predicate::contains_subset(const filter & f) const {
-//			return suffix_contains_subset(false, root, f.begin(), f.end());
-//		}
-//
-void predicate::findMatch(const filter & f, int tree,const string & bitstring) {
-	match_result.clear();
-	bv192 bs(bitstring);
-#ifdef Match_old	
-	for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
-		match(root[*fi],fi,f.end(),tree,bs);
-#else
-	for(filter::const_iterator fi = f.begin();fi!=f.end();++fi)
-		match(root[*fi],tree,bs,bitstring,bs.lastpos());
-#endif
-	if(match_result.size()>0){
-		//DO SOMETHING WITH THE MATCH RESULT
-	}
-}
-
-static int count_nodes_r (const node * n,const int depth) {
-	if (n == 0)
-		return 0;
-	if(depth+1==DEPTH_THRESHOLD)// +1 is for the matching of the current node. 
-		return 1+1+count_nodes_r(n->f,depth);//we count end_node as one node. may be I should change this!
-	return 1 + count_nodes_r(n->t,depth+1) + count_nodes_r(n->f,depth);
-}
-
-unsigned long predicate::count_nodes() const {
-	long tot=0;
-	for(int i=0;i<192;++i)
-		tot+=count_nodes_r(root[i],0);
-	return tot;
-}
-
-
-int count_interfaces_r(const node * n) {
-	return 0;    
-}
-
-unsigned long predicate::count_interfaces() const {
-	long tot=0;
-	for(int i=0;i<192;++i)
-		tot+=count_interfaces_r(root[i]);
-	return tot;
-}
-
-static void print_r(ostream & os, string & prefix, const node * n) {
-	if (n == 0) {
-		os << prefix;
-#if 1
-		for(filter::pos_t p = prefix.size(); p < filter::FILTER_SIZE; ++p) {
-			os << '0';
+		static void operator delete (void * p) {
+			free(p);
 		}
 #endif
-		os << std::endl;
+    };
+
+	const node * find(const bv192 & x) const;
+	node * add(const bv192 & x);
+
+    node root;
+	unsigned long size;
+
+    void destroy();
+
+	// this is the handler we use to perform the tree matching.  The
+	// predicate subset search finds subsets of the given filter, and
+	// this handler does the tree matching on the corresponding
+	// tree_interface pairs.
+	// 
+	class tree_matcher : public filter_const_handler {
+	public:
+		tree_matcher(tree_t t, match_handler & mh): tree(t), matcher(mh) {}
+		virtual bool handle_filter(const bv192 & filter, const tree_interface_table & table);
+	private:
+		const tree_t tree;
+		match_handler & matcher;
+	};
+};
+
+void predicate::destroy() {
+	if (root.pos <= root.left->pos)
 		return;
-	} else {
-		const filter::pos_t cur_pos = prefix.size();
-		prefix.append(n->pos - cur_pos, '0');
-		prefix.push_back('1');
-		print_r(os, prefix, n->t);
-		prefix.erase(prefix.size() - 1);
-		if (n->f != 0) {
-			prefix.push_back('0');
-			print_r(os, prefix, n->f);
+
+	node * S[192];
+	unsigned int head = 0;
+	S[0] = root.left;
+
+	for (;;) {
+		node * n = S[head];
+		if (n->left) {
+			if (n->pos > n->left->pos) {
+				S[++head] = n->left;
+				n->left = 0;
+				continue;
+			} 
+			n->left = 0;
 		}
-		if (prefix.size() >= cur_pos)
-			prefix.erase(cur_pos);
+		if (n->right) {
+			if (n->pos > n->right->pos) {
+				S[++head] = n->right;
+				n->right = 0;
+				continue;
+			}
+		}
+		delete(n);
+		if (head == 0)
+			return;
+		--head;
+	}
+};
+
+bool predicate::tree_matcher::handle_filter(const bv192 & filter, const tree_interface_table & table) {
+	for(const tree_interface_pair * ti = table.begin(); ti != table.end(); ++ti)
+		if (ti->tree() == tree)
+			if (matcher.match(filter, tree, ti->interface()))
+				return true;
+	return false;
+}
+
+void predicate::match(const bv192 & x, tree_t t, match_handler & h) const {
+	tree_matcher matcher(t,h);
+	find_subsets_of(x, matcher);
+}
+
+void predicate::match(const bv192 & x, tree_t t) const {
+	// 
+	// this is the non-modular matching function.  It basically
+	// replicates the functionality of find_subsets_of() but then it
+	// directly uses the results to select the tree--interface pair
+	// corresponding to the given tree t.
+	//
+	const node * S[192];
+	unsigned int head = 0;
+
+	std::cout << "->";
+
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
+
+	while(head != 0) {
+		assert(head <= 192);
+
+		const node * n = S[--head];
+		if (n->key.subset_of(x)) {
+			for(const tree_interface_pair * ti = n->ti_table.begin(); ti != n->ti_table.end(); ++ti)
+				if (ti->tree() == t)
+					std::cout << ' ' << ti->interface();
+		}
+		if (n->pos > n->left->pos) 
+			S[head++] = n->left;
+
+		if (x[n->pos] && n->pos > n->right->pos)
+			S[head++] = n->right;
+	}
+	std::cout << std::endl;
+}
+
+void predicate::add(const bv192 & x, tree_t t, interface_t i) {
+	node * n = add(x);
+	n->ti_table.add_tree_interface_pair(t, i);
+}
+
+predicate::node * predicate::add(const bv192 & x) {
+	node * prev = &root;
+	node * curr = root.left;
+
+	while(prev->pos > curr->pos) {
+		prev = curr;
+		curr = x[curr->pos] ? curr->right : curr->left;
+	}
+	if (x == curr->key)
+		return curr;
+
+	bv192::pos_t pos = bv192::most_significant_diff_pos(curr->key, x);
+
+	prev = &root;
+	curr = root.left;
+	
+	while(prev->pos > curr->pos && curr->pos > pos) {
+		prev = curr;
+		curr = x[curr->pos] ? curr->right : curr->left;
+	}
+
+	// now we insert the new node between prev and curr
+	++size;
+	if (prev->pos < bv192::NULL_POSITION && x[prev->pos]) {
+		return prev->right = new node(pos, x, curr);
+	} else {
+		return prev->left = new node(pos, x, curr);
 	}
 }
 
-ostream & predicate::print(ostream & os) const {
-	////			string s;
-	////			print_r(os, s, root);
-	return os;
+const predicate::node * predicate::find(const bv192 & x) const {
+	const node * prev = &root;
+	const node * curr = root.left;
+
+	while(prev->pos > curr->pos) {
+		prev = curr;
+		curr = x[curr->pos] ? curr->right : curr->left;
+	}
+	return (x == curr->key) ? curr : 0;
 }
 
-#ifdef HAVE_RDTSC
-typedef unsigned long long cycles_t;
+void predicate::find_subsets_of(const bv192 & x, filter_const_handler & h) const {
+	const node * S[192];
+	unsigned int head = 0;
 
-static cycles_t rdtsc() {
-	cycles_t x;
-	__asm__ volatile ("rdtsc" : "=A" (x));
-	return x;
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
+
+	while(head != 0) {
+		assert(head <= 192);
+
+		const node * n = S[--head];
+		if (n->key.subset_of(x)) {
+			if (h.handle_filter(n->key, n->ti_table))
+				return;
+		}
+		if (n->pos > n->left->pos) 
+			S[head++] = n->left;
+
+		if (x[n->pos] && n->pos > n->right->pos)
+			S[head++] = n->right;
+	}
 }
-#endif
 
-#ifdef HAVE_MFTB
-typedef unsigned long long cycles_t;
+void predicate::find_supersets_of(const bv192 & x, filter_const_handler & h) const {
+	const node * S[192];
+	unsigned int head = 0;
 
-static inline cycles_t rdtsc(void) {
-	cycles_t ret;
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
 
-	__asm__ __volatile__("mftb %0" : "=r" (ret) : );
+	while(head != 0) {
+		assert(head <= 192);
+		const node * n = S[--head];
+		if (x.subset_of(n->key)) {
+			if (h.handle_filter(n->key, n->ti_table))
+				return;
+		}
+		if (n->pos > n->right->pos) 
+			S[head++] = n->right;
 
-	return ret;
+		if (!x[n->pos] && n->pos > n->left->pos)
+			S[head++] = n->left;
+	}
 }
-#endif
 
-struct empty_filter : std::exception {
-	const char* what() const throw() {return "empty filter!\n";}
+void predicate::find_subsets_of(const bv192 & x, filter_handler & h) {
+	node * S[192];
+	unsigned int head = 0;
+
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
+
+	while(head != 0) {
+		assert(head <= 192);
+
+		node * n = S[--head];
+		if (n->key.subset_of(x)) {
+			if (h.handle_filter(n->key, n->ti_table))
+				return;
+		}
+		if (n->pos > n->left->pos) 
+			S[head++] = n->left;
+
+		if (x[n->pos] && n->pos > n->right->pos)
+			S[head++] = n->right;
+	}
+}
+
+void predicate::find_supersets_of(const bv192 & x, filter_handler & h) {
+	node * S[192];
+	unsigned int head = 0;
+
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
+
+	while(head != 0) {
+		assert(head <= 192);
+		node * n = S[--head];
+		if (x.subset_of(n->key)) {
+			if (h.handle_filter(n->key, n->ti_table))
+				return;
+		}
+		if (n->pos > n->right->pos) 
+			S[head++] = n->right;
+
+		if (!x[n->pos] && n->pos > n->left->pos)
+			S[head++] = n->left;
+	}
+}
+
+class filter_printer : public filter_const_handler {
+public:
+	filter_printer(std::ostream & s): os(s) {};
+
+	virtual bool handle_filter(const bv192 & filter, const tree_interface_table & table);
+private:
+	std::ostream & os;
 };
+
+bool filter_printer::handle_filter(const bv192 & filter, const tree_interface_table & table) {
+	filter.print(os);
+	return false;
+}
+
+class match_printer : public match_handler {
+public:
+	match_printer(std::ostream & s): os(s) {};
+
+	virtual bool match(const bv192 & filter, tree_t tree, interface_t ifx);
+private:
+	std::ostream & os;
+};
+
+bool match_printer::match(const bv192 & filter, tree_t tree, interface_t ifx) {
+	os << " -> " << ifx << std::endl;
+	filter.print(os);
+	os << std::endl;
+	return false;
+}
+
+class match_counter : public match_handler {
+public:
+	match_counter(): count(0) {};
+
+	virtual bool match(const bv192 & filter, tree_t tree, interface_t ifx);
+	unsigned long get_match_count() const {
+		return count;
+	}
+private:
+	unsigned long count;
+};
+
+bool match_counter::match(const bv192 & filter, tree_t tree, interface_t ifx) {
+	++count;
+	return false;
+}
 
 int main(int argc, char *argv[]) {
-#ifdef Verbose
-	cout<<"verbose mode"<<endl;
-#endif
-	maxSize=0;
-	leaves=0;
-	collisions=0;
-	maxTIF=0;
-	predicate p;
-	p.init();
-	cout<<"Depth Threshold: "<< DEPTH_THRESHOLD << " size of node:"<<sizeof(node)<<endl;	
-	cout<<"size of end_node_entry:"<<sizeof(end_node_entry)<<endl;
-	cout<<"size of TreeIffpair:"<<sizeof(TreeIffPair)<<endl;
-	filter f;
-	bool quiet = false;
-	unsigned long tot = 0;
-	unsigned long added = 0;
 
-#ifdef WITH_TIMERS
-	cout<<"timer is defined"<<endl;
-	Timer match_timer;
-	Timer build_timer;
-#endif
+	std::string command;
+	std::string tree;
+	std::string interface;
+	std::string filter_string;
+	
+	predicate P;
 
-	if (argc > 1 && strcmp(argv[1], "-q") == 0)
-		quiet = true;
+	filter_printer filter_output(std::cout);
+	match_printer match_output(std::cout);
+	match_counter match_count;
 
-	try {
-		std::string l;
-		bool building;
+	unsigned int count = 0;
 
-		while(getline(std::cin,l)) {
-			if (l.size()==0) 
-				continue;
-			if (l=="end")
-				break;
-
-			istringstream is(l);
-			int tree, iff;
-			string fstr;
-			is >> tree >> iff >> fstr;
-
-			f = fstr;
-
-			if (f.count()!=0) {
-				++tot;
-				++added;	
-				if((added%1000000)==0)
-					cout<<added << " added " << "#leaves: "<<leaves<< " collisions: "<<collisions<<" maxTIff array size: "<<maxTIF<<endl;// '\r';
-#ifdef WITH_TIMERS
-				build_timer.start();
-#endif
-				p.add_filter(f,tree,iff,fstr);
-#ifdef WITH_TIMERS
-				build_timer.stop();
-#endif
-			} else {
-				continue;
-				//throw(empty_filter());
-			}
-		}
-		unsigned int sumTreeIff=0;
-		for(int i=0;i<ti_vec.size();i++)
-			sumTreeIff+=(ti_vec.at(i).tf_array[0]-1);
-		if (quiet) {
-			cout << ' ' << added << '/' << tot << endl;
-		} else {
-			cout << p;
-		}
-#ifdef Verbose
-		cout<<"average size of tf_array(in TreeIffPair): "<<sumTreeIff*1.0/ti_vec.size()<<"total sum: "<<sumTreeIff<<endl;
-		cout<<"maximum size of array(end_node_entry): "<<maxSize<<endl;
-		cout<<"maximum size of Tiff array: "<<maxTIF<<endl;
-#endif	
-		cout << "Memory (allocated): " << Mem.size() << endl;
-		cout << "Memory (requested): " << Mem.requested_size() << endl;
-		cout << "Number of nodes: " << p.count_nodes() << endl;
-		cout << "Number of iff: " << p.count_interfaces() << endl;
-		cout << "Size of Ti_vec: " << ti_vec.size()<< endl;
-#ifdef WITH_TIMERS
-		cout << "Total building time (us): " << build_timer.read_microseconds() << endl;
-#endif
-
-		unsigned long count = 0;
-		cout<<"sleeping for 1sec"<<endl;
-#if 0 // is this really necessary
-		sleep(1);
-#endif
-		while(getline(std::cin,l)) {
-			if (l.size()==0) 
-				continue;
+	while(std::cin >> command >> tree >> interface >> filter_string) {
+		if (command == "+") {
+			bv192 filter(filter_string);
+			interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+			P.add(filter,t,i);
 			++count;
-			istringstream is(l);
-			int tree, iff;
-			string fstr;
-			is >> tree >> iff >> fstr;
-
-			f = fstr;
-
-#ifdef WITH_TIMERS
-			match_timer.start();
-#endif
-			p.findMatch(f,tree,fstr);
-#ifdef WITH_TIMERS
-			match_timer.stop();
-#endif
-
-#ifdef WITH_TIMERS
-			if ((count % 10000) == 0) {
-				cout << "\rAverage matching cycles (" << count << "): " 
-					 << (match_timer.read_microseconds() / count) << flush;
+			if ((count & 0xfff) == 0) {
+				std::cout << "N=" << count << "  N'=" << P.get_size() 
+						  << "  Mem=" << (allocated_bytes >> 20) << "MB  Avg=" << (allocated_bytes / count) << "B  Avg'=" << (allocated_bytes / P.get_size()) << "B      \r";
 			}
-#endif
+		} else if (command == "?") {
+			bv192 filter(filter_string);
+			std::cout << "matching: " << std::endl << filter_string << std::endl;
+			tree_t t = atoi(tree.c_str());
+			P.match(filter, t);
+		} else if (command == "!") {
+			bv192 filter(filter_string);
+			tree_t t = atoi(tree.c_str());
+			P.match(filter, t, match_count);
+		} else if (command == "p") {
+			bv192 filter(filter_string);
+			P.find_subsets_of(filter, filter_output);
+			P.find_supersets_of(filter, filter_output);
+		} else {
+			std::cerr << "unknown command: " << command << std::endl;
 		}
-
-		if (count > 0) {
-			cout << "Total calls: " << count << endl;
-#ifdef WITH_TIMERS
-			cout << "Average matching time (us): " 
-				 << (match_timer.read_microseconds() / count) << endl;
-#endif
-
-		}
-
-	} catch (int e) {
-		cerr << "bad format. " <<e<< endl; 
 	}
+	if (match_count.get_match_count() != 0) 
+		std::cout << "match count: " << match_count.get_match_count() << std::endl;
+
+	return 0;
 }

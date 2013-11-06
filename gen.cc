@@ -13,29 +13,31 @@ int main(int argc, char * argv[]) {
     unsigned Amin = 1;
     unsigned Amax = 10;
 
-    unsigned if_id = 0;
-    unsigned tree_id = 0;
+    const char * command = "+";
+    const char * if_id = "0";
+    const char * tree_id = "0";
     unsigned seed = 0;
     
 
     switch(argc) {
+    case 8:
+	Amin = atoi(argv[7]);
     case 7:
-	Amin = atoi(argv[6]);
+	Amax = atoi(argv[6]);
     case 6:
-	Amax = atoi(argv[5]);
+	N = atoi(argv[5]);
     case 5:
-	N = atoi(argv[4]);
-    case 4:
 	seed = atoi(argv[1]);
-	tree_id = atoi(argv[2]);
-	if_id = atoi(argv[3]);
+	command = argv[2];
+	tree_id = argv[3];
+	if_id = argv[4];
 	break;
     default:
-	std::cerr << "usage: " << argv[0] << " <seed> <tree-id> <if-id> [N default=1000] [Amax default=10] [Amin default=1]" << std::endl;
+		std::cerr << "usage: " << argv[0] << " <seed> <command> <tree-id> <if-id> [N default=1000] [Amax default=10] [Amin default=1]" << std::endl;
 	return 1;
     }
 
-    std::default_random_engine generator;
+    std::default_random_engine generator(seed);
     std::uniform_int_distribution<int> random_position(0,M-1);
     std::uniform_int_distribution<int> random_fsize(Amin,Amax);
 
@@ -47,7 +49,7 @@ int main(int argc, char * argv[]) {
 	for(int j = 0; j < bsize; ++j)
 	    f.set(random_position(generator));
 
-	std::cout << tree_id << ' ' << if_id << ' ';
+	std::cout << command << ' ' << tree_id << ' ' << if_id << ' ';
 	for(int j = 0; j < M; ++j)
 	    std::cout << f[j] ? '1' : '0';
 	std::cout << std::endl;

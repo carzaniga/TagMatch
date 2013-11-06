@@ -1,4 +1,72 @@
 dnl
+dnl AC_OPT_PROFILING
+dnl
+AC_DEFUN([AC_OPT_PROFILING], [
+AC_ARG_ENABLE(profiling, 
+  AC_HELP_STRING([--enable-profiling],
+	[include profiling information. Values are "yes", "coverage" and "no" (default is "no")]),
+dnl this is to optionally compile with profiling
+dnl I don't know too much about this, but it looks like
+dnl -pg only works with static libraries, so I'm going to 
+dnl disable shared libraries here.
+  [ case "$enableval" in
+        coverage )
+	    CFLAGS_prof='-pg -fprofile-arcs -ftest-coverage'
+	    CXXFLAGS_prof='-pg -fprofile-arcs -ftest-coverage'
+	    LDFLAGS_prof='-pg'
+	    LIBS_prof='-lgcov'
+	    AC_MSG_RESULT([Enabling profiling and coverage information])
+	    ;;
+        * )
+	    CFLAGS_prof='-pg'
+	    CXXFLAGS_prof='-pg'
+	    LDFLAGS_prof='-pg'
+	    LIBS_prof=''
+	    AC_MSG_RESULT([Enabling profiling information])
+	    ;;
+    esac
+    AC_DEFINE(WITH_PROFILING, 1, [Using gprof, so do not mess with SIGPROF])
+    AC_DISABLE_SHARED ], 
+  [ CFLAGS_prof=''
+    CXXFLAGS_prof=''
+    LDFLAGS_prof=''
+    LIBS_prof=''
+    AC_ENABLE_SHARED ])
+AC_SUBST(CFLAGS_prof)
+AC_SUBST(CXXFLAGS_prof)
+AC_SUBST(LDFLAGS_prof)
+AC_SUBST(LIBS_prof)
+])
+dnl
+dnl AC_OPT_ASSERTIONS
+dnl
+AC_DEFUN([AC_OPT_ASSERTIONS], [
+AC_ARG_ENABLE(assertions, 
+  AC_HELP_STRING([--enable-assertions],
+	[enable evaluation of assertions (default is NO)]), ,
+  [ AC_DEFINE(NDEBUG, 1, [Disables assertions and other debugging code])])
+])
+dnl
+dnl AC_CHECK_BUILTIN_CLZL([action-if-available [, action-if-not-available])
+dnl
+AC_DEFUN([AC_CHECK_BUILTIN_CLZL], [
+AC_CACHE_CHECK([for __builtin_clzl], [ac_cv_clzl], [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+int clzl(unsigned long d) {
+    return __builtin_clzl(d);
+}
+]])], [ ac_cv_clzl=yes ], [ ac_cv_clzl=no ])])
+case "$ac_cv_clzl" in
+    yes)
+        AC_DEFINE(HAVE_BUILTIN_CLZL, 1, [We may use the compiler's built-in clzl function])
+	ifelse([$1], , :, [$1])
+	;;
+    *)
+	ifelse([$2], , :, [$2])
+	;;
+esac
+])
+dnl
 dnl AC_CHECK_RDTSC([action-if-available [, action-if-not-available])
 dnl
 AC_DEFUN([AC_CHECK_RDTSC], [
