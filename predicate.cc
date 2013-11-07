@@ -240,8 +240,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 			// very light input filters, in which case it incurrs a small
 			// penalty, compared to simply ignoring this check.
 			// 
-			if (n->pos < filter_t::WIDTH - 1 
-				&& ! n->key.prefix_subset_of(x, n->pos + 1))
+			if (! n->key.prefix_subset_of(x, n->pos + 1))
 				continue;
 
 		if (n->pos > n->left->pos) 
@@ -270,8 +269,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 		if (x.subset_of(n->key)) {
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else if (n->pos < filter_t::WIDTH - 1 
-				   && ! x.prefix_subset_of(n->key, n->pos + 1))
+		} else if (! x.prefix_subset_of(n->key, n->pos + 1))
 			continue;
 
 		if (n->pos > n->right->pos) 
@@ -300,8 +298,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 		if (n->key.subset_of(x)) {
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else if (n->pos < filter_t::WIDTH - 1 
-				   && ! n->key.prefix_subset_of(x, n->pos + 1))
+		} else if (! n->key.prefix_subset_of(x, n->pos + 1))
 			continue;
 
 		if (n->pos > n->left->pos) 
@@ -330,8 +327,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 		if (x.subset_of(n->key)) {
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else if (n->pos < filter_t::WIDTH - 1 
-				   && ! x.prefix_subset_of(n->key, n->pos + 1))
+		} else if (! x.prefix_subset_of(n->key, n->pos + 1))
 			continue;
 
 		if (n->pos > n->right->pos) 

@@ -98,15 +98,19 @@ public:
 		// |----------------#####################################|
 		//  ^191           ^pos                                0^
 		// 
-		if (p > 127)
-			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (p - 128)) == 0;
+		if (p & 192)			// p > 127
+			return true;
+
+		if (p & 128) 			// 192 > p > 127
+			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (p & 63)) == 0;
 
 		if ((bv[2] & x.bv[2]) != bv[2])
 			return false;
 
-		if (p > 63)
-			return (((bv[1] & x.bv[1]) ^ bv[1]) >> (p - 64)) == 0;
+		if (p & 64) 			// 128 > p > 63
+			return (((bv[1] & x.bv[1]) ^ bv[1]) >> (p & 63)) == 0;
 
+								// 64 > p
 		if ((bv[1] & x.bv[1]) != bv[1])
 			return false;
 
