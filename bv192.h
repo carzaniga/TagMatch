@@ -88,6 +88,50 @@ public:
 				|| (bv[1] == rhs.bv[1] && bv[0] < rhs.bv[0]);
 	}
 
+	bool prefix_subset_of(const bv192 & x, pos_t p) const {
+#if 0
+		std::cout << "prefix: " << (int)p << std::endl;
+		print(std::cout);
+		x.print(std::cout);
+#endif
+		//
+		// Check that *this is a subset of x only up to position pos,
+		// starting from the left (most significant) down to position
+		// pos, including position pos, as illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^191           ^pos                                0^
+		// 
+		if (p > 127)
+			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (p - 128)) == 0;
+
+		if ((bv[2] & x.bv[2]) != bv[2])
+			return false;
+
+		if (p > 63)
+			return (((bv[1] & x.bv[1]) ^ bv[1]) >> (p - 64)) == 0;
+
+		if ((bv[1] & x.bv[1]) != bv[1])
+			return false;
+
+		return (((bv[0] & x.bv[0]) ^ bv[0]) >> p) == 0;
+	}
+
+	bool range_subset_of(pos_t p, const bv192 & x) const {
+		if (p <= 64)
+			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (64 - p)) == 0;
+
+		p -= 64;
+
+		if (p <= 64)
+			return (((bv[1] & x.bv[1]) ^ bv[1]) >> (64 - p)) == 0;
+
+		p -= 64;
+
+		return (((bv[0] & x.bv[0]) ^ bv[0]) >> (64 - p)) == 0;
+	}
+
 	bool subset_of(const bv192 & x) const {
 		return 
 			(bv[0] & x.bv[0]) == bv[0]
