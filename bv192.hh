@@ -52,7 +52,7 @@ public:
 				B <<= 1;
 			}
 		}
-		return os << std::endl;
+		return os;
 	}
 
 	void reset() {
@@ -88,6 +88,39 @@ public:
 				|| (bv[1] == rhs.bv[1] && bv[0] < rhs.bv[0]);
 	}
 
+	bool prefix_subset_of(const bv192 & x, pos_t pp, pos_t p) const {
+		//
+		// Check that *this is a subset of x only up to position pos,
+		// starting from the left (most significant) down to position
+		// pos, including position pos, as illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |######----------#####################################|
+		//  ^191  ^pp      ^p                                  0^
+		// 
+		if (p > 191)			// p > 191
+			return true;
+
+		if (pp > 127) {
+			if (p & 128)			// 192 > p > 127
+				return (((bv[2] & x.bv[2]) ^ bv[2]) >> (p & 63)) == 0;
+
+			if ((bv[2] & x.bv[2]) != bv[2])
+				return false;
+		}
+
+		if (pp > 63) {
+			if (p & 64) 			// 128 > p > 63
+				return (((bv[1] & x.bv[1]) ^ bv[1]) >> (p & 63)) == 0;
+
+			// 64 > p
+			if ((bv[1] & x.bv[1]) != bv[1])
+				return false;
+		}
+
+		return (((bv[0] & x.bv[0]) ^ bv[0]) >> p) == 0;
+	}
+
 	bool prefix_subset_of(const bv192 & x, pos_t p) const {
 		//
 		// Check that *this is a subset of x only up to position pos,
@@ -98,10 +131,10 @@ public:
 		// |----------------#####################################|
 		//  ^191           ^pos                                0^
 		// 
-		if (p & 192)			// p > 127
+		if (p > 191)			// p > 191
 			return true;
 
-		if (p & 128) 			// 192 > p > 127
+		if (p & 128)			// 192 > p > 127
 			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (p & 63)) == 0;
 
 		if ((bv[2] & x.bv[2]) != bv[2])
@@ -117,26 +150,67 @@ public:
 		return (((bv[0] & x.bv[0]) ^ bv[0]) >> p) == 0;
 	}
 
-	bool range_subset_of(pos_t p, const bv192 & x) const {
-		if (p <= 64)
-			return (((bv[2] & x.bv[2]) ^ bv[2]) >> (64 - p)) == 0;
-
-		p -= 64;
-
-		if (p <= 64)
-			return (((bv[1] & x.bv[1]) ^ bv[1]) >> (64 - p)) == 0;
-
-		p -= 64;
-
-		return (((bv[0] & x.bv[0]) ^ bv[0]) >> (64 - p)) == 0;
-	}
-
 	bool subset_of(const bv192 & x) const {
-		return 
-			(bv[0] & x.bv[0]) == bv[0]
+		// return true iff *this is a subset of x
+		return (bv[0] & x.bv[0]) == bv[0]
 			&& (bv[1] & x.bv[1]) == bv[1]
 			&& (bv[2] & x.bv[2]) == bv[2];
 	}
+
+	bool suffix_subset_of(const bv192 & x, pos_t p) const {
+		// this is essentially a subset_of check with an advice that
+		// all bits to the left of position p (i.e., positions > p)
+		// can be skipped, because they have been already checked
+		// earlier.  So, this is not really a suffix-subset match in
+		// the sense analogous to prefix_subset_of above.  In other
+		// words, if p < 64, we only need to check the rightmost block
+		// bv[0], if p < 128 we only need to check bv[1] and bv[0],
+		// otherwise we need to check all three blocks bv[2], bv[1],
+		// and bv[0].
+		return (bv[0] & x.bv[0]) == bv[0]
+			&& (p < 64 || ((bv[1] & x.bv[1]) == bv[1] 
+						   && (p < 128 || (bv[2] & x.bv[2]) == bv[2])));
+	}
+#if 0
+	// Antonio's preferred implementation of suffix_subset_of
+	// 
+	bool suffix_subset_of(const bv192 & x, pos_t p) const {
+		if ((bv[0] & x.bv[0]) != bv[0])
+			return false;
+
+		if (p < 64)
+			return true;
+
+		if ((bv[1] & x.bv[1]) != bv[1])
+			return false;
+
+		if (p < 128)
+			return true;
+
+		return (bv[2] & x.bv[2]) == bv[2];
+	}
+#endif
+#if 0
+	// we'll keep this code around just because Koorosh believes,
+	// probably under the influence of some psychotropic substance,
+	// that this is a better variant of suffix_subset_of, where it is
+	// in fact functionally identical but more confusing in terms of
+	// code structure.
+	bool suffix_subset_of(const bv192 & x, pos_t p) const {
+		if ((bv[0] & x.bv[0]) != bv[0])
+			return false;
+
+		if (p > 63) {
+			if ((bv[1] & x.bv[1]) != bv[1])
+				return false;
+			if (p > 127) {
+				if ((bv[2] & x.bv[2]) != bv[2])
+					return false;
+			}
+		}
+		return true;
+	}
+#endif
 
 	void set(pos_t pos) {
 		bv[pos/64] |= (1UL << (pos % 63));
@@ -211,7 +285,34 @@ public:
 		return log2(x.bv[0] ^ y.bv[0]);
 #endif
 	}
+
+	pos_t most_significant_one_pos() const {
+		//
+		// returns the index of the most significant 1-bit.  For
+		// example, x="001110..." => result=189
+		//
+#ifdef HAVE_BUILTIN_CLZL
+		if (bv[2])
+			return 191 - __builtin_clzl(bv[2]);
+
+		if (bv[1])
+			return 127 - __builtin_clzl(bv[1]);
+
+		return 63 - __builtin_clzl(bv[0]);
+#else
+		if (bv[2])
+			return 128 + log2(bv[2]);
+
+		if (bv[1])
+			return 64 + log2(bv[1]);
+
+		return log2(bv[0]);
+#endif
+	}
 };
 
+inline std::ostream & operator << (std::ostream & os, const bv192 & x) {
+	return x.print(os);
+}
 
 #endif

@@ -75,10 +75,6 @@ public:
 	 */ 
 	node * add(const filter_t & x, tree_t t, interface_t i);
 
-	/** non-modular, basic matching function (subset search)
-	 */
-	void match(const filter_t & x, tree_t t) const;
-
 	/** modular matching function (subset search)
 	 */
 	void match(const filter_t & x, tree_t t, match_handler & h) const;

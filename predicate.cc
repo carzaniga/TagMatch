@@ -114,39 +114,6 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	find_subsets_of(x, matcher);
 }
 
-void predicate::match(const filter_t & x, tree_t t) const {
-	// 
-	// this is the non-modular matching function.  It basically
-	// replicates the functionality of find_subsets_of() but then it
-	// directly uses the results to select the tree--interface pair
-	// corresponding to the given tree t.
-	//
-	const node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-
-	std::cout << "->";
-
-	if (root.pos > root.left->pos)
-		S[head++] = root.left;
-
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-
-		const node * n = S[--head];
-		if (n->key.subset_of(x)) {
-			for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti) 
-				if (ti->tree == t)
-					std::cout << ' ' << ti->interface;
-		}
-		if (n->pos > n->left->pos) 
-			S[head++] = n->left;
-
-		if (x[n->pos] && n->pos > n->right->pos)
-			S[head++] = n->right;
-	}
-	std::cout << std::endl;
-}
-
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
 	node * n = add(x);
 	n->add_pair(t, i);
@@ -207,7 +174,7 @@ predicate::node * predicate::find(const filter_t & x) {
 
 void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) const {
 	//
-	// this is a non-recoursive (i.e., iterative) exploration of the
+	// this is a non-recursive (i.e., iterative) exploration of the
 	// PATRICIA trie that looks for subsets.  The pattern is almost
 	// exactly the same for supersets (see below).  We use a stack S
 	// to keep track of the visited nodes, and we visit new nodes
@@ -215,125 +182,151 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	// 
 	const node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-
+	
 	// if the trie is not empty we push the root node onto the stack.
 	// The true root is root.left, not root, which is a sentinel node.
+	//
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
-
+	//
+	// INVARIANT: root.left->pos is the position of the leftmost 1-bit
+	// in root.left.  Therefore root.left is always a subset of the
+	// input filter x up to position n->pos + 1 (i.e., excluding
+	// position n->pos itself)
+	// 
 	while(head != 0) {
 		assert(head <= filter_t::WIDTH);
-
 		const node * n = S[--head];		// for each visited node n...
-
-		if (n->key.subset_of(x)) {
+		//
+		// INVARIANT: n is a subset of x up to position n->pos + 1
+		// (i.e., excluding position n->pos itself)
+		// 
+		if (n->key.suffix_subset_of(x, n->pos)) 
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else
-			// If the subset relation (above) does not hold for the prefix
-			// defined by the current node --meaning the prefix from
-			// position filter_t::WIDTH - 1 to position n->pos, included--
-			// then we can prune the exploration from this point on.
+
+		if (n->pos > n->left->pos)
+			// push n->left on the stack only when the bits of
+			// n->left->key in positions between n->pos and
+			// n->left->pos, excluding n->left->pos, are a subset of x
 			// 
-			// NOTE: this heuristic is very effective for input filters
-			// with high hamming-weight, but does not seem to do much for
-			// very light input filters, in which case it incurrs a small
-			// penalty, compared to simply ignoring this check.
+			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
+				S[head++] = n->left;
+
+		if (n->pos > n->right->pos && x[n->pos]) 
+			// push n->right on the stack only when the bits of
+			// n->right->key in positions between n->pos and
+			// n->right->pos, excluding n->right->pos, are a subset of
+			// x
 			// 
-			if (! n->key.prefix_subset_of(x, n->pos + 1))
-				continue;
-
-		if (n->pos > n->left->pos) 
-			S[head++] = n->left;
-
-		if (n->pos > n->right->pos && x[n->pos])
-			S[head++] = n->right;
-	}
-}
-
-void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
-	//
-	// see above: find_subsets_of(const filter_t & x, filter_const_handler & h) const
-	//
-	const node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-
-	if (root.pos > root.left->pos)
-		S[head++] = root.left;
-
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-
-		const node * n = S[--head];
-
-		if (x.subset_of(n->key)) {
-			if (h.handle_filter(n->key, *n))
-				return;
-		} else if (! x.prefix_subset_of(n->key, n->pos + 1))
-			continue;
-
-		if (n->pos > n->right->pos) 
-			S[head++] = n->right;
-
-		if (n->pos > n->left->pos && !x[n->pos])
-			S[head++] = n->left;
+			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
+				S[head++] = n->right;
 	}
 }
 
 void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 	//
-	// see above: find_subsets_of(const filter_t & x, filter_const_handler & h) const
-	//
+	// See the above "const" find_subsets_of for technical details.
+	// 
 	node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-
+	
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {
 		assert(head <= filter_t::WIDTH);
-
 		node * n = S[--head];
 
-		if (n->key.subset_of(x)) {
+		if (n->key.suffix_subset_of(x, n->pos)) 
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else if (! n->key.prefix_subset_of(x, n->pos + 1))
-			continue;
 
-		if (n->pos > n->left->pos) 
-			S[head++] = n->left;
+		if (n->pos > n->left->pos)
+			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
+				S[head++] = n->left;
 
-		if (n->pos > n->right->pos && x[n->pos])
-			S[head++] = n->right;
+		if (n->pos > n->right->pos && x[n->pos]) 
+			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
+				S[head++] = n->right;
+	}
+}
+
+void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
+	//
+	// See also the above find_subsets_of for technical details.
+	// 
+	const node * S[filter_t::WIDTH];
+	unsigned int head = 0;
+	
+	// if the trie is not empty we push the root node onto the stack.
+	// The true root is root.left, not root, which is a sentinel node.
+	//
+	if (root.pos > root.left->pos
+		//
+		// INVARIANT: root.left->pos is the position of the leftmost
+		// 1-bit in root.left.  Therefore root.left should be
+		// considered only if x's most significant bit it to the right
+		// (i.e., lower position) of root.left->pos.
+		// 
+		&& x.most_significant_one_pos() >= root.left->pos)
+		S[head++] = root.left;
+
+	while(head != 0) {
+		assert(head <= filter_t::WIDTH);
+		const node * n = S[--head];		// for each visited node n...
+		//
+		// INVARIANT: n is a superset of x up to position n->pos + 1
+		// (i.e., excluding position n->pos itself)
+		// 
+		if (x.suffix_subset_of(n->key, n->pos)) 
+			if (h.handle_filter(n->key, *n))
+				return;
+
+		if (n->pos > n->right->pos)
+			// push n->right on the stack only when the bits of
+			// n->right->key in positions between n->pos and
+			// n->right->pos, excluding n->right->pos, are a superset of x
+			// 
+			if (x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
+				S[head++] = n->right;
+
+		if (n->pos > n->left->pos && !x[n->pos]) 
+			// push n->left on the stack only when the bits of
+			// n->left->key in positions between n->pos and
+			// n->left->pos, excluding n->left->pos, are a subset of
+			// x
+			// 
+			if (x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
+				S[head++] = n->left;
 	}
 }
 
 void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	//
-	// see above: find_subsets_of(const filter_t & x, filter_const_handler & h) const
-	//
+	// See the above "const" find_superset_of for technical details.
+	// 
 	node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-
-	if (root.pos > root.left->pos)
+	
+	if (root.pos > root.left->pos
+		&& x.most_significant_one_pos() >= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {
 		assert(head <= filter_t::WIDTH);
-
 		node * n = S[--head];
 
-		if (x.subset_of(n->key)) {
+		if (x.suffix_subset_of(n->key, n->pos)) 
 			if (h.handle_filter(n->key, *n))
 				return;
-		} else if (! x.prefix_subset_of(n->key, n->pos + 1))
-			continue;
 
-		if (n->pos > n->right->pos) 
-			S[head++] = n->right;
+		if (n->pos > n->right->pos)
+			if (x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
+				S[head++] = n->right;
 
-		if (n->pos > n->left->pos && !x[n->pos])
-			S[head++] = n->left;
+		if (n->pos > n->left->pos && !x[n->pos]) 
+			if (x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
+				S[head++] = n->left;
 	}
 }

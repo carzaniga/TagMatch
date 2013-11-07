@@ -17,7 +17,7 @@ private:
 };
 
 bool filter_printer::handle_filter(const filter_t & filter, const predicate::node & n) {
-	filter.print(os);
+	os << filter << std::endl;
 	return false;
 }
 
@@ -31,9 +31,7 @@ private:
 };
 
 bool match_printer::match(const filter_t & filter, tree_t tree, interface_t ifx) {
-	os << " -> " << ifx << std::endl;
-	filter.print(os);
-	os << std::endl;
+	os << "-> " << ifx << ' ' << filter << std::endl;
 	return false;
 }
 
@@ -54,6 +52,16 @@ bool match_counter::match(const filter_t & filter, tree_t tree, interface_t ifx)
 	return false;
 }
 
+inline bool wheel_of_death(unsigned long counter, unsigned int mask_bits) {
+	static const char * wheel = "-\\|/";
+
+	if (counter & ((1UL << mask_bits) - 1))
+		return false;
+
+	std::cout << wheel[(counter >> mask_bits) & 3];
+	return true;
+}
+
 int main(int argc, char *argv[]) {
 
 	std::string command;
@@ -70,6 +78,7 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
 
+
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
@@ -77,14 +86,20 @@ int main(int argc, char *argv[]) {
 			tree_t t = atoi(tree.c_str());
 			P.add(filter,t,i);
 			++count;
-			if ((count & 0xfff) == 0) {
-				std::cout << "N=" << count << "  Unique=" << P.size() << " \r";
-			}
+			if (wheel_of_death(count, 10))
+				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+
+		} else if (command == "+q") {
+			filter_t filter(filter_string);
+			interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+			P.add(filter,t,i);
+			++count;
 		} else if (command == "?") {
 			filter_t filter(filter_string);
-			std::cout << "matching: " << std::endl << filter_string << std::endl;
+			std::cout << "==== " << filter << std::endl;
 			tree_t t = atoi(tree.c_str());
-			P.match(filter, t);
+			P.match(filter, t, match_output);
 		} else if (command == "!") {
 			filter_t filter(filter_string);
 			tree_t t = atoi(tree.c_str());
@@ -92,9 +107,9 @@ int main(int argc, char *argv[]) {
 			if (query_count==0)
 				std::cout << std::endl;
 			++query_count;
-			if ((query_count & 0xff) == 0) {
-				std::cout << "Q=" << query_count << "  Match=" << match_count.get_match_count() << " \r";
-			}
+			if (wheel_of_death(query_count, 7))
+				std::cout << " Q=" << query_count 
+						  << "  Match=" << match_count.get_match_count() << " \r";
 		} else if (command == "p") {
 			filter_t filter(filter_string);
 			P.find_subsets_of(filter, filter_output);
