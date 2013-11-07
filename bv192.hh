@@ -1,5 +1,5 @@
-#ifndef BV192_H_INCLUDED
-#define BV192_H_INCLUDED
+#ifndef BV192_HH_INCLUDED
+#define BV192_HH_INCLUDED
 
 #ifdef BV192_USE_MEMSET
 #include <cstring>
@@ -89,11 +89,6 @@ public:
 	}
 
 	bool prefix_subset_of(const bv192 & x, pos_t p) const {
-#if 0
-		std::cout << "prefix: " << (int)p << std::endl;
-		print(std::cout);
-		x.print(std::cout);
-#endif
 		//
 		// Check that *this is a subset of x only up to position pos,
 		// starting from the left (most significant) down to position

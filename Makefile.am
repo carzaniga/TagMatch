@@ -5,8 +5,8 @@ bin_PROGRAMS = predicate gen
 gen_SOURCES = gen.cc params.h
 gen_CXXFLAGS = -std=c++0x
 
-predicate_SOURCES = predicate.cc bv192.h
-predicate_CXXFLAGS = -O2 -std=c++0x -Wall @CXXFLAGS_prof@
+predicate_SOURCES = predicate.cc predicate.hh bv192.hh main.cc
+predicate_CXXFLAGS = -O4 -std=c++0x -Wall @CXXFLAGS_prof@
 predicate_LDFLAGS = @LIBS_prof@
 
 AM_CFLAGS = -Wall @CFLAGS_prof@
