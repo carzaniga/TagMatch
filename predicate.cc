@@ -150,18 +150,7 @@ predicate::node * predicate::add(const filter_t & x) {
 	}
 }
 
-const predicate::node * predicate::find(const filter_t & x) const {
-	const node * prev = &root;
-	const node * curr = root.left;
-
-	while(prev->pos > curr->pos) {
-		prev = curr;
-		curr = x[curr->pos] ? curr->right : curr->left;
-	}
-	return (x == curr->key) ? curr : 0;
-}
-
-predicate::node * predicate::find(const filter_t & x) {
+predicate::node * predicate::find(const filter_t & x) const {
 	const node * prev = &root;
 	node * curr = root.left;
 
@@ -258,7 +247,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 	// 
 	const node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-	
+
 	// if the trie is not empty we push the root node onto the stack.
 	// The true root is root.left, not root, which is a sentinel node.
 	//
@@ -269,7 +258,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 		// considered only if x's most significant bit it to the right
 		// (i.e., lower position) of root.left->pos.
 		// 
-		&& x.most_significant_one_pos() >= root.left->pos)
+		&& x.most_significant_one_pos() <= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {
@@ -308,9 +297,9 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	// 
 	node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-	
+
 	if (root.pos > root.left->pos
-		&& x.most_significant_one_pos() >= root.left->pos)
+		&& x.most_significant_one_pos() <= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {

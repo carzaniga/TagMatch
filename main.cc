@@ -110,10 +110,12 @@ int main(int argc, char *argv[]) {
 			if (wheel_of_death(query_count, 7))
 				std::cout << " Q=" << query_count 
 						  << "  Match=" << match_count.get_match_count() << " \r";
-		} else if (command == "p") {
+		} else if (command == "sup") {
+			filter_t filter(filter_string);
+			P.find_supersets_of(filter, filter_output);
+		} else if (command == "sub") {
 			filter_t filter(filter_string);
 			P.find_subsets_of(filter, filter_output);
-			P.find_supersets_of(filter, filter_output);
 		} else {
 			std::cerr << "unknown command: " << command << std::endl;
 		}

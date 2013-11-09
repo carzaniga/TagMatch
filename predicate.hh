@@ -40,6 +40,10 @@ public:
 	
 	tree_t tree : 3;
 	interface_t interface : 13;
+
+	bool operator < (const tree_interface_pair &x) const {
+		return (tree < x.tree || (tree == x.tree && interface < x.interface));
+	}
 };
 
 // 
@@ -81,8 +85,7 @@ public:
 
 	/** exact-match filter search
 	 */
-	const node * find(const filter_t & x) const;
-	node * find(const filter_t & x);
+	node * find(const filter_t & x) const;
 
 	/** processes the subsets of the given filter
 	 *
