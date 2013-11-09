@@ -15,17 +15,17 @@ dnl disable shared libraries here.
 	    CXXFLAGS_prof='-pg -fprofile-arcs -ftest-coverage'
 	    LDFLAGS_prof='-pg'
 	    LIBS_prof='-lgcov'
-	    AC_MSG_RESULT([Enabling profiling and coverage information])
+	    AC_MSG_RESULT([enabling profiling for coverage information])
+	    COMPILER_OPTIMIZATIONS=none
 	    ;;
         * )
 	    CFLAGS_prof='-pg'
 	    CXXFLAGS_prof='-pg'
 	    LDFLAGS_prof='-pg'
 	    LIBS_prof=''
-	    AC_MSG_RESULT([Enabling profiling information])
+	    AC_MSG_RESULT([enabling profiling for performance])
 	    ;;
     esac
-    AC_DEFINE(WITH_PROFILING, 1, [Using gprof, so do not mess with SIGPROF])
     AC_DISABLE_SHARED ], 
   [ CFLAGS_prof=''
     CXXFLAGS_prof=''
@@ -36,6 +36,15 @@ AC_SUBST(CFLAGS_prof)
 AC_SUBST(CXXFLAGS_prof)
 AC_SUBST(LDFLAGS_prof)
 AC_SUBST(LIBS_prof)
+])
+dnl
+dnl AC_OPT_ASSERTIONS
+dnl
+AC_DEFUN([AC_OPT_DEBUGGING], [
+AC_ARG_ENABLE(debugging, 
+  AC_HELP_STRING([--enable-debugging],
+	[disable compiler optimizations for better debugging (default is NO)]),
+  [ COMPILER_OPTIMIZATIONS=none ])
 ])
 dnl
 dnl AC_OPT_ASSERTIONS

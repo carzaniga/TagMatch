@@ -13,8 +13,6 @@ AC_LANG(C++)
 #
 LT_INIT
 #
-AC_HEADER_TIME
-#
 # Boost unit testing framework
 #
 AX_BOOST_BASE([1.40], [
@@ -25,12 +23,17 @@ AX_BOOST_BASE([1.40], [
       USE_BOOST_UTF=no
   fi],  [USE_BOOST_UTF=no])
 if test "x$USE_BOOST_UTF" != "xyes"; then
-   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the complete set of tests that come with SFF.])
+   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
 fi
 AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$USE_BOOST_UTF" = "xyes"])
 #
 AC_OPT_PROFILING
-AC_OPT_TIMERS
+AC_OPT_DEBUGGING
+if test "x$COMPILER_OPTIMIZATIONS" = "xnone"; then
+   AC_MSG_RESULT([disabling compiler optimizations for profiling and/or debugging.])
+fi
+AM_CONDITIONAL([DISABLE_COMPILER_OPTIMIZATIONS], [test "x$COMPILER_OPTIMIZATIONS" = "xnone"])
+#
 AC_CHECK_BUILTIN_CLZL
 #
 AC_CONFIG_FILES([Makefile 

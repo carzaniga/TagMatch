@@ -23,8 +23,15 @@
 #
 
 AM_CPPFLAGS = -I$(top_srcdir)
-AM_CXXFLAGS = -Wall -std=c++0x @CXXFLAGS_prof@
-AM_CFLAGS = -Wall @CFLAGS_prof@
+
+if DISABLE_COMPILER_OPTIMIZATIONS
+AM_CFLAGS = -Wall -O0 @CFLAGS_prof@
+AM_CXXFLAGS = -std=c++0x -Wall -O0 @CXXFLAGS_prof@
+else
+AM_CFLAGS = -Wall -O2 @CFLAGS_prof@
+AM_CXXFLAGS = -std=c++0x -Wall -O2 @CXXFLAGS_prof@
+endif
+
 AM_LDFLAGS = @LDFLAGS_prof@
 LIBS =  @LIBS@ @LIBS_prof@ 
 
@@ -37,13 +44,10 @@ UNIT_TESTS += test_bv192 test_predicate
 endif
 
 test_bv192_SOURCES = test_bv192.cc
-test_bv192_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
-test_bv192_LDFLAGS = @LIBS_prof@
+test_bv192_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
 
-test_predicate_SOURCES = test_predicate.cc ../predicate.cc
-test_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
-test_predicate_LDFLAGS = @LIBS_prof@
-
+test_predicate_SOURCES = test_predicate.cc
+test_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
 
 TESTS = $(UNIT_TESTS)
 
