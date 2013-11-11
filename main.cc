@@ -78,14 +78,22 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
 
-
+	//string line;
+	//std::getline (std::cin,name);
+	predicate::node * temp(0);
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-			P.add(filter,t,i);
+			temp=P.add(filter,t,i);
 			++count;
+			while(std::cin.peek()!='\n'){
+				std::cin >>  tree >> interface;
+				interface_t i = atoi(interface.c_str());
+				tree_t t = atoi(tree.c_str());
+				temp->add_pair(t,i);
+			}
 			if (wheel_of_death(count, 10))
 				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 

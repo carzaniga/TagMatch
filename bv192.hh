@@ -213,7 +213,7 @@ public:
 #endif
 
 	void set(pos_t pos) {
-		bv[pos/64] |= (1UL << (pos % 63));
+		bv[pos/64] |= (1UL << (pos % 64));
 	}
 
 	bool at(pos_t pos) const {
