@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <bitset>
@@ -69,6 +70,31 @@ int main(int argc, char * argv[]) {
 
 		if (sscanf(argv[i], "t=%u", &tree_id) || sscanf(argv[i], "tree=%u", &tree_id))
 			continue;
+
+		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
+			std::cout << "usage: " << argv[0] << " <params> <command> [<params> <command>...]\n"
+				"\n  params: any combination of the following:\n"
+				"     [s|seed=<seed>] :: seed for random generator (default=0)\n"
+				"     [k=<N>] :: number of hash functions in Bloom filters  (default=7)\n"
+				"     [n|N=<N>] :: number of generated filters (default=1000)\n"
+				"     [a=<A>[,<A2>]] :: number or range of tags per filters (default=1,10)\n"
+				"     [i|interface=<interface>] :: interface number (default=0)\n"
+				"     [t|tree=<tree>] :: tree number (default=0)\n"
+				"\n  command: +|!|?|sub|sup (commands understood by the driver program)\n" 
+				"\nExamples:\n"
+				"gen2 n=10 +\n"
+				"  generates two subscription filters with between 1 and 10 attributes\n"
+				"gen2 n=1000 a=5 !\n"
+				"  generates 1000 message filters each with exactly 5 tags\n"
+				"gen2 n=5000 a=2,6 + n=10000 a=8,10 !\n"
+				"  generates 5000 subscriptions with between 2 and 6 attributes, followed\n"
+				"  by 10000 messages with between 8 and 10 attributes\n"
+				"gen2 n=5000 a=2,6 + n=10000 a=8 ! n=10000 a=10 ! n=10000 a=12 !\n"
+				"  generates 5000 subscriptions with between 2 and 6 attributes, followed by\n"
+				"  three series of 1000 messages with 8, 10, and 12 attributes, respectively.\n"
+					  << std::endl;
+			return 1;
+		}
 
 		do_gen(seed, argv[i], if_id, tree_id, N, k, Amin, Amax);
 		done = true;
