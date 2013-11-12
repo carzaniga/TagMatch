@@ -130,7 +130,6 @@ predicate::node * predicate::add(const filter_t & x) {
 	}
 	if (x == curr->key)
 		return curr;
-
 	filter_t::pos_t pos = filter_t::most_significant_diff_pos(curr->key, x);
 
 	prev = &root;

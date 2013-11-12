@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
 			temp=P.add(filter,t,i);
 			++count;
 			while(std::cin.peek()!='\n'){
+				std::cin.putback('\n');
 				std::cin >>  tree >> interface;
 				interface_t i = atoi(interface.c_str());
 				tree_t t = atoi(tree.c_str());
