@@ -7,11 +7,23 @@ AM_SILENT_RULES([yes])
 AM_CONFIG_HEADER(config.h:config.h.in)
 AC_PREFIX_DEFAULT(/opt)
 #
-AC_PROG_CC
 AC_PROG_CXX
 AC_LANG(C++)
 #
 LT_INIT
+#
+AX_CXX_COMPILE_STDCXX_0X
+if test "$ax_cv_cxx_compile_cxx0x_cxx" = yes; then
+  CXXFLAGS="-std=c++0x $CXXFLAGS"
+elif test "$ax_cv_cxx_compile_cxx0x_gxx" = yes; then
+  CXXFLAGS="-std=gnu++0x $CXXFLAGS"
+fi
+AX_CHECK_COMPILE_FLAG([-Wall], [
+  CFLAGS="-Wall $CFLAGS"
+  CXXFLAGS="-Wall $CXXFLAGS"
+])
+AC_OPT_DEBUGGING
+AC_OPT_PROFILING
 #
 # Boost unit testing framework
 #
@@ -26,13 +38,6 @@ if test "x$USE_BOOST_UTF" != "xyes"; then
    AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
 fi
 AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$USE_BOOST_UTF" = "xyes"])
-#
-AC_OPT_PROFILING
-AC_OPT_DEBUGGING
-if test "x$COMPILER_OPTIMIZATIONS" = "xnone"; then
-   AC_MSG_RESULT([disabling compiler optimizations for profiling and/or debugging.])
-fi
-AM_CONDITIONAL([DISABLE_COMPILER_OPTIMIZATIONS], [test "x$COMPILER_OPTIMIZATIONS" = "xnone"])
 #
 AC_CHECK_BUILTIN_CLZL
 #

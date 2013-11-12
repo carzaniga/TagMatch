@@ -79,7 +79,7 @@ public:
 	}
 
 	bool operator == (const bv192 &rhs) const {
-		return (bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] &&	bv[2] == rhs.bv[2]) ;
+		return bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] && bv[2] == rhs.bv[2];
 	}
 
 	bool operator < (const bv192 &rhs) const {
@@ -213,7 +213,7 @@ public:
 #endif
 
 	void set(pos_t pos) {
-		bv[pos/64] |= (1UL << (pos % 63));
+		bv[pos/64] |= (1UL << (pos % 64));
 	}
 
 	bool at(pos_t pos) const {
