@@ -1,4 +1,11 @@
 dnl
+dnl AC_DISABLE_COMPILER_OPTIMIZATION
+dnl
+AC_DEFUN([AC_DISABLE_COMPILER_OPTIMIZATION], [[
+  CFLAGS=`echo "$CFLAGS" | sed "s/-O[^ ]*/-O0/g"`
+  CXXFLAGS=`echo "$CXXFLAGS" | sed "s/-O[^ ]*/-O0/g"`
+]])
+dnl
 dnl AC_OPT_PROFILING
 dnl
 AC_DEFUN([AC_OPT_PROFILING], [
@@ -16,7 +23,7 @@ dnl disable shared libraries here.
 	    LDFLAGS_prof='-pg'
 	    LIBS_prof='-lgcov'
 	    AC_MSG_RESULT([enabling profiling for coverage information])
-	    COMPILER_OPTIMIZATIONS=none
+	    AC_DISABLE_COMPILER_OPTIMIZATION
 	    ;;
         * )
 	    CFLAGS_prof='-pg'
@@ -38,13 +45,13 @@ AC_SUBST(LDFLAGS_prof)
 AC_SUBST(LIBS_prof)
 ])
 dnl
-dnl AC_OPT_ASSERTIONS
+dnl AC_OPT_DEBUGGING
 dnl
 AC_DEFUN([AC_OPT_DEBUGGING], [
 AC_ARG_ENABLE(debugging, 
   AC_HELP_STRING([--enable-debugging],
-	[disable compiler optimizations for better debugging (default is NO)]),
-  [ COMPILER_OPTIMIZATIONS=none ])
+	[disable compiler optimizations for better debugging (default is NO)]), 
+  [ AC_DISABLE_COMPILER_OPTIMIZATION ])
 ])
 dnl
 dnl AC_OPT_ASSERTIONS

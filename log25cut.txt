@@ -1,307 +1,0 @@
-25Cut
- added 1000000
- added 2000000
- added 3000000
- added 4000000
- added 5000000
- added 6000000
- added 7000000
- added 8000000
- added 9000000
- added 10000000
- added 11000000
- added 12000000
- added 13000000
- added 14000000
- added 15000000
- added 16000000
- added 17000000
- added 18000000
- added 19000000
- added 20000000
- added 21000000
- added 22000000
- added 23000000
- added 24000000
- added 25000000
- added 26000000
- added 27000000
- added 28000000
- added 29000000
- added 30000000
- added 31000000
- added 32000000
- added 33000000
- added 34000000
- added 35000000
- added 36000000
- added 37000000
- added 38000000
- added 39000000
- added 40000000
- added 41000000
- added 42000000
- added 43000000
- added 44000000
- added 45000000
- added 46000000
- added 47000000
- added 48000000
- added 49000000
- added 50000000
- added 51000000
- added 52000000
- added 53000000
- added 54000000
- added 55000000
- added 56000000
- added 57000000
- added 58000000
- added 59000000
- added 60000000
- added 61000000
- added 62000000
- added 63000000
- added 64000000
- added 65000000
- added 66000000
- added 67000000
- added 68000000
- added 69000000
- added 70000000
- added 71000000
- added 72000000
- added 73000000
- added 74000000
- added 75000000
- added 76000000
- added 77000000
- added 78000000
- added 79000000
- added 80000000
- added 81000000
- added 82000000
- added 83000000
- added 84000000
- added 85000000
- added 86000000
- added 87000000
- added 88000000
- added 89000000
- added 90000000
- added 91000000
- added 92000000
- added 93000000
- added 94000000
- added 95000000
- added 96000000
- added 97000000
- added 98000000
- added 99000000
- added 100000000
- added 101000000
- added 102000000
- added 103000000
- added 104000000
- added 105000000
- added 106000000
- added 107000000
- added 108000000
- added 109000000
- added 110000000
- added 111000000
- added 112000000
- added 113000000
- added 114000000
- added 115000000
- added 116000000
- added 117000000
- added 118000000
- added 119000000
- added 120000000
- added 121000000
- added 122000000
- added 123000000
- added 124000000
- added 125000000
- added 126000000
- added 127000000
- added 128000000
- added 129000000
- added 130000000
- added 131000000
- added 132000000
- added 133000000
- added 134000000
- added 135000000
- added 136000000
- added 137000000
- added 138000000
- added 139000000
- added 140000000
- added 141000000
- added 142000000
- added 143000000
- added 144000000
- added 145000000
- added 146000000
- added 147000000
- added 148000000
- added 149000000
- added 150000000
- added 151000000
- added 152000000
- added 153000000
- added 154000000
- added 155000000
- added 156000000
- added 157000000
- added 158000000
- added 159000000
- added 160000000
- added 161000000
- added 162000000
- added 163000000
- added 164000000
- added 165000000
- added 166000000
- added 167000000
- added 168000000
- added 169000000
- added 170000000
- added 171000000
- added 172000000
- added 173000000
- added 174000000
- added 175000000
- added 176000000
- added 177000000
- added 178000000
- added 179000000
- added 180000000
- added 181000000
- added 182000000
- added 183000000
- added 184000000
- added 185000000
- added 186000000
- added 187000000
- added 188000000
- added 189000000
- added 190000000
- added 191000000
- added 192000000
- added 193000000
- added 194000000
- added 195000000
- added 196000000
- added 197000000
- added 198000000
- added 199000000
- added 200000000
- added 201000000
- added 202000000
- added 203000000
- added 204000000
- added 205000000
- added 206000000
- added 207000000
- added 208000000
- added 209000000
- added 210000000
- added 211000000
- added 212000000
- added 213000000
- added 214000000
- added 215000000
- added 216000000
- added 217000000
- added 218000000
- added 219000000
- added 220000000
- added 221000000
- added 222000000
- added 223000000
- added 224000000
- added 225000000
- added 226000000
- added 227000000
- added 228000000
- added 229000000
- added 230000000
- added 231000000
- added 232000000
- added 233000000
- added 234000000
- added 235000000
- added 236000000
- added 237000000
- added 238000000
- added 239000000
- added 240000000
- added 241000000
- added 242000000
- added 243000000
- added 244000000
- added 245000000
- added 246000000
- added 247000000
- added 248000000
- added 249000000
- added 250000000
- added 251000000
- added 252000000
- added 253000000
- added 254000000
- added 255000000
- added 256000000
- added 257000000
- added 258000000
- added 259000000
- added 260000000
- added 261000000
- added 262000000
- added 263000000
- added 264000000
- added 265000000
- added 266000000
- added 267000000
- added 268000000
- added 269000000
- added 270000000
- added 271000000
- added 272000000
- added 273000000
- added 274000000
- added 275000000
- added 276000000
- added 277000000
- added 278000000
- added 279000000
- added 280000000
- added 281000000
- added 282000000
- added 283000000
- added 284000000
- added 285000000
- added 286000000
- added 287000000
- added 288000000
- added 289000000
- added 290000000
- added 291000000
- added 292000000
- added 293000000
- added 294000000
- added 295000000
- added 296000000
- added 297000000
- added 298000000
- added 299000000
- added 300000000
- 300031453/300031453
-Memory: 14785740992
-Number of nodes: 462054406
-Number of iff: 0
-Total building time (us): 1.84788e+09
-Average matching cycles (1000): 7.13585Average matching cycles (2024): 6.38961Average matching cycles (3048): 5.82677Average matching cycles (4072): 5.59354Average matching cycles (5096): 5.49554Average matching cycles (6120): 5.38052Average matching cycles (7144): 5.29263Average matching cycles (8168): 5.28034Average matching cycles (9192): 5.22881Average matching cycles (10216): 5.29146Average matching cycles (11240): 5.46523Average matching cycles (12264): 5.59641Average matching cycles (13288): 5.69034Average matching cycles (14312): 5.7601Average matching cycles (15336): 5.86053Average matching cycles (16360): 5.93762Average matching cycles (17384): 5.98833Average matching cycles (18408): 6.06286Average matching cycles (19432): 6.1018Average matching cycles (20456): 6.30682Average matching cycles (21480): 6.51873Average matching cycles (22504): 6.76276Average matching cycles (23528): 6.93344Average matching cycles (24552): 7.12308Average matching cycles (25576): 7.33756Average matching cycles (26600): 7.53153Average matching cycles (27624): 7.68964Average matching cycles (28648): 7.83387Average matching cycles (29672): 7.98175Average matching cycles (30696): 8.19319Average matching cycles (31720): 8.41788Average matching cycles (32744): 8.64347Average matching cycles (33768): 8.84959Average matching cycles (34792): 9.03479Average matching cycles (35816): 9.29307Average matching cycles (36840): 9.48353Average matching cycles (37864): 9.64968Average matching cycles (38888): 9.77363Average matching cycles (39912): 9.88019Average matching cycles (40936): 10.0733Average matching cycles (41960): 10.3007Average matching cycles (42984): 10.5059Average matching cycles (44008): 10.6982Average matching cycles (45032): 10.8259Average matching cycles (46056): 10.9789Average matching cycles (47080): 11.1115Average matching cycles (48104): 11.2474Average matching cycles (49128): 11.3745Average matching cycles (50152): 11.5523Average matching cycles (51176): 11.8429Average matching cycles (52200): 12.1387Average matching cycles (53224): 12.4239Average matching cycles (54248): 12.6487Average matching cycles (55272): 12.8548Average matching cycles (56296): 13.02Average matching cycles (57320): 13.2547Average matching cycles (58344): 13.4261Average matching cycles (59368): 13.6031Average matching cycles (60392): 13.804Average matching cycles (61416): 14.0906Average matching cycles (62440): 14.303Average matching cycles (63464): 14.6016Average matching cycles (64488): 14.818Average matching cycles (65512): 15.0791Average matching cycles (66536): 15.3511Average matching cycles (67560): 15.62Average matching cycles (68584): 15.842Average matching cycles (69608): 16.0369Average matching cycles (70632): 16.282Average matching cycles (71656): 16.6155Average matching cycles (72680): 16.9856Average matching cycles (73704): 17.3233Average matching cycles (74728): 17.6168Average matching cycles (75752): 17.9157Average matching cycles (76776): 18.1565Average matching cycles (77800): 18.4694Average matching cycles (78824): 18.7328Average matching cycles (79848): 18.9644Average matching cycles (80872): 19.2599Average matching cycles (81896): 19.595Average matching cycles (82920): 19.973Average matching cycles (83944): 20.3504Average matching cycles (84968): 20.7324Average matching cycles (85992): 21.0472Average matching cycles (87016): 21.3359Average matching cycles (88040): 21.6529Average matching cycles (89064): 21.9201Average matching cycles (90088): 22.2602Average matching cycles (91112): 22.6746Average matching cycles (92136): 23.0421Average matching cycles (93160): 23.4705Average matching cycles (94184): 23.8243Average matching cycles (95208): 24.2034Average matching cycles (96232): 24.6506Average matching cycles (97256): 25.0894Average matching cycles (98280): 25.4379Average matching cycles (99304): 25.8053Average matching cycles (100328): 26.2035Average matching cycles (101352): 26.7003Average matching cycles (102376): 27.1994Average matching cycles (103400): 27.6514Average matching cycles (104424): 28.1524Average matching cycles (105448): 28.6819Average matching cycles (106472): 29.1009Average matching cycles (107496): 29.5378Average matching cycles (108520): 29.9442Average matching cycles (109544): 30.3834Average matching cycles (110568): 30.8376Average matching cycles (111592): 31.358Average matching cycles (112616): 31.8661Average matching cycles (113640): 32.386Average matching cycles (114664): 32.9258Average matching cycles (115688): 33.3676Average matching cycles (116712): 33.9046Average matching cycles (117736): 34.465Average matching cycles (118760): 34.9718Average matching cycles (119784): 35.4947Average matching cycles (120808): 36.0487Average matching cycles (121832): 36.6931Average matching cycles (122856): 37.3229Average matching cycles (123880): 37.8632Average matching cycles (124904): 38.4138Average matching cycles (125928): 38.9778Average matching cycles (126952): 39.59Average matching cycles (127976): 40.0766Average matching cycles (129000): 40.6798Average matching cycles (130024): 41.21Average matching cycles (131048): 41.9069Average matching cycles (132072): 42.5836Average matching cycles (133096): 43.2989Average matching cycles (134120): 43.9543Average matching cycles (135144): 44.4843Average matching cycles (136168): 45.0687Average matching cycles (137192): 45.7835Average matching cycles (138216): 46.5177Average matching cycles (139240): 47.1359Average matching cycles (140264): 47.7819Average matching cycles (141288): 48.5054Average matching cycles (142312): 49.3332Average matching cycles (143336): 50.0446Average matching cycles (144360): 50.7767Average matching cycles (145384): 51.4989Average matching cycles (146408): 52.1825Average matching cycles (147432): 52.8994Average matching cycles (148456): 53.6037Average matching cycles (149480): 54.3127Average matching cycles (150504): 55.1655Average matching cycles (151528): 56.1225Average matching cycles (152552): 57.0922Average matching cycles (153576): 57.8385Average matching cycles (154600): 58.7076Average matching cycles (155624): 59.6764Average matching cycles (156648): 60.513Average matching cycles (157672): 61.3407Average matching cycles (158696): 62.0509Average matching cycles (159720): 62.7868Average matching cycles (160744): 63.7835Average matching cycles (161768): 64.767Average matching cycles (162792): 65.691Average matching cycles (163816): 66.4731Average matching cycles (164840): 67.4018Average matching cycles (165864): 68.42Average matching cycles (166888): 69.3582Average matching cycles (167912): 70.1959Average matching cycles (168936): 71.0551Average matching cycles (169960): 71.9448Average matching cycles (170984): 72.9824Average matching cycles (172008): 73.9834Average matching cycles (173032): 75.0336Average matching cycles (174056): 76.095Average matching cycles (175080): 77.1339Average matching cycles (176104): 78.1679Average matching cycles (177128): 79.3024Average matching cycles (178152): 80.3313Average matching cycles (179176): 81.3765Average matching cycles (180200): 82.4277Average matching cycles (181224): 83.6687Average matching cycles (182248): 84.7196Average matching cycles (183272): 85.9077Average matching cycles (184296): 87.035Average matching cycles (185320): 88.049Average matching cycles (186344): 89.108Average matching cycles (187368): 90.2059Average matching cycles (188392): 91.2617Average matching cycles (189416): 92.2686Average matching cycles (190440): 93.5131Average matching cycles (191464): 94.8118Average matching cycles (192488): 96.0522Average matching cycles (193512): 97.1759Average matching cycles (194536): 98.3371Average matching cycles (195560): 99.4208Average matching cycles (196584): 100.662Average matching cycles (197608): 101.751Average matching cycles (198632): 102.88Average matching cycles (199656): 104.077Average matching cycles (200680): 105.642Average matching cycles (201704): 107.027Average matching cycles (202728): 108.268Average matching cycles (203752): 109.683Average matching cycles (204776): 110.983Average matching cycles (205800): 112.321Average matching cycles (206824): 113.701Average matching cycles (207848): 115.086Average matching cycles (208872): 116.297Average matching cycles (209896): 117.48Average matching cycles (210920): 118.972Average matching cycles (211944): 120.551Average matching cycles (212968): 122.059Average matching cycles (213992): 123.626Average matching cycles (215016): 125.252Average matching cycles (216040): 126.74Average matching cycles (217064): 128.027Average matching cycles (218088): 129.341Average matching cycles (219112): 130.803Average matching cycles (220136): 132.369Average matching cycles (221160): 134.125Average matching cycles (222184): 135.771Average matching cycles (223208): 137.712Average matching cycles (224232): 139.529Average matching cycles (225256): 141.305Average matching cycles (226280): 142.812Average matching cycles (227304): 144.6Average matching cycles (228328): 146.269Average matching cycles (229352): 147.752Average matching cycles (230376): 149.42Average matching cycles (231400): 151.433Average matching cycles (232424): 153.16Average matching cycles (233448): 154.884Average matching cycles (234472): 156.895Average matching cycles (235496): 158.713Average matching cycles (236520): 160.498Average matching cycles (237544): 162.245Average matching cycles (238568): 163.869Average matching cycles (239592): 165.24Average matching cycles (240616): 167.177Average matching cycles (241640): 169.214Average matching cycles (242664): 171.22Average matching cycles (243688): 173.375Average matching cycles (244712): 175.215Average matching cycles (245736): 177.167Average matching cycles (246760): 179.345Average matching cycles (247784): 181.036Average matching cycles (248808): 183.101Average matching cycles (249832): 184.998Average matching cycles (250856): 186.842Average matching cycles (251880): 189.031Average matching cycles (252904): 191.334Average matching cycles (253928): 193.511Average matching cycles (254952): 195.49Average matching cycles (255976): 197.644Average matching cycles (257000): 199.766Average matching cycles (258024): 202.089Average matching cycles (259048): 204.253Average matching cycles (260072): 206.291Average matching cycles (261096): 208.835Average matching cycles (262120): 211.25Average matching cycles (263144): 213.618Average matching cycles (264168): 215.825Average matching cycles (265192): 218.425Average matching cycles (266216): 220.647Average matching cycles (267240): 223.026Average matching cycles (268264): 225.675Average matching cycles (269288): 228.093Average matching cycles (270312): 230.389Average matching cycles (271336): 233.33Average matching cycles (272360): 235.8Average matching cycles (273384): 238.387Average matching cycles (274408): 240.81Average matching cycles (275432): 243.453Average matching cycles (276456): 245.872Average matching cycles (277480): 248.339Average matching cycles (278504): 250.633Average matching cycles (279528): 253.175Average matching cycles (280552): 255.827Average matching cycles (281576): 258.449Average matching cycles (282600): 261.082Average matching cycles (283624): 263.761Average matching cycles (284648): 266.649Average matching cycles (285672): 269.144Average matching cycles (286696): 271.707Average matching cycles (287720): 274.53Average matching cycles (288744): 276.835Average matching cycles (289768): 279.498Average matching cycles (290792): 282.319Average matching cycles (291816): 285.764Average matching cycles (292840): 288.719Average matching cycles (293864): 291.427Average matching cycles (294888): 294.602Average matching cycles (295912): 297.325Average matching cycles (296936): 300.304Average matching cycles (297960): 303.037Average matching cycles (298984): 305.653Average matching cycles (300008): 308.404Average matching cycles (301032): 311.833Average matching cycles (302056): 314.925Average matching cycles (303080): 317.969Average matching cycles (304104): 321.159Average matching cycles (305128): 324.31Average matching cycles (306152): 327.393Average matching cycles (307176): 330.477Average matching cycles (308200): 333.505Average matching cycles (309224): 336.672Average matching cycles (310248): 339.854Average matching cycles (311272): 343.043Average matching cycles (312296): 346.63Average matching cycles (313320): 350.031Average matching cycles (314344): 353.407Average matching cycles (315368): 356.567Average matching cycles (316392): 359.881Average matching cycles (317416): 363.381Average matching cycles (318440): 366.469Average matching cycles (319464): 369.915Average matching cycles (320488): 373.458Average matching cycles (321512): 377.473Average matching cycles (322536): 380.898Average matching cycles (323560): 384.365Average matching cycles (324584): 387.968Average matching cycles (325608): 392.281Average matching cycles (326632): 395.684Average matching cycles (327656): 398.789Average matching cycles (328680): 402.078Average matching cycles (329704): 405.628Average matching cycles (330728): 409.214Average matching cycles (331752): 412.946Average matching cycles (332776): 416.781Average matching cycles (333800): 420.529Average matching cycles (334824): 424.195Average matching cycles (335848): 427.806Average matching cycles (336872): 431.805Average matching cycles (337896): 435.642Average matching cycles (338920): 439.246Average matching cycles (339944): 443.078Average matching cycles (340968): 447.432Average matching cycles (341992): 451.496Average matching cycles (343016): 455.408Average matching cycles (344040): 459.458Average matching cycles (345064): 463.563Average matching cycles (346088): 467.279Average matching cycles (347112): 471.329Average matching cycles (348136): 475.021Average matching cycles (349160): 478.823Average matching cycles (350184): 482.651Average matching cycles (351208): 486.866Average matching cycles (352232): 491.122Average matching cycles (353256): 495.489Average matching cycles (354280): 499.713Average matching cycles (355304): 503.751Average matching cycles (356328): 508.132Average matching cycles (357352): 511.943Average matching cycles (358376): 515.941Average matching cycles (359400): 520.153Average matching cycles (360424): 524.399Average matching cycles (361448): 528.952Average matching cycles (362472): 533.871Average matching cycles (363496): 538.596Average matching cycles (364520): 543.022Average matching cycles (365544): 547.465Average matching cycles (366568): 551.874Average matching cycles (367592): 556.242Average matching cycles (368616): 560.631Average matching cycles (369640): 565.606Average matching cycles (370664): 570.086Average matching cycles (371688): 574.973Average matching cycles (372712): 579.61Average matching cycles (373736): 583.911

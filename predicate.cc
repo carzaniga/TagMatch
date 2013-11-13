@@ -2,8 +2,6 @@
 #include "config.h"
 #endif
 
-#define NDEBUG
-
 #include <cstdint>
 #include <cstddef>
 #include <cstdlib>

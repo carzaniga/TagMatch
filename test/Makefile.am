@@ -24,14 +24,8 @@
 
 AM_CPPFLAGS = -I$(top_srcdir)
 
-if DISABLE_COMPILER_OPTIMIZATIONS
-AM_CFLAGS = -Wall -O0 @CFLAGS_prof@
-AM_CXXFLAGS = -std=c++0x -Wall -O0 @CXXFLAGS_prof@
-else
-AM_CFLAGS = -Wall -O2 @CFLAGS_prof@
-AM_CXXFLAGS = -std=c++0x -Wall -O2 @CXXFLAGS_prof@
-endif
-
+AM_CFLAGS = @CFLAGS_prof@
+AM_CXXFLAGS = @CXXFLAGS_prof@
 AM_LDFLAGS = @LDFLAGS_prof@
 LIBS =  @LIBS@ @LIBS_prof@ 
 

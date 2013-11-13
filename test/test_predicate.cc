@@ -26,7 +26,7 @@
 
 #include "predicate.hh"
 
-#define BOOST_TEST_MODULE bv192 test
+#define BOOST_TEST_MODULE predicate
 #define BOOST_TEST_DYN_LINK 1
 
 #include <boost/test/unit_test.hpp>
@@ -327,6 +327,31 @@ BOOST_AUTO_TEST_CASE( supersets ) {
 
 		BOOST_CHECK(matching_nodes.empty());
 	}
+}
+
+BOOST_AUTO_TEST_CASE( deepest_trie ) {
+	predicate P;
+
+	filter_t f;			// all-zero
+
+	predicate::node * nodes[filter_t::WIDTH];
+
+	for(filter_t::pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		f.set(i);
+		nodes[i] = P.add(f, 1, i);
+	}
+
+	std::set<const predicate::node *> matching_nodes;
+	node_set_filter_const_handler handler(matching_nodes);
+
+	P.find_subsets_of(f, handler);
+
+	for(filter_t::pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		BOOST_CHECK(matching_nodes.count(nodes[i]) == 1);
+		matching_nodes.erase(nodes[i]);
+	}
+
+	BOOST_CHECK(matching_nodes.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
