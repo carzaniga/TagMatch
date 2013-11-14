@@ -18,6 +18,7 @@
 #endif
 
 #include "bv192.hh"
+#include "params.h"
 
 typedef bv192 filter_t;
 
@@ -26,6 +27,19 @@ typedef uint16_t interface_t;
 
 /** tree identifier */ 
 typedef uint16_t tree_t;
+
+/** set of special tags that can be used in the matching algorithm */
+typedef struct tags{
+    filter_t yt;
+    filter_t tw;
+    filter_t blog;
+    filter_t del;
+    filter_t bt;
+    
+    tags(std::string const& y, std::string const& t, std::string const& bl,
+         std::string const& d, std::string const& b): yt(y), tw(t), blog(bl), del(d), bt(b) {}
+
+} tags_t;
 
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -59,12 +73,17 @@ class filter_handler;
 class filter_const_handler;
 class match_handler;
 
-class predicate {
+class predicate {   
+
 public:
-    predicate(): root(), filter_count(0) {};
+    predicate(): root(), filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){};
     ~predicate() { destroy(); }
 
 	class node;
+
+    /** sets the tree mask for the filter x
+	 */ 
+	void set_mask(const filter_t & x, tree_t tree);
 
 	/** adds a filter, without adding anything to it
 	 */ 
@@ -93,6 +112,7 @@ public:
 	 */
 	void find_subsets_of(const filter_t & x, filter_const_handler & h) const;
 	void find_supersets_of(const filter_t & x, filter_const_handler & h) const;
+    void find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const;
 	void find_subsets_of(const filter_t & x, filter_handler & h);
 	void find_supersets_of(const filter_t & x, filter_handler & h);
 
@@ -112,10 +132,12 @@ public:
 
 		node * left;
 		node * right;
-
+        
 	public:
 		const filter_t key;
 
+        unsigned char tree_mask;
+        
 	private:
 		const filter_t::pos_t pos;
 
@@ -163,18 +185,31 @@ public:
 			return ti_begin() + pairs_count;
 		}
 
+        void add_tree_to_mask(tree_t t){
+             tree_mask |= 1 << t;
+        }
+
+        void init_tree_mask(node * n){
+            tree_mask |= n->tree_mask;
+        }
+        
+        bool match_tree(tree_t t){
+            return tree_mask & (1 << t);
+        }
+        
+
 	private:
 		// create a stand-alone NULL node, this constructor is used
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: left(this), right(this), key(), pos(filter_t::NULL_POSITION), 
+			: left(this), right(this), key(), tree_mask(0), pos(filter_t::NULL_POSITION), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node
 		//
 		node(filter_t::pos_t p, const filter_t & k, node * next) 
-			: key(k), pos(p), pairs_count(0) {
+			: key(k), tree_mask(0), pos(p), pairs_count(0) {
 			if (k[p]) {
 				left = next;
 				right = this;
@@ -202,6 +237,7 @@ public:
 
     node root;
 	unsigned long filter_count;
+    tags_t t;  
 
     void destroy();
 };

@@ -105,20 +105,53 @@ bool tree_matcher::handle_filter(const filter_t & filter, const predicate::node 
 	return false;
 }
 
+#define TREE_MASK 1
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	//
 	// this is the modular matching function that uses the above match
 	// handler through the modular find_subset_of function
 	//
+#if TREE_MASK
+    tree_matcher matcher(t,h);
+    unsigned long long A = rdtsc();
+	find_subsets_of(x, t, matcher);
+    unsigned long long B = rdtsc()-A;
+#else
 	tree_matcher matcher(t,h);
 	find_subsets_of(x, matcher);
+#endif
 }
 
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
-	node * n = add(x);
+   	node * n = add(x);
+#if TREE_MASK
+    set_mask(x,t);       
+#endif
 	n->add_pair(t, i);
 	return n;
 }
+
+void predicate::set_mask(const filter_t & x, tree_t t) {
+	node * prev = &root;
+	node * curr = root.left;
+
+	while(prev->pos > curr->pos) {
+		prev->add_tree_to_mask(t);
+        if(prev->left!=&root && prev->left->pos < prev->pos)
+            prev->init_tree_mask(prev->left);
+        if(prev->right!=&root && prev->right->pos < prev->pos)
+            prev->init_tree_mask(prev->right);
+        prev = curr;
+        curr = x[curr->pos] ? curr->right : curr->left;
+	}
+    curr->add_tree_to_mask(t);
+    if(curr->left!=&root && curr->left->pos < curr->pos)
+        curr->init_tree_mask(curr->left);
+    if(curr->right!=&root && curr->right->pos < curr->pos)
+        curr->init_tree_mask(curr->right);
+}
+
+
 
 predicate::node * predicate::add(const filter_t & x) {
 	node * prev = &root;
@@ -172,6 +205,73 @@ predicate::node * predicate::find(const filter_t & x) {
 	return (x == curr->key) ? curr : 0;
 }
 
+
+static __inline__ unsigned long long rdtsc(void)
+{
+  unsigned hi, lo;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+
+void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const {
+	//
+	//  for datailt see the next implementaiotn of find_subset_of()
+    // 
+	const node * S[filter_t::WIDTH];
+	unsigned int head = 0;
+	
+	if (root.pos > root.left->pos)
+		S[head++] = root.left;
+
+    //
+    // in this implementation we also use the cut 
+    // that exploits the application tags
+    //
+    
+    filter_t app;
+    
+    if(predicate::t.yt.subset_of(x))
+        app=predicate::t.yt;
+    else if(predicate::t.tw.subset_of(x))
+        app=predicate::t.tw;
+    else if(predicate::t.blog.subset_of(x))
+        app=predicate::t.blog;
+    else if(predicate::t.del.subset_of(x))
+        app=predicate::t.del;
+    else if(predicate::t.bt.subset_of(x))
+        app=predicate::t.bt;
+    else
+        return;
+
+	while(head != 0) {
+		assert(head <= filter_t::WIDTH);
+		const node * n = S[--head];		// for each visited node n...
+		
+        if (n->key.suffix_subset_of(x, n->pos)) 
+			if (h.handle_filter(n->key, *n))
+				return;
+
+		if (n->pos > n->left->pos){
+           if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
+                //app.prefix_subset_of(n->left->key, n->left->pos + 1) && 
+                app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1) &&
+                n->left->match_tree(t))  
+				S[head++] = n->left;
+ 
+        }
+
+		if (n->pos > n->right->pos && x[n->pos]){ 
+            if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
+                //app.prefix_subset_of(n->right->key, n->right->pos + 1) &&
+                app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1) && 
+                n->right->match_tree(t)) 
+				S[head++] = n->right;
+        }
+	}
+}
+
+
+
 void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) const {
 	//
 	// this is a non-recursive (i.e., iterative) exploration of the
@@ -188,6 +288,47 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	//
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
+#define APP 0
+#if APP
+    // we need to chck wich application tag is conteined in the message
+    // to do this we can simpli do a subset check between the message and 
+    // the application tags in predicate::t. if no tag is in the
+    // message we can discard it
+    
+    filter_t app;
+    /*int count =0;
+    if(t.yt.subset_of(x))
+        count++;
+    if(t.tw.subset_of(x))
+        count++;
+    if(t.blog.subset_of(x))
+        count++;
+    if(t.del.subset_of(x))
+        count++;
+    if(t.bt.subset_of(x))
+        count++;
+
+    if(count>1)
+        std::cout << "msg with multiple application tags" << std::endl;
+    else if(count==0)
+        std::cout << "msg with no application tag" << std::endl;*/
+
+    
+    if(t.yt.subset_of(x))
+        app=t.yt;
+    else if(t.tw.subset_of(x))
+        app=t.tw;
+    else if(t.blog.subset_of(x))
+        app=t.blog;
+    else if(t.del.subset_of(x))
+        app=t.del;
+    else if(t.bt.subset_of(x))
+        app=t.bt;
+    else
+        return;
+#endif
+
+
 	//
 	// INVARIANT: root.left->pos is the position of the leftmost 1-bit
 	// in root.left.  Therefore root.left is always a subset of the
@@ -205,15 +346,34 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 			if (h.handle_filter(n->key, *n))
 				return;
 
-		if (n->pos > n->left->pos)
+		if (n->pos > n->left->pos){
+#if APP
+           if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
+                //app.prefix_subset_of(n->left->key, n->left->pos + 1))  
+                app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
+				S[head++] = n->left;
+ 
+            
+#else
 			// push n->left on the stack only when the bits of
 			// n->left->key in positions between n->pos and
 			// n->left->pos, excluding n->left->pos, are a subset of x
-			// 
+			// i
 			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
 				S[head++] = n->left;
+#endif
+        }
 
-		if (n->pos > n->right->pos && x[n->pos]) 
+		if (n->pos > n->right->pos && x[n->pos]){ 
+
+#if APP
+            if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
+                //app.prefix_subset_of(n->right->key, n->right->pos + 1)) 
+                app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
+				S[head++] = n->right;
+
+
+#else
 			// push n->right on the stack only when the bits of
 			// n->right->key in positions between n->pos and
 			// n->right->pos, excluding n->right->pos, are a subset of
@@ -221,6 +381,8 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 			// 
 			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
 				S[head++] = n->right;
+#endif
+        }
 	}
 }
 
@@ -269,7 +431,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 		// considered only if x's most significant bit it to the right
 		// (i.e., lower position) of root.left->pos.
 		// 
-		&& x.most_significant_one_pos() >= root.left->pos)
+		&& x.most_significant_one_pos() <= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {
@@ -310,7 +472,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	unsigned int head = 0;
 	
 	if (root.pos > root.left->pos
-		&& x.most_significant_one_pos() >= root.left->pos)
+		&& x.most_significant_one_pos() <= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {

@@ -88,6 +88,7 @@ public:
 				|| (bv[1] == rhs.bv[1] && bv[0] < rhs.bv[0]);
 	}
 
+   
 	bool prefix_subset_of(const bv192 & x, pos_t pp, pos_t p) const {
 		//
 		// Check that *this is a subset of x only up to position pos,
@@ -212,8 +213,26 @@ public:
 	}
 #endif
 
-	void set(pos_t pos) {
-		bv[pos/64] |= (1UL << (pos % 63));
+	pos_t next_one(pos_t pos){
+        if(pos>=192)
+            return 255;
+        if (at(pos))
+            return pos;
+        else{
+            pos--;
+            return next_one(pos);
+        }
+    }
+
+    void set_range(pos_t start, pos_t end){
+        for(pos_t i=start;i>=end;i--){
+            std::cout<< (int) i << std::endl;
+            set(i); 
+        }
+    }
+        
+    void set(pos_t pos) {
+		bv[pos/64] |= (1UL << (pos % 64));
 	}
 
 	bool at(pos_t pos) const {
