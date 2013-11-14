@@ -30,7 +30,7 @@
 
 #include <vector>
 
-#include "timing.h"
+#include "timing.hh"
 
 using namespace std;
 
