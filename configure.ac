@@ -24,6 +24,7 @@ AX_CHECK_COMPILE_FLAG([-Wall], [
 ])
 AC_OPT_DEBUGGING
 AC_OPT_PROFILING
+AC_OPT_TIMERS
 #
 # Boost unit testing framework
 #

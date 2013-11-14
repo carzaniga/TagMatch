@@ -6,6 +6,7 @@
 #include <string>
 
 #include "predicate.hh"
+#include "timing.hh"
 
 class filter_printer : public filter_const_handler {
 public:
@@ -78,15 +79,28 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
 
-	//string line;
-	//std::getline (std::cin,name);
-	predicate::node * temp(0);
+<<<<<<< HEAD
+=======
+#ifdef WITH_TIMERS
+	Timer add_timer, match_timer;
+#endif
+
+>>>>>>> d36b59a0d2153101387e7a6738ab65cb5be0cdca
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-			temp=P.add(filter,t,i);
+<<<<<<< HEAD
+=======
+#ifdef WITH_TIMERS
+			add_timer.start();
+#endif
+			P.add(filter,t,i);
+#ifdef WITH_TIMERS
+			add_timer.stop();
+#endif
+>>>>>>> d36b59a0d2153101387e7a6738ab65cb5be0cdca
 			++count;
 			while(std::cin.peek()!='\n'){
 				std::cin.putback('\n');
@@ -102,17 +116,35 @@ int main(int argc, char *argv[]) {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			add_timer.start();
+#endif
 			P.add(filter,t,i);
+#ifdef WITH_TIMERS
+			add_timer.stop();
+#endif
 			++count;
 		} else if (command == "?") {
 			filter_t filter(filter_string);
 			std::cout << "==== " << filter << std::endl;
 			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
 			P.match(filter, t, match_output);
+#ifdef WITH_TIMERS
+			match_timer.stop();
+#endif
 		} else if (command == "!") {
 			filter_t filter(filter_string);
 			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
 			P.match(filter, t, match_count);
+#ifdef WITH_TIMERS
+			match_timer.stop();
+#endif
 			if (query_count==0)
 				std::cout << std::endl;
 			++query_count;
@@ -130,8 +162,12 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	std::cout << std::endl << "Final statistics:" << std::endl
-			  << "N=" << count << "  Unique=" << P.size()  << std::endl
+			  << "N=" << count << "  Unique=" << P.size() << std::endl
 			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
+#ifdef WITH_TIMERS
+	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
+			  << "Tm (us)=" << (match_timer.read_microseconds() / query_count) << std::endl;
+#endif
 
 	return 0;
 }
