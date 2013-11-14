@@ -79,20 +79,15 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
 
-<<<<<<< HEAD
-=======
 #ifdef WITH_TIMERS
 	Timer add_timer, match_timer;
 #endif
 
->>>>>>> d36b59a0d2153101387e7a6738ab65cb5be0cdca
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-<<<<<<< HEAD
-=======
 #ifdef WITH_TIMERS
 			add_timer.start();
 #endif
@@ -100,14 +95,13 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			add_timer.stop();
 #endif
->>>>>>> d36b59a0d2153101387e7a6738ab65cb5be0cdca
 			++count;
 			while(std::cin.peek()!='\n'){
 				std::cin.putback('\n');
 				std::cin >>  tree >> interface;
 				interface_t i = atoi(interface.c_str());
 				tree_t t = atoi(tree.c_str());
-				temp->add_pair(t,i);
+				//insert here. 			
 			}
 			if (wheel_of_death(count, 10))
 				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
