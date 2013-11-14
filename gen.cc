@@ -56,7 +56,7 @@ int main(int argc, char * argv[]) {
 
     std::bitset<M> f;
     int bsize;
-    for(int i = 0; i < N; ++i) {
+    for(unsigned int i = 0; i < N; ++i) {
 	f.reset();
 	bsize = random_fsize(generator) * k;
 	for(int j = 0; j < bsize; ++j)
@@ -121,7 +121,7 @@ int main(int argc, char * argv[]) {
 	std::cout << command << ' ' << tree_id << ' ' << if_id << ' ';
 #endif
 	for(int j = 0; j < M; ++j)
-	    std::cout << f[j] ? '1' : '0';
+	    std::cout << (f[j] ? '1' : '0');
 	std::cout << std::endl;
     }
 }

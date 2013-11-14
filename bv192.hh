@@ -79,7 +79,7 @@ public:
 	}
 
 	bool operator == (const bv192 &rhs) const {
-		return (bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] &&	bv[2] == rhs.bv[2]) ;
+		return bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] && bv[2] == rhs.bv[2];
 	}
 
 	bool operator < (const bv192 &rhs) const {
@@ -213,6 +213,7 @@ public:
 	}
 #endif
 
+
 	pos_t next_one(pos_t pos){
         if(pos>=192)
             return 255;
@@ -231,7 +232,8 @@ public:
         }
     }
         
-    void set(pos_t pos) {
+	void set(pos_t pos) 
+
 		bv[pos/64] |= (1UL << (pos % 64));
 	}
 
