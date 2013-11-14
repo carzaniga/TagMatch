@@ -232,8 +232,7 @@ public:
         }
     }
         
-	void set(pos_t pos) 
-
+	void set(pos_t pos) {
 		bv[pos/64] |= (1UL << (pos % 64));
 	}
 

@@ -111,9 +111,7 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	//
 #if TREE_MASK
     tree_matcher matcher(t,h);
-    unsigned long long A = rdtsc();
-	find_subsets_of(x, t, matcher);
-    unsigned long long B = rdtsc()-A;
+    find_subsets_of(x, t, matcher);
 #else
 	tree_matcher matcher(t,h);
 	find_subsets_of(x, matcher);
@@ -192,13 +190,6 @@ predicate::node * predicate::find(const filter_t & x) const {
 	return (x == curr->key) ? curr : 0;
 }
 
-
-static __inline__ unsigned long long rdtsc(void)
-{
-  unsigned hi, lo;
-  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
-}
 
 void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const {
 	//
