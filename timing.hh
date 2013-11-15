@@ -170,6 +170,7 @@ public:
 			total.tv_nsec += (t2.tv_nsec - t1.tv_nsec);
 	    } else {
 			total.tv_nsec += (NSEC_PER_SEC - t1.tv_nsec + t2.tv_nsec);
+			total.tv_sec -= 1;
 	    }
 	    if (total.tv_nsec > NSEC_PER_SEC) {
 			total.tv_sec += 1;
@@ -183,6 +184,14 @@ public:
 	    nsec *= NSEC_PER_SEC;
 	    nsec += total.tv_nsec;
 	    return (double)nsec / 1000;
+	}
+
+	/** returns the total timer value in nanoseconds. */
+	unsigned long long read_nanoseconds () const {;
+	    unsigned long long nsec = total.tv_sec;
+	    nsec *= NSEC_PER_SEC;
+	    nsec += total.tv_nsec;
+	    return nsec;
 	}
 #endif // RDTSC vs. GETTIME
 };
