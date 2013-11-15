@@ -104,16 +104,31 @@ int main(int argc, char *argv[]) {
 				tree_t t = atoi(tree.c_str());
 				//insert here. 			
 			}
-			if (wheel_of_death(count, 10))
-				if (wheel_of_death(count, 12))
-					std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+			if (wheel_of_death(count, 12))
+				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 
 		} else if (command == "+q") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
 #ifdef WITH_TIMERS
+			add_timer.start();
+#endif
+			P.add(filter,t,i);
+#ifdef WITH_TIMERS
+			add_timer.stop();
+#endif
+			++count;
+		} else if (command == "!") {
+			filter_t filter(filter_string);
+			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
+			P.match(filter, t, match_count);
+#ifdef WITH_TIMERS
 			match_timer.stop();
+
 #endif
 			if (query_count==0)
 				std::cout << std::endl;
@@ -141,8 +156,8 @@ int main(int argc, char *argv[]) {
 			  << "N=" << count << "  Unique=" << P.size() << std::endl
 			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
 #ifdef WITH_TIMERS
-	std::cout << "Ta (us)="<< add_timer.read_nanoseconds()<<"\t"  << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tm (us)=" << match_timer.read_nanoseconds()<<"\t" <<(match_timer.read_microseconds() / query_count) << std::endl;
+	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
+			  << "Tm (ns)=" << (match_timer.read_microseconds() / query_count) << std::endl;
 #endif
 
 	return 0;

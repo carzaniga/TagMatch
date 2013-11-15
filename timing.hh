@@ -96,35 +96,6 @@ class Timer {
 	public:
 		explicit Timer() : cycles_total(0), cycles_start(0) {}
 
-		/** starts the timer.
-		 *  
-		 *  two or more consecutive start() calls are equivalent to the
-		 *  last call.
-		 */
-		inline void start() {
-			cycles_start = read_cpu_cycles();
-		}
-
-		/** stops the timer.
-		 *
-		 *  if the timer was previously started and not yet stopped, stops
-		 *  the timer and adds to the total timer value the elapsed
-		 *  interval between the most recent start() call and this stop()
-		 *  call.
-		 */
-		inline void stop() {
-			cycles_t stop = read_cpu_cycles();
-			if (cycles_start != 0) {
-				cycles_total += (stop - cycles_start);
-				cycles_start = 0;
-			}
-		}
-
-		/** resets the total timer to 0. */
-		void reset() {
-			cycles_total = 0;
-		}
-
 		/** returns the total timer value in microseconds. */
 		double read_microseconds () const;
 
