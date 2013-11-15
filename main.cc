@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) {
 	unsigned int query_count = 0;
 
 #ifdef WITH_TIMERS
+	unsigned long long prev_nsec = 0;
 	Timer add_timer, match_timer;
 #endif
 
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
-			if (wheel_of_death(count, 10))
+			if (wheel_of_death(count, 12))
 				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 
 		} else if (command == "+q") {
@@ -124,9 +125,17 @@ int main(int argc, char *argv[]) {
 			if (query_count==0)
 				std::cout << std::endl;
 			++query_count;
-			if (wheel_of_death(query_count, 7))
+			if (wheel_of_death(query_count, 7)) {
 				std::cout << " Q=" << query_count 
-						  << "  Match=" << match_count.get_match_count() << " \r";
+						  << "  Match=" << match_count.get_match_count() 
+#ifdef WITH_TIMERS
+						  << " Tm (ns)=" << ((match_timer.read_nanoseconds() - prev_nsec) >> 7)
+#endif
+						  << " \r";
+#ifdef WITH_TIMERS
+				prev_nsec = match_timer.read_nanoseconds();
+#endif
+			}
 		} else if (command == "!q") {
 			filter_t filter(filter_string);
 			tree_t t = atoi(tree.c_str());
@@ -153,7 +162,7 @@ int main(int argc, char *argv[]) {
 			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
 #ifdef WITH_TIMERS
 	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tm (us)=" << (match_timer.read_microseconds() / query_count) << std::endl;
+			  << "Tm (ns)=" << (match_timer.read_microseconds() / query_count) << std::endl;
 #endif
 
 	return 0;
