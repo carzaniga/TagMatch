@@ -96,8 +96,8 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
-			if (wheel_of_death(count, 10))
-				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+			//if (wheel_of_death(count, 10))
+			//	std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 
 		} else if (command == "+q") {
 			filter_t filter(filter_string);
@@ -132,12 +132,12 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			match_timer.stop();
 #endif
-			if (query_count==0)
-				std::cout << std::endl;
+			//if (query_count==0)
+			//	std::cout << std::endl;
 			++query_count;
-			if (wheel_of_death(query_count, 7))
-				std::cout << " Q=" << query_count 
-						  << "  Match=" << match_count.get_match_count() << " \r";
+			//if (wheel_of_death(query_count, 7))
+			//	std::cout << " Q=" << query_count 
+			//			  << "  Match=" << match_count.get_match_count() << " \r";
 		} else if (command == "sup") {
 			filter_t filter(filter_string);
 			P.find_supersets_of(filter, filter_output);
