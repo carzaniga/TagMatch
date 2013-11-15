@@ -118,17 +118,6 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
-		} else if (command == "?") {
-			filter_t filter(filter_string);
-			std::cout << "==== " << filter << std::endl;
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			match_timer.start();
-#endif
-			P.match(filter, t, match_output);
-#ifdef WITH_TIMERS
-			match_timer.stop();
-#endif
 		} else if (command == "!") {
 			filter_t filter(filter_string);
 			tree_t t = atoi(tree.c_str());
@@ -145,6 +134,17 @@ int main(int argc, char *argv[]) {
 			if (wheel_of_death(query_count, 7))
 				std::cout << " Q=" << query_count 
 						  << "  Match=" << match_count.get_match_count() << " \r";
+		} else if (command == "!q") {
+			filter_t filter(filter_string);
+			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
+			P.match(filter, t, match_count);
+#ifdef WITH_TIMERS
+			match_timer.stop();
+#endif
+			++query_count;
 		} else if (command == "sup") {
 			filter_t filter(filter_string);
 			P.find_supersets_of(filter, filter_output);
