@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) {
 	unsigned int query_count = 0;
 
 #ifdef WITH_TIMERS
+	unsigned long long prev_nsec = 0;
 	Timer add_timer, match_timer;
 #endif
 
@@ -104,63 +105,44 @@ int main(int argc, char *argv[]) {
 				//insert here. 			
 			}
 			if (wheel_of_death(count, 10))
-				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+				if (wheel_of_death(count, 12))
+					std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 
 		} else if (command == "+q") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
 #ifdef WITH_TIMERS
-			add_timer.start();
-#endif
-			P.add(filter,t,i);
-#ifdef WITH_TIMERS
-			add_timer.stop();
-#endif
-			++count;
-		} else if (command == "!") {
-			filter_t filter(filter_string);
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			match_timer.start();
-#endif
-			P.match(filter, t, match_count);
-#ifdef WITH_TIMERS
 			match_timer.stop();
 #endif
 			if (query_count==0)
 				std::cout << std::endl;
 			++query_count;
-			if (wheel_of_death(query_count, 7))
+			if (wheel_of_death(query_count, 7)) {
 				std::cout << " Q=" << query_count 
-						  << "  Match=" << match_count.get_match_count() << " \r";
+					<< "  Match=" << match_count.get_match_count() 
+#ifdef WITH_TIMERS
+					<< " Tm (ns)=" << ((match_timer.read_nanoseconds() - prev_nsec) >> 7)
+#endif
+					<< " \r";
+#ifdef WITH_TIMERS
+				prev_nsec = match_timer.read_nanoseconds();
+#endif
+			}
 		} else if (command == "!q") {
 			filter_t filter(filter_string);
 			tree_t t = atoi(tree.c_str());
 #ifdef WITH_TIMERS
 			match_timer.start();
 #endif
-			P.match(filter, t, match_count);
-#ifdef WITH_TIMERS
-			match_timer.stop();
-#endif
-			++query_count;
-		} else if (command == "sup") {
-			filter_t filter(filter_string);
-			P.find_supersets_of(filter, filter_output);
-		} else if (command == "sub") {
-			filter_t filter(filter_string);
-			P.find_subsets_of(filter, filter_output);
-		} else {
-			std::cerr << "unknown command: " << command << std::endl;
 		}
 	}
 	std::cout << std::endl << "Final statistics:" << std::endl
 			  << "N=" << count << "  Unique=" << P.size() << std::endl
 			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
 #ifdef WITH_TIMERS
-	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tm (us)=" << (match_timer.read_microseconds() / query_count) << std::endl;
+	std::cout << "Ta (us)="<< add_timer.read_nanoseconds()<<"\t"  << (add_timer.read_microseconds() / count) << std::endl 
+			  << "Tm (us)=" << match_timer.read_nanoseconds()<<"\t" <<(match_timer.read_microseconds() / query_count) << std::endl;
 #endif
 
 	return 0;

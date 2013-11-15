@@ -224,16 +224,28 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 		assert(head <= filter_t::WIDTH);
 		node * n = S[--head];
 
-		if (n->key.suffix_subset_of(x, n->pos)) 
+#if 1
+		if (n->key.subset_of(x)) 
+#else
+			if (n->key.suffix_subset_of(x, n->pos)) 
+#endif
 			if (h.handle_filter(n->key, *n))
 				return;
 
 		if (n->pos > n->left->pos)
+#if 0
+			if(n->left->key.prefix_subset_of(x,n->pos+1))
+#else			
 			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
+#endif
 				S[head++] = n->left;
 
-		if (n->pos > n->right->pos && x[n->pos]) 
+		if (n->pos > n->right->pos && x[n->pos])
+#if 0
+			if(n->right->key.prefix_subset_of(x,n->right->pos+1))
+#else
 			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
+#endif
 				S[head++] = n->right;
 	}
 }

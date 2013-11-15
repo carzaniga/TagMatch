@@ -98,6 +98,15 @@ public:
 		// |######----------#####################################|
 		//  ^191  ^pp      ^p                                  0^
 		// 
+		if(pp-p<3){
+			while (pp>p){
+				if(x[pp]==false && (*this)[pp])
+					return false;
+				pp--;
+			}
+			return true;
+		}
+
 		if (p > 191)			// p > 191
 			return true;
 
