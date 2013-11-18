@@ -104,6 +104,7 @@ bool tree_matcher::handle_filter(const filter_t & filter, const predicate::node 
 }
 
 #define TREE_MASK 1
+#define APP 1
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	//
 	// this is the modular matching function that uses the above match
@@ -197,7 +198,9 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
     // 
 	const node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-	
+
+	unsigned int count =0;
+    
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
 
@@ -205,7 +208,8 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
     // in this implementation we also use the cut 
     // that exploits the application tags
     //
-    
+ 
+#if APP   
     filter_t app;
     
     if(predicate::t.yt.subset_of(x))
@@ -220,30 +224,46 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
         app=predicate::t.bt;
     else
         return;
+#endif
 
 	while(head != 0) {
 		assert(head <= filter_t::WIDTH);
 		const node * n = S[--head];		// for each visited node n...
 		
-        if (n->key.suffix_subset_of(x, n->pos)) 
-			if (h.handle_filter(n->key, *n))
-				return;
+        //if (n->key.suffix_subset_of(x, n->pos)) 
+        if(n->key.subset_of(x))
+            if (h.handle_filter(n->key, *n))
+			    return;
 
 		if (n->pos > n->left->pos){
+#if APP
            if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
                 //app.prefix_subset_of(n->left->key, n->left->pos + 1) && 
                 app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1) &&
                 n->left->match_tree(t))  
 				S[head++] = n->left;
+#else
+           if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
+               n->left->match_tree(t))  
+				S[head++] = n->left;
+
+#endif
  
         }
 
 		if (n->pos > n->right->pos && x[n->pos]){ 
+#if APP
             if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
                 //app.prefix_subset_of(n->right->key, n->right->pos + 1) &&
                 app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1) && 
                 n->right->match_tree(t)) 
 				S[head++] = n->right;
+#else
+             if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
+                 n->right->match_tree(t)) 
+				S[head++] = n->right;
+
+#endif
         }
 	}
 }
@@ -266,7 +286,6 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	//
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
-#define APP 0
 #if APP
     // we need to chck wich application tag is conteined in the message
     // to do this we can simpli do a subset check between the message and 
@@ -320,9 +339,10 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 		// INVARIANT: n is a subset of x up to position n->pos + 1
 		// (i.e., excluding position n->pos itself)
 		// 
-		if (n->key.suffix_subset_of(x, n->pos)) 
+		//if (n->key.suffix_subset_of(x, n->pos)) 
+        if(n->key.subset_of(x))
 			if (h.handle_filter(n->key, *n))
-				return;
+			    return;
 
 		if (n->pos > n->left->pos){
 #if APP

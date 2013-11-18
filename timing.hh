@@ -185,6 +185,14 @@ public:
 	    nsec += total.tv_nsec;
 	    return (double)nsec / 1000;
 	}
+
+	/** returns the total timer value in nanoseconds. */
+	unsigned long long read_nanoseconds () const {;
+	    unsigned long long nsec = total.tv_sec;
+	    nsec *= NSEC_PER_SEC;
+	    nsec += total.tv_nsec;
+	    return nsec;
+	}
 #endif // RDTSC vs. GETTIME
 };
 #endif // WITH_TIMERS
