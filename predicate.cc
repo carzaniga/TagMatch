@@ -192,22 +192,26 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 			if (h.handle_filter(n->key, *n))
 				return;
 
-		if (n->pos > n->left->pos)
-			// push n->left on the stack only when the bits of
-			// n->left->key in positions between n->pos and
-			// n->left->pos, excluding n->left->pos, are a subset of x
-			// 
-			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
+		// push n->left on the stack only when the bits of
+		// n->left->key in positions between n->pos and
+		// n->left->pos, excluding n->left->pos, are a subset of x
+		// 
+		if (n->left->pos == n->pos - 1 
+			|| (n->pos > n->left->pos
+				&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
 				S[head++] = n->left;
 
-		if (n->pos > n->right->pos && x[n->pos]) 
-			// push n->right on the stack only when the bits of
-			// n->right->key in positions between n->pos and
-			// n->right->pos, excluding n->right->pos, are a subset of
-			// x
-			// 
-			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
+		// push n->right on the stack only when x has a 1 in n->pos,
+		// and then when the bits of n->right->key in positions
+		// between n->pos and n->right->pos, excluding n->right->pos,
+		// are a subset of x
+		// 
+		if (x[n->pos]) {
+			if (n->right->pos == n->pos - 1
+				|| (n->pos > n->right->pos 
+					&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
 				S[head++] = n->right;
+		}
 	}
 }
 
