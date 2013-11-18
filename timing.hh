@@ -172,7 +172,7 @@ public:
 			total.tv_nsec += (NSEC_PER_SEC - t1.tv_nsec + t2.tv_nsec);
 			total.tv_sec -= 1;
 	    }
-	    if (total.tv_nsec > NSEC_PER_SEC) {
+	    if (total.tv_nsec >= NSEC_PER_SEC) {
 			total.tv_sec += 1;
 			total.tv_nsec -= NSEC_PER_SEC;
 	    }

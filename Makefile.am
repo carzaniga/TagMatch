@@ -16,7 +16,8 @@ gen_SOURCES = gen.cc params.h
 gen2_SOURCES = gen2.cc predicate.hh
 
 predicate_SOURCES = main.cc predicate.hh timing.hh timing.cc
-predicate_LDADD = $(LIBS_prof) libpredicate.la
+predicate_LDFLAGS = -L$(builddir)
+predicate_LDADD = $(LIBS_prof) -lpredicate
 
 predicate_old_SOURCES = predicate.hh predicate_old.cc \
 	filter.hh filter.cc \
