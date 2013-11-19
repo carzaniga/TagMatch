@@ -1,3 +1,4 @@
+
 // 
 //  This file is part of Siena, a wide-area event notification system.
 //  See http://www.inf.usi.ch/carzaniga/siena/
@@ -65,39 +66,68 @@
 class Timer {
 
 #ifdef WITH_RDTSC_TIMERS
-	private:
-		typedef unsigned long long cycles_t;
-		cycles_t cycles_total;
-		cycles_t cycles_start;
-		static cycles_t cycles_per_second ();
+private:
+	typedef unsigned long long cycles_t;
+	cycles_t cycles_total;
+	cycles_t cycles_start;
+	static cycles_t cycles_per_second ();
 
-	public:
-		// code taken from http://www.mcs.anl.gov/~kazutomo/rdtsc.html
+public:
+	// code taken from http://www.mcs.anl.gov/~kazutomo/rdtsc.html
 #if defined(__i386__)
-		static inline unsigned long long read_cpu_cycles(void) {
-			unsigned long long int x;
-			asm volatile (".byte 0x0f, 0x31" : "=A" (x));
-			return x;
-		}
+	static inline unsigned long long read_cpu_cycles(void) {
+	    unsigned long long int x;
+	    asm volatile (".byte 0x0f, 0x31" : "=A" (x));
+	    return x;
+	}
 #elif defined(__x86_64__)
-		static inline unsigned long long read_cpu_cycles(void) {
-			unsigned int hi, lo;
-			asm volatile (
-					"xorl %%eax, %%eax\n\t"
-					"cpuid\n\t"
-					"rdtsc"
-					: "=a"(lo), "=d"(hi)
-					: /* no inputs */
-					: "rbx", "rcx");
-			return ((unsigned long long)hi << 32ull) | (unsigned long long)lo;
-		}
+	static inline unsigned long long read_cpu_cycles(void) {
+	    unsigned int hi, lo;
+	    asm volatile (
+			"xorl %%eax, %%eax\n\t"
+			"cpuid\n\t"
+			"rdtsc"
+			: "=a"(lo), "=d"(hi)
+			: /* no inputs */
+			: "rbx", "rcx");
+	    return ((unsigned long long)hi << 32ull) | (unsigned long long)lo;
+	}
 #endif
 
-	public:
-		explicit Timer() : cycles_total(0), cycles_start(0) {}
+public:
+	explicit Timer() : cycles_total(0), cycles_start(0) {}
 
-		/** returns the total timer value in microseconds. */
-		double read_microseconds () const;
+	/** starts the timer.
+	 *  
+	 *  two or more consecutive start() calls are equivalent to the
+	 *  last call.
+	 */
+	inline void start() {
+	    cycles_start = read_cpu_cycles();
+	}
+
+	/** stops the timer.
+	 *
+	 *  if the timer was previously started and not yet stopped, stops
+	 *  the timer and adds to the total timer value the elapsed
+	 *  interval between the most recent start() call and this stop()
+	 *  call.
+	 */
+	inline void stop() {
+	    cycles_t stop = read_cpu_cycles();
+	    if (cycles_start != 0) {
+			cycles_total += (stop - cycles_start);
+			cycles_start = 0;
+	    }
+	}
+
+	/** resets the total timer to 0. */
+	void reset() {
+	    cycles_total = 0;
+	}
+
+	/** returns the total timer value in microseconds. */
+	double read_microseconds () const;
 
 #else // no RDTSC, and instead we use clock_gettime
 
@@ -111,59 +141,59 @@ class Timer {
 #error "unknown or undefined GETTIME_CLOCK_ID."
 #endif
 
-		struct timespec total;
-		struct timespec t1;
+	struct timespec total;
+	struct timespec t1;
+    
+public:
 
-	public:
+	static const long NSEC_PER_SEC = 1000000000L;
 
-		static const long NSEC_PER_SEC = 1000000000L;
+	Timer() {
+	    total.tv_sec = 0;
+	    total.tv_nsec = 0;
+	};
 
-		Timer() {
-			total.tv_sec = 0;
-			total.tv_nsec = 0;
-		};
+	void reset() {
+	    total.tv_sec = 0;
+	    total.tv_nsec = 0;
+	}
 
-		void reset() {
-			total.tv_sec = 0;
-			total.tv_nsec = 0;
-		}
+	inline void start() {
+	    CLOCK_GETTIME(&t1);
+	}
 
-		inline void start() {
-			CLOCK_GETTIME(&t1);
-		}
+	inline void stop() {
+	    struct timespec t2;
 
-		inline void stop() {
-			struct timespec t2;
+	    CLOCK_GETTIME(&t2);
+	    total.tv_sec += (t2.tv_sec - t1.tv_sec);
+	    if (t2.tv_nsec >= t1.tv_nsec) {
+			total.tv_nsec += (t2.tv_nsec - t1.tv_nsec);
+	    } else {
+			total.tv_nsec += (NSEC_PER_SEC - t1.tv_nsec + t2.tv_nsec);
+			total.tv_sec -= 1;
+	    }
+	    if (total.tv_nsec >= NSEC_PER_SEC) {
+			total.tv_sec += 1;
+			total.tv_nsec -= NSEC_PER_SEC;
+	    }
+	}
 
-			CLOCK_GETTIME(&t2);
-			total.tv_sec += (t2.tv_sec - t1.tv_sec);
-			if (t2.tv_nsec >= t1.tv_nsec) {
-				total.tv_nsec += (t2.tv_nsec - t1.tv_nsec);
-			} else {
-				total.tv_nsec += (NSEC_PER_SEC - t1.tv_nsec + t2.tv_nsec);
-				total.tv_sec -= 1;
-			}
-			if (total.tv_nsec > NSEC_PER_SEC) {
-				total.tv_sec += 1;
-				total.tv_nsec -= NSEC_PER_SEC;
-			}
-		}
+	/** returns the total timer value in microseconds. */
+	double read_microseconds () const {;
+	    unsigned long long nsec = total.tv_sec;
+	    nsec *= NSEC_PER_SEC;
+	    nsec += total.tv_nsec;
+	    return (double)nsec / 1000;
+	}
 
-		/** returns the total timer value in microseconds. */
-		double read_microseconds () const {;
-			unsigned long long nsec = total.tv_sec;
-			nsec *= NSEC_PER_SEC;
-			nsec += total.tv_nsec;
-			return (double)nsec / 1000;
-		}
-
-		/** returns the total timer value in nanoseconds. */
-		unsigned long long read_nanoseconds () const {;
-			unsigned long long nsec = total.tv_sec;
-			nsec *= NSEC_PER_SEC;
-			nsec += total.tv_nsec;
-			return nsec;
-		}
+	/** returns the total timer value in nanoseconds. */
+	unsigned long long read_nanoseconds () const {;
+	    unsigned long long nsec = total.tv_sec;
+	    nsec *= NSEC_PER_SEC;
+	    nsec += total.tv_nsec;
+	    return nsec;
+	}
 #endif // RDTSC vs. GETTIME
 };
 #endif // WITH_TIMERS

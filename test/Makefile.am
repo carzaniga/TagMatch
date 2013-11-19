@@ -45,17 +45,18 @@ test_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
 
 TESTS = $(UNIT_TESTS)
 
-TESTS_ENVIRONMENT = BOOST_TEST_LOG_LEVEL=nothing BOOST_TEST_REPORT_LEVEL=no 
+TESTS_ENVIRONMENT = BOOST_TEST_LOG_LEVEL=nothing
 
 EXTRA_DIST = 
 
 test: run-unit-tests run-integration-tests 
 
+RUNNER_TEST_ENVIRONMENT = BOOST_TEST_REPORT_LEVEL=nothing
 run-unit-tests: $(UNIT_TESTS)
 	@list='$(UNIT_TESTS)'; \
 	echo "Running unit tests..."; \
         if test -n "$$list"; then \
           for tst in $$list; do \
-	    ./$$tst || exit 1; \
+	    $(RUNNER_TEST_ENVIRONMENT) ./$$tst || exit 1; \
 	  done; \
 	fi

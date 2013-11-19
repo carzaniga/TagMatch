@@ -161,9 +161,9 @@ public:
 
 	bool subset_of(const bv192 & x) const {
 		// return true iff *this is a subset of x
-		return (bv[0] & x.bv[0]) == bv[0]
-			&& (bv[1] & x.bv[1]) == bv[1]
-			&& (bv[2] & x.bv[2]) == bv[2];
+		return (((bv[0] & x.bv[0]) ^ bv[0])
+				| ((bv[1] & x.bv[1]) ^ bv[1])
+				| ((bv[2] & x.bv[2]) ^ bv[2])) == 0;
 	}
 
 	bool suffix_subset_of(const bv192 & x, pos_t p) const {

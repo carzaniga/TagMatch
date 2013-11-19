@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
 			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
 #ifdef WITH_TIMERS
 	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tm (ns)=" << (match_timer.read_microseconds() / query_count) << std::endl;
+			  << "Tm (us)=" << (match_timer.read_microseconds() / query_count) << std::endl;
 #endif
 
 	return 0;
