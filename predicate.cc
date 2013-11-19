@@ -199,7 +199,6 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 	const node * S[filter_t::WIDTH];
 	unsigned int head = 0;
 
-	unsigned int count =0;
     
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
@@ -229,7 +228,7 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 	while(head != 0) {
 		assert(head <= filter_t::WIDTH);
 		const node * n = S[--head];		// for each visited node n...
-		
+        
         //if (n->key.suffix_subset_of(x, n->pos)) 
         if(n->key.subset_of(x))
             if (h.handle_filter(n->key, *n))

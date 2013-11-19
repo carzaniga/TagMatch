@@ -79,11 +79,13 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
 
+    
 #ifdef WITH_TIMERS
 	unsigned long long prev_nsec = 0;
 	Timer add_timer, match_timer;
 #endif
 
+ 
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
@@ -132,6 +134,7 @@ int main(int argc, char *argv[]) {
 						  << " Tm (ns)=" << ((match_timer.read_nanoseconds() - prev_nsec) >> 7)
 #endif
 						  << " \r";
+                          //<< std::endl;
 #ifdef WITH_TIMERS
 				prev_nsec = match_timer.read_nanoseconds();
 #endif

@@ -83,6 +83,7 @@ public:
     predicate(): root(), filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){};
     ~predicate() { destroy(); }
 
+
 	class node;
 
     /** sets the tree mask for the filter x
