@@ -18,10 +18,10 @@ dnl -pg only works with static libraries, so I'm going to
 dnl disable shared libraries here.
   [ case "$enableval" in
         coverage )
-	    CFLAGS_prof='-pg -fprofile-arcs -ftest-coverage'
-	    CXXFLAGS_prof='-pg -fprofile-arcs -ftest-coverage'
-	    LDFLAGS_prof='-pg'
-	    LIBS_prof='-lgcov'
+	    CFLAGS_prof='-fprofile-arcs -ftest-coverage'
+	    CXXFLAGS_prof='-fprofile-arcs -ftest-coverage'
+	    LDFLAGS_prof=''
+	    LIBS_prof=''
 	    AC_MSG_RESULT([enabling profiling for coverage information])
 	    AC_DISABLE_COMPILER_OPTIMIZATION
 	    ;;
