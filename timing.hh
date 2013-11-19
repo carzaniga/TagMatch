@@ -29,7 +29,11 @@
 
 #ifdef WITH_TIMERS
 #include <time.h>
-#include <exception>
+
+#ifdef WITH_CHRONO_TIMERS
+#include <chrono>
+using namespace std::chrono;
+#endif
 
 /** A high-precision timer.
  *
@@ -63,7 +67,38 @@
  *  cout << "microsconds in other code: " << t.read_microseconds() << endl;
  */
 class Timer {
+#ifdef WITH_CHRONO_TIMERS
 
+	typedef high_resolution_clock clock_type;
+
+	duration<double> total;
+	time_point<clock_type> t1;
+
+public:
+	Timer(): total() { };
+
+	void reset() {
+		total = total.zero();
+	}
+
+	inline void start() {
+		t1 = clock_type::now();
+	}
+
+	inline void stop() {
+	    total += clock_type::now() - t1;
+	}
+
+	/** returns the total timer value in microseconds. */
+	double read_microseconds () const {;
+		return duration_cast<microseconds>(total).count();
+	}
+
+	/** returns the total timer value in nanoseconds. */
+	unsigned long long read_nanoseconds () const {;
+		return duration_cast<nanoseconds>(total).count();
+	}
+#else
 #ifdef WITH_RDTSC_TIMERS
 private:
 	typedef unsigned long long cycles_t;
@@ -194,6 +229,7 @@ public:
 	    return nsec;
 	}
 #endif // RDTSC vs. GETTIME
+#endif // CHRONO
 };
 #endif // WITH_TIMERS
 
