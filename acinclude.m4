@@ -51,8 +51,10 @@ AC_DEFUN([AC_OPT_DEBUGGING], [
 AC_ARG_ENABLE(debugging, 
   AC_HELP_STRING([--enable-debugging],
 	[disable compiler optimizations for better debugging (default is NO)]), 
-  [ AC_DISABLE_COMPILER_OPTIMIZATION ])
-])
+  [[ 
+    CFLAGS=`echo "$CFLAGS" | sed "s/-O[^ ]*/-Og/g"`
+    CXXFLAGS=`echo "$CXXFLAGS" | sed "s/-O[^ ]*/-Og/g"`
+  ]])])
 dnl
 dnl AC_OPT_ASSERTIONS
 dnl
@@ -177,6 +179,10 @@ AC_ARG_ENABLE(timers,
       AC_DEFINE([WITH_TIMERS], [], [libsff maintains per-module performance timers])
       must_test_gettime=no
       case "$enableval" in
+         chrono )
+ 	    must_test_gettime=no
+	    AC_DEFINE([WITH_CHRONO_TIMERS], [], [Using C++-11 chrono feature.])
+	    ;;
          yes | process )
  	    must_test_gettime=yes
 	    AC_DEFINE([GETTIME_CLOCK_ID], [PER_PROCESS], [Per-process timer.])
