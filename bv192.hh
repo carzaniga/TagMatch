@@ -8,13 +8,14 @@
 #include <cstdint>
 #include <string>
 #include <iostream>
+#include "immintrin.h"
 
 // Implementation of a 192-bit bitvector.
 //
 class bv192 {
 	typedef uint64_t block_t;
 	block_t bv[3];
-
+ 
 public:
 	typedef uint8_t pos_t;
 	static const pos_t NULL_POSITION = 192;
@@ -153,9 +154,9 @@ public:
 
 	bool subset_of(const bv192 & x) const {
 		// return true iff *this is a subset of x
-		return (((bv[0] & x.bv[0]) ^ bv[0])
+       	return (((bv[0] & x.bv[0]) ^ bv[0])
 				| ((bv[1] & x.bv[1]) ^ bv[1])
-				| ((bv[2] & x.bv[2]) ^ bv[2])) == 0;
+				| ((bv[2] & x.bv[2]) ^ bv[2]))==0;
 	}
 
 	bool suffix_subset_of(const bv192 & x, pos_t p) const {

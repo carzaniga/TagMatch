@@ -234,36 +234,72 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
             if (h.handle_filter(n->key, *n))
 			    return;
 
-		if (n->pos > n->left->pos){
 #if APP
+
+        if((n->left->pos == n->pos - 1 
+           && n->left->match_tree(t)
+           && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))
+           || (n->pos > n->left->pos
+           && n->left->match_tree(t)
+           && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
+           && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
+				    S[head++] = n->left;
+        }
+        
+       
+		/*if (n->pos > n->left->pos){
            if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
                 //app.prefix_subset_of(n->left->key, n->left->pos + 1) && 
                 app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1) &&
                 n->left->match_tree(t))  
 				S[head++] = n->left;
+        }*/
 #else
-           if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
-               n->left->match_tree(t))  
+        if (n->left->pos == n->pos - 1 
+			|| (n->pos > n->left->pos
+			&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)
+            && n->left->match_tree(t))) 
 				S[head++] = n->left;
 
 #endif
  
-        }
-
-		if (n->pos > n->right->pos && x[n->pos]){ 
 #if APP
+
+		/*if (n->pos > n->right->pos && x[n->pos]){ 
+
             if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
                 //app.prefix_subset_of(n->right->key, n->right->pos + 1) &&
                 app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1) && 
                 n->right->match_tree(t)) 
 				S[head++] = n->right;
-#else
-             if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
-                 n->right->match_tree(t)) 
-				S[head++] = n->right;
+        }*/
+    
+       	if (x[n->pos]){
+            if ((n->right->pos == n->pos - 1
+                && n->right->match_tree(t)
+                && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))
+                || (n->pos > n->right->pos 
+                && n->right->match_tree(t)
+                && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
+                && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+                    S[head++] = n->right;
+        }  
+    	
 
+        
+
+#else
+       	if (x[n->pos]) {
+			if (n->right->pos == n->pos - 1
+				|| (n->pos > n->right->pos 
+				&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)
+                &&  n->right->match_tree(t)))
+				    S[head++] = n->right;
+		}
+
+            
 #endif
-        }
+        
 	}
 }
 
@@ -343,14 +379,15 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 			if (h.handle_filter(n->key, *n))
 			    return;
 #if APP
-		if (n->pos > n->left->pos){
 
-           if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
-                //app.prefix_subset_of(n->left->key, n->left->pos + 1))  
-                app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
-				S[head++] = n->left;
- 
-            
+        if((n->left->pos == n->pos - 1 
+           && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))
+           || (n->pos > n->left->pos
+           && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
+           && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
+		        S[head++] = n->left;
+        }
+	
 #else
 		// push n->left on the stack only when the bits of
 		// n->left->key in positions between n->pos and
@@ -358,18 +395,20 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 		// 
 		if (n->left->pos == n->pos - 1 
 			|| (n->pos > n->left->pos
-				&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
+			&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
 				S[head++] = n->left;
 #endif
-        }
+        
 #if APP
 
-		if (n->pos > n->right->pos && x[n->pos]){ 
-
-            if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
-                //app.prefix_subset_of(n->right->key, n->right->pos + 1)) 
-                app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
-				S[head++] = n->right;
+       	if (x[n->pos]){
+            if ((n->right->pos == n->pos - 1
+                && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))
+                || (n->pos > n->right->pos 
+                && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
+                && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+                    S[head++] = n->right;
+        }  
 
 
 #else
@@ -381,11 +420,11 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 		if (x[n->pos]) {
 			if (n->right->pos == n->pos - 1
 				|| (n->pos > n->right->pos 
-					&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
-				S[head++] = n->right;
+				&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+				    S[head++] = n->right;
 		}
 #endif	
-}
+    }
 }
 
 void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
