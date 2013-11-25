@@ -1,4 +1,3 @@
-
 // 
 //  This file is part of Siena, a wide-area event notification system.
 //  See http://www.inf.usi.ch/carzaniga/siena/

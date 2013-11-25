@@ -48,7 +48,8 @@ void predicate::node::add_pair(tree_t t, interface_t i) {
 		pairs_count += 1;
 	}
 }
-void predicate::node::remove_pair(tree_t t,interface_t i){
+
+void predicate::node::remove_pair(tree_t t,interface_t i) {
 	for(tree_interface_pair * ti=ti_begin();ti!=ti_end();ti++){
 		if(ti->equals(t,i)){
 			if (pairs_count>1){
@@ -60,11 +61,12 @@ void predicate::node::remove_pair(tree_t t,interface_t i){
 		}
 	}
 }
-void predicate::node::remove_last_pair(){
+
+void predicate::node::remove_last_pair() {
 	if(pairs_count<=LOCAL_PAIRS_CAPACITY)
 		pairs_count--;
 	else if(pairs_count==(LOCAL_PAIRS_CAPACITY+1)){
-    tree_interface_pair * t2= ti_begin();
+		tree_interface_pair * t2= ti_begin();
 		for(uint16_t i=0;i<LOCAL_PAIRS_CAPACITY;i++){
 			local_pairs[i].tree=t2->tree;
 			local_pairs[i].interface=t2->interface;
@@ -81,6 +83,7 @@ void predicate::node::remove_last_pair(){
 	else
 		pairs_count--;
 }
+
 void predicate::destroy() {
 	if (root.pos <= root.left->pos)
 		return;
@@ -260,28 +263,16 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 		assert(head <= filter_t::WIDTH);
 		node * n = S[--head];
 
-#if 1
-		if (n->key.subset_of(x)) 
-#else
-			if (n->key.suffix_subset_of(x, n->pos)) 
-#endif
+		if (n->key.suffix_subset_of(x, n->pos))
 			if (h.handle_filter(n->key, *n))
 				return;
 
 		if (n->pos > n->left->pos)
-#if 0
-			if(n->left->key.prefix_subset_of(x,n->pos+1))
-#else			
-			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
-#endif
+			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))
 				S[head++] = n->left;
 
 		if (n->pos > n->right->pos && x[n->pos])
-#if 0
-			if(n->right->key.prefix_subset_of(x,n->right->pos+1))
-#else
-			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
-#endif
+			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1))
 				S[head++] = n->right;
 	}
 }
@@ -344,7 +335,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	unsigned int head = 0;
 
 	if (root.pos > root.left->pos
-			&& x.most_significant_one_pos() <= root.left->pos)
+		&& x.most_significant_one_pos() <= root.left->pos)
 		S[head++] = root.left;
 
 	while(head != 0) {

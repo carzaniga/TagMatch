@@ -44,11 +44,11 @@ public:
 	bool operator < (const tree_interface_pair &x) const {
 		return (tree < x.tree || (tree == x.tree && interface < x.interface));
 	}
-	bool operator == (const tree_interface_pair & rhs) const{
-		return (tree==rhs.tree && interface==rhs.interface);
+	bool operator == (const tree_interface_pair & rhs) const {
+		return (tree == rhs.tree && interface == rhs.interface);
 	}
-	bool equals(tree_t t, interface_t ifx) const{
-		return (tree==t && interface==ifx) ;
+	bool equals(tree_t t, interface_t ifx) const {
+		return (tree == t && interface == ifx) ;
 	}
 };
 
@@ -143,7 +143,7 @@ public:
 	public:
 		void add_pair(tree_t t, interface_t i);
 		void remove_pair(tree_t t, interface_t i);
-		void readjust_pos(node * n);
+
 		// number of tree--interface pairs associated with this filter
 		//
 		uint16_t ti_size() const {
@@ -194,6 +194,7 @@ public:
 				right = next;
 			}
 		}
+
 		void remove_last_pair();
 		
 		~node() {
