@@ -81,9 +81,10 @@ int main(int argc, char *argv[]) {
 
 #ifdef WITH_TIMERS
 	unsigned long long prev_nsec = 0;
-	Timer add_timer, match_timer;
+	Timer add_timer, match_timer, delete_timer;
 #endif
-
+	
+	predicate::node * temp;
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
@@ -92,7 +93,7 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			add_timer.start();
 #endif
-			P.add(filter,t,i);
+			temp=P.add(filter,t,i);
 #ifdef WITH_TIMERS
 			add_timer.stop();
 #endif
@@ -102,7 +103,7 @@ int main(int argc, char *argv[]) {
 				std::cin >>  tree >> interface;
 				interface_t i = atoi(interface.c_str());
 				tree_t t = atoi(tree.c_str());
-				//insert here. 			
+				temp->add_pair(t,i);
 			}
 			if (wheel_of_death(count, 12))
 				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
@@ -145,11 +146,24 @@ int main(int argc, char *argv[]) {
 #endif
 			}
 		} else if (command == "!q") {
+//			filter_t filter(filter_string);
+//			tree_t t = atoi(tree.c_str());
+//#ifdef WITH_TIMERS
+//			match_timer.start();
+//#endif
+		}
+		else if (command =="-"){
 			filter_t filter(filter_string);
+			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
 #ifdef WITH_TIMERS
-			match_timer.start();
+			delete_timer.start();
 #endif
+			P.remove(filter,t,i);
+#ifdef WITH_TIMERS
+			delete_timer.stop();
+#endif
+		
 		}
 	}
 	std::cout << std::endl << "Final statistics:" << std::endl
