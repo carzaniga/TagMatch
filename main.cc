@@ -95,6 +95,7 @@ int main(int argc, char *argv[]) {
 			add_timer.start();
 #endif
 			P.add(filter,t,i);
+
 #ifdef WITH_TIMERS
 			add_timer.stop();
 #endif

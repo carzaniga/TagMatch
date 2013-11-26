@@ -104,7 +104,7 @@ bool tree_matcher::handle_filter(const filter_t & filter, const predicate::node 
 }
 
 #define TREE_MASK 1
-#define APP 1
+#define APP 0
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	//
 	// this is the modular matching function that uses the above match

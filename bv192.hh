@@ -8,20 +8,22 @@
 #include <cstdint>
 #include <string>
 #include <iostream>
-#include "immintrin.h"
+
 
 // Implementation of a 192-bit bitvector.
 //
 class bv192 {
 	typedef uint64_t block_t;
 	block_t bv[3];
- 
+    
 public:
 	typedef uint8_t pos_t;
 	static const pos_t NULL_POSITION = 192;
 	static const pos_t WIDTH = 192;
 
-	bv192() { reset(); }
+	bv192() {
+        reset();
+    }
 
 	bv192(const bv192 &x) { 
 		bv[0] = x.bv[0];

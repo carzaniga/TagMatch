@@ -133,13 +133,14 @@ public:
 	 */
     class node {
 		friend class predicate;
+    public:
+        const filter_t key;
 
 		node * left;
 		node * right;
         
-	public:
-		const filter_t key;
-
+//	public:
+		
         unsigned char tree_mask;
         
 	private:
@@ -207,7 +208,7 @@ public:
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: left(this), right(this), key(), tree_mask(0), pos(filter_t::NULL_POSITION), 
+			: key(), left(this), right(this), tree_mask(0), pos(filter_t::NULL_POSITION), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node

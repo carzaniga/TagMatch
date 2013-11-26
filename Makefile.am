@@ -1,9 +1,9 @@
 SUBDIRS = . test
 
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I m4 
 
-AM_CFLAGS = $(CFLAGS_prof)
-AM_CXXFLAGS = $(CXXFLAGS_prof)
+AM_CFLAGS = $(CFLAGS_prof) 
+AM_CXXFLAGS = -mavx $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
 
 noinst_LTLIBRARIES = libpredicate.la
