@@ -82,10 +82,10 @@ int main(int argc, char *argv[]) {
     
 #ifdef WITH_TIMERS
 	unsigned long long prev_nsec = 0;
-	Timer add_timer, match_timer;
+	Timer add_timer, match_timer, delete_timer;
 #endif
-
- 
+	
+	predicate::node * temp;
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
 			filter_t filter(filter_string);
@@ -94,12 +94,18 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			add_timer.start();
 #endif
-			P.add(filter,t,i);
-
+			temp=P.add(filter,t,i);
 #ifdef WITH_TIMERS
 			add_timer.stop();
 #endif
 			++count;
+			while(std::cin.peek()!='\n'){
+				std::cin.putback('\n');
+				std::cin >>  tree >> interface;
+				interface_t i = atoi(interface.c_str());
+				tree_t t = atoi(tree.c_str());
+				temp->add_pair(t,i);
+			}
 			if (wheel_of_death(count, 12))
 				std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
 
@@ -135,7 +141,6 @@ int main(int argc, char *argv[]) {
 						  << " Tm (ns)=" << ((match_timer.read_nanoseconds() - prev_nsec) >> 7)
 #endif
 						  << " \r";
-                          //<< std::endl;
 #ifdef WITH_TIMERS
 				prev_nsec = match_timer.read_nanoseconds();
 #endif
@@ -151,6 +156,18 @@ int main(int argc, char *argv[]) {
 			match_timer.stop();
 #endif
 			++query_count;
+		}
+		else if (command =="-"){
+			filter_t filter(filter_string);
+			interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			delete_timer.start();
+#endif
+			P.remove(filter,t,i);
+#ifdef WITH_TIMERS
+			delete_timer.stop();
+#endif
 		} else if (command == "sup") {
 			filter_t filter(filter_string);
 			P.find_supersets_of(filter, filter_output);

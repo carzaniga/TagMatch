@@ -58,6 +58,12 @@ public:
 	bool operator < (const tree_interface_pair &x) const {
 		return (tree < x.tree || (tree == x.tree && interface < x.interface));
 	}
+	bool operator == (const tree_interface_pair & rhs) const {
+		return (tree == rhs.tree && interface == rhs.interface);
+	}
+	bool equals(tree_t t, interface_t ifx) const {
+		return (tree == t && interface == ifx) ;
+	}
 };
 
 // 
@@ -120,6 +126,7 @@ public:
 	void find_subsets_of(const filter_t & x, filter_handler & h);
 	void find_supersets_of(const filter_t & x, filter_handler & h);
 
+	void remove(const filter_t & x,tree_t t, interface_t i);
 	void clear();
 
 	/** number of unique filters in the predicate */
@@ -159,6 +166,7 @@ public:
 
 	public:
 		void add_pair(tree_t t, interface_t i);
+		void remove_pair(tree_t t, interface_t i);
 
 		// number of tree--interface pairs associated with this filter
 		//
@@ -224,6 +232,8 @@ public:
 			}
 		}
 
+		void remove_last_pair();
+		
 		~node() {
 			if (pairs_count > LOCAL_PAIRS_CAPACITY)
 			    free(external_pairs);

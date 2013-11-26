@@ -49,6 +49,41 @@ void predicate::node::add_pair(tree_t t, interface_t i) {
 	}
 }
 
+void predicate::node::remove_pair(tree_t t,interface_t i) {
+	for(tree_interface_pair * ti=ti_begin();ti!=ti_end();ti++){
+		if(ti->equals(t,i)){
+			if (pairs_count>1){
+				ti->tree=(ti_end()-1)->tree;
+				ti->interface=(ti_end()-1)->interface;
+			}
+			remove_last_pair();
+			break;
+		}
+	}
+}
+
+void predicate::node::remove_last_pair() {
+	if(pairs_count<=LOCAL_PAIRS_CAPACITY)
+		pairs_count--;
+	else if(pairs_count==(LOCAL_PAIRS_CAPACITY+1)){
+		tree_interface_pair * t2= ti_begin();
+		for(uint16_t i=0;i<LOCAL_PAIRS_CAPACITY;i++){
+			local_pairs[i].tree=t2->tree;
+			local_pairs[i].interface=t2->interface;
+			t2++ ;
+		}
+		pairs_count--;
+		delete [] (t2-LOCAL_PAIRS_CAPACITY);
+	}
+	else if (pairs_count%EXT_PAIRS_ALLOCATION_UNIT==1){
+		pairs_count--;
+		size_t byte_pos = (pairs_count) * sizeof(tree_interface_pair);
+		external_pairs=(tree_interface_pair *)realloc(external_pairs,byte_pos);
+	}
+	else
+		pairs_count--;
+}
+
 void predicate::destroy() {
 	if (root.pos <= root.left->pos)
 		return;
@@ -160,7 +195,6 @@ predicate::node * predicate::add(const filter_t & x) {
 	}
 	if (x == curr->key)
 		return curr;
-
 	filter_t::pos_t pos = filter_t::most_significant_diff_pos(curr->key, x);
 
 	prev = &root;
@@ -441,16 +475,16 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 		assert(head <= filter_t::WIDTH);
 		node * n = S[--head];
 
-		if (n->key.suffix_subset_of(x, n->pos)) 
+		if (n->key.suffix_subset_of(x, n->pos))
 			if (h.handle_filter(n->key, *n))
 				return;
 
 		if (n->pos > n->left->pos)
-			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)) 
+			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))
 				S[head++] = n->left;
 
-		if (n->pos > n->right->pos && x[n->pos]) 
-			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)) 
+		if (n->pos > n->right->pos && x[n->pos])
+			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1))
 				S[head++] = n->right;
 	}
 }
@@ -533,3 +567,11 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 				S[head++] = n->left;
 	}
 }
+
+void predicate::remove(const filter_t & x , tree_t t, interface_t i){
+	node * n = find(x);
+	if(n!=0){
+		n->remove_pair(t,i);
+	}
+}
+
