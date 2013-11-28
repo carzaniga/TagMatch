@@ -138,8 +138,89 @@ bool tree_matcher::handle_filter(const filter_t & filter, const predicate::node 
 	return false;
 }
 
-#define TREE_MASK 1
+// this is the handler we use to perform the tree and interface matching.  The
+// predicate subset search finds subsets of the given filter, and
+// this handler does the tree matching and the interface on the corresponding
+// tree_interface pairs.
+// 
+class tree_ifx_matcher : public filter_const_handler {
+public:
+	tree_ifx_matcher(tree_t t, interface_t i, match_handler & mh): tree(t), ifx(i), matcher(mh) {}
+	virtual bool handle_filter(const filter_t & filter, const predicate::node & n);
+private:
+	const tree_t tree;
+    const interface_t ifx;
+	match_handler & matcher;
+};
+
+bool tree_ifx_matcher::handle_filter(const filter_t & filter, const predicate::node & n) {
+	for(const tree_interface_pair * ti = n.ti_begin(); ti != n.ti_end(); ++ti)
+		if (ti->tree == tree && ti->interface == ifx)
+			if (matcher.match(filter, tree, ti->interface))
+				return true;
+	return false;
+}
+
+
+
+
+#define TREE_MASK 0
 #define APP 0
+
+void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h) const {
+//TO DO
+//implements the cut based on tree mask on the superset
+//think about cuts based on interface 
+    tree_matcher matcher(t,h);
+    find_supersets_of(x, matcher);
+}
+
+
+void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
+//TO DO
+//implements the cut based on tree mask on the superset
+//think about cuts based on interface 
+    tree_ifx_matcher matcher(t,i,h);
+    find_supersets_of(x, matcher);
+}
+
+void predicate::exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
+#if TREE_MASK
+//TO DO
+//modify the remove function using the tree mask
+    tree_ifx_matcher matcher(t,i,h);
+    find_subsets_of(x, t, matcher);
+#else
+    tree_ifx_matcher matcher(t,i,h);
+    find_subsets_of(x, matcher);
+#endif
+}
+
+bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t i) const {
+//the tree_mask may help also here
+    node * n =find(x);
+    if(n==0)
+        return false;
+    else{
+        for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
+		    if (ti->tree == t && ti->interface == i)
+		        return true;
+	    return false;
+    }
+}
+
+void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const {
+#if TREE_MASK
+    tree_matcher matcher(t,h);
+    find_subsets_of(x, t, matcher);
+#else
+	tree_matcher matcher(t,h);
+	find_subsets_of(x, matcher);
+#endif
+}
+
+
+
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	//
 	// this is the modular matching function that uses the above match

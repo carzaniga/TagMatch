@@ -113,6 +113,31 @@ public:
 	 */
 	node * find(const filter_t & x) const;
 
+    /** return if a subset of x is found on the interface i on the tree t. 
+    * uses matcher_exists defined in router.hh
+    */
+    void exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h) const;
+
+    /** returns true if the filter exists on interface i and on tree t. 
+     */
+    bool exists_filter(const filter_t & x, tree_t t, interface_t i) const;
+
+    /** iteretes over the trie to find all the super set of x on the give tree and interface
+    * matcher_collect_supersets defines in router.hh collects all the found supersets
+    */
+    void find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const;
+
+    /** iteretes over the trie to find all the super set of x on the give tree on all the interfaces
+    * matcher_collect_supersets defines in router.hh collects all the found supersets
+    */
+    void find_supersets(const filter_t & x, tree_t t, match_handler & h) const;
+
+    /** count all the subsets of x on a given trie and return them divided by interfaces
+    * matcher_count_subsets_by_ifx is defined in router.hh and stores the results in a map
+    */
+    void count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const;
+
+
 	/** processes the subsets of the given filter
 	 *
 	 *  This is the moduler subset-search.  The predicate applies the

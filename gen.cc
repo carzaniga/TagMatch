@@ -6,7 +6,7 @@
 #include "params.h"
 
 #define APP 1
-#define TREE 1
+#define TREE 0
 
 int main(int argc, char * argv[]) {
     const int M = BLOOM_FILTER_SIZE;
