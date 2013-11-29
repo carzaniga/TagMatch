@@ -17,9 +17,13 @@
 #include <new>
 #endif
 
+#ifdef WITH_BV192
 #include "bv192.hh"
-
 typedef bv192 filter_t;
+#else
+#include "bv.hh"
+typedef bv<192> filter_t;
+#endif
 
 /** interface identifier */ 
 typedef uint16_t interface_t;

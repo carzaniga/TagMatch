@@ -50,11 +50,11 @@ void predicate::node::add_pair(tree_t t, interface_t i) {
 }
 
 void predicate::node::remove_pair(tree_t t,interface_t i) {
-	for(tree_interface_pair * ti=ti_begin();ti!=ti_end();ti++){
-		if(ti->equals(t,i)){
-			if (pairs_count>1){
+	for (tree_interface_pair * ti=ti_begin(); ti!=ti_end(); ti++) {
+		if (ti->equals(t,i)) {
+			if (pairs_count > 1) {
 				ti->tree=(ti_end()-1)->tree;
-				ti->interface=(ti_end()-1)->interface;
+				ti->interface=(ti_end() - 1)->interface;
 			}
 			remove_last_pair();
 			break;
@@ -255,7 +255,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 	// 
 	node * S[filter_t::WIDTH];
 	unsigned int head = 0;
-	
+
 	if (root.pos > root.left->pos)
 		S[head++] = root.left;
 
@@ -263,17 +263,21 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 		assert(head <= filter_t::WIDTH);
 		node * n = S[--head];
 
-		if (n->key.suffix_subset_of(x, n->pos))
+		if (n->key.suffix_subset_of(x, n->pos)) 
 			if (h.handle_filter(n->key, *n))
 				return;
 
-		if (n->pos > n->left->pos)
-			if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))
+		if (n->left->pos == n->pos - 1 
+			|| (n->pos > n->left->pos
+				&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
 				S[head++] = n->left;
 
-		if (n->pos > n->right->pos && x[n->pos])
-			if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1))
+		if (x[n->pos]) {
+			if (n->right->pos == n->pos - 1
+				|| (n->pos > n->right->pos 
+					&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
 				S[head++] = n->right;
+		}
 	}
 }
 
@@ -308,22 +312,26 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 			if (h.handle_filter(n->key, *n))
 				return;
 
-		if (n->pos > n->right->pos)
-			// push n->right on the stack only when the bits of
-			// n->right->key in positions between n->pos and
-			// n->right->pos, excluding n->right->pos, are a superset of x
-			// 
-			if (x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
+		// push n->right on the stack only when the bits of
+		// n->right->key in positions between n->pos and
+		// n->right->pos, excluding n->right->pos, are a subset of x
+		// 
+		if (n->right->pos == n->pos - 1 
+			|| (n->pos > n->right->pos
+				&& x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) 
 				S[head++] = n->right;
 
-		if (n->pos > n->left->pos && !x[n->pos]) 
-			// push n->left on the stack only when the bits of
-			// n->left->key in positions between n->pos and
-			// n->left->pos, excluding n->left->pos, are a subset of
-			// x
-			// 
-			if (x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
+		// push n->left on the stack only when x has a 0 in n->pos,
+		// and then when the bits of n->right->key in positions
+		// between n->pos and n->left->pos, excluding n->left->pos,
+		// are a superset of x
+		// 
+		if (!x[n->pos]) {
+			if (n->left->pos == n->pos - 1
+				|| (n->pos > n->left->pos 
+					&& x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)))
 				S[head++] = n->left;
+		}
 	}
 }
 
@@ -346,13 +354,17 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 			if (h.handle_filter(n->key, *n))
 				return;
 
-		if (n->pos > n->right->pos)
-			if (x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)) 
+		if (n->right->pos == n->pos - 1 
+			|| (n->pos > n->right->pos
+				&& x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) 
 				S[head++] = n->right;
 
-		if (n->pos > n->left->pos && !x[n->pos]) 
-			if (x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)) 
+		if (!x[n->pos]) {
+			if (n->left->pos == n->pos - 1
+				|| (n->pos > n->left->pos 
+					&& x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)))
 				S[head++] = n->left;
+		}
 	}
 }
 

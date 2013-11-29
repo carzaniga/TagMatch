@@ -29,27 +29,25 @@ public:
 	}
 
 	bv192(const std::string &s) {
+		reset();
 		std::string::const_iterator si = s.begin();
-		block_t * B = &(bv[2]);
-		for(int i = 0; i < 3; ++i) {
-			for(int j = 0; j < 64; ++j) {
+		for(int i = 2; i >= 0; --i) {
+			for(block_t mask = (1UL << 63); mask != 0; mask >>= 1) {
 				if (si != s.end()) {
-					*B = (*B << 1) | ((*si == '1') ? 1UL : 0);
+					if (*si == '1')
+						bv[i] |= mask;
 					++si;
 				} else {
 					return;
 				}
 			}
-			--B;
 		}
 	}
 
 	std::ostream & print(std::ostream &os) const {
 		for(int i = 2; i >= 0; --i) {
-			block_t B = bv[i];
-			for(int j = 0; j < 64; ++j) {
-				os << ((B & (1UL << 63)) ? '1' : '0');
-				B <<= 1;
+			for(block_t mask = (1UL << 63); mask != 0; mask >>= 1) {
+				os << ((bv[i] & mask) ? '1' : '0');
 			}
 		}
 		return os;
@@ -71,21 +69,35 @@ public:
 		bv[2] |= x.bv[2];
 	}
 
-	bv192 & operator=(const bv192 &rhs) {
-		bv[0] = rhs.bv[0];
-		bv[1] = rhs.bv[1];
-		bv[2] = rhs.bv[2];
+	bv192 & operator=(const bv192 &x) {
+		bv[0] = x.bv[0];
+		bv[1] = x.bv[1];
+		bv[2] = x.bv[2];
 		return *this;
 	}
 
-	bool operator == (const bv192 &rhs) const {
-		return bv[0] == rhs.bv[0] && bv[1] == rhs.bv[1] && bv[2] == rhs.bv[2];
+	bool operator == (const bv192 &x) const {
+#ifdef AVOID_BRANCHING
+		return ((bv[0] ^ x.bv[0]) | (bv[1] ^ x.bv[1]) | (bv[2] ^ x.bv[2])) == 0;
+#else
+		return bv[0] == x.bv[0] && bv[1] == x.bv[1] && bv[2] == x.bv[2];
+#endif
 	}
 
-	bool operator < (const bv192 &rhs) const {
-		return bv[2] < rhs.bv[2] 
-				|| (bv[2] == rhs.bv[2] && bv[1] < rhs.bv[1])
-				|| (bv[1] == rhs.bv[1] && bv[0] < rhs.bv[0]);
+	bool operator < (const bv192 &x) const {
+		if (bv[2] < x.bv[2])
+			return true;
+		if (bv[2] > x.bv[2])
+			return false;
+		if (bv[1] < x.bv[1])
+			return true;
+		if (bv[1] > x.bv[1])
+			return false;
+		return (bv[0] < x.bv[0]);
+	}
+
+	pos_t popcount() const {
+		return popcount(bv[0]) + popcount(bv[1]) + popcount(bv[2]);
 	}
 
 	bool prefix_subset_of(const bv192 & x, pos_t pp, pos_t p) const {
@@ -152,9 +164,13 @@ public:
 
 	bool subset_of(const bv192 & x) const {
 		// return true iff *this is a subset of x
-		return (((bv[0] & x.bv[0]) ^ bv[0])
-				| ((bv[1] & x.bv[1]) ^ bv[1])
-				| ((bv[2] & x.bv[2]) ^ bv[2])) == 0;
+#ifdef AVOID_BRANCHING
+		return ((bv[0] & ~x.bv[0]) | (bv[1] & ~x.bv[1]) | (bv[2] & ~x.bv[2])) == 0;
+#else
+		return (bv[0] & ~x.bv[0]) == 0 
+			&& (bv[1] & ~x.bv[1]) == 0
+			&& (bv[2] & ~x.bv[2]) == 0;
+#endif
 	}
 
 	bool suffix_subset_of(const bv192 & x, pos_t p) const {
@@ -167,27 +183,46 @@ public:
 		// bv[0], if p < 128 we only need to check bv[1] and bv[0],
 		// otherwise we need to check all three blocks bv[2], bv[1],
 		// and bv[0].
-		return (bv[0] & x.bv[0]) == bv[0]
-			&& (p < 64 || ((bv[1] & x.bv[1]) == bv[1] 
-						   && (p < 128 || (bv[2] & x.bv[2]) == bv[2])));
-	}
-#if 0
-	// Antonio's preferred implementation of suffix_subset_of
-	// 
-	bool suffix_subset_of(const bv192 & x, pos_t p) const {
-		if ((bv[0] & x.bv[0]) != bv[0])
+#ifdef AVOID_BRANCHING
+		return ((bv[0] & ~x.bv[0]) | (bv[1] & ~x.bv[1]) | (bv[2] & ~x.bv[2])) == 0;
+#else
+		if ((bv[0] & ~x.bv[0]) != 0)
 			return false;
 
 		if (p < 64)
 			return true;
 
-		if ((bv[1] & x.bv[1]) != bv[1])
+		if ((bv[1] & ~x.bv[1]) != 0)
 			return false;
 
 		if (p < 128)
 			return true;
 
-		return (bv[2] & x.bv[2]) == bv[2];
+		return (bv[2] & ~x.bv[2]) == 0;
+#if 0
+		return (bv[0] & ~x.bv[0]) == 0 
+			&& (p < 64 || ((bv[1] & ~x.bv[1]) == 0
+						   && (p < 128 || (bv[2] & ~x.bv[2]) == 0)));
+#endif
+#endif
+	}
+#if 0
+	// Antonio's preferred implementation of suffix_subset_of
+	// 
+	bool suffix_subset_of(const bv192 & x, pos_t p) const {
+		if ((bv[0] & ~x.bv[0]) != 0)
+			return false;
+
+		if (p < 64)
+			return true;
+
+		if ((bv[1] & ~x.bv[1]) != 0)
+			return false;
+
+		if (p < 128)
+			return true;
+
+		return (bv[2] & ~x.bv[2]) == 0;
 	}
 #endif
 #if 0
@@ -196,6 +231,9 @@ public:
 	// that this is a better variant of suffix_subset_of, where it is
 	// in fact functionally identical but more confusing in terms of
 	// code structure.
+	// 
+	// Actualy, now that I think about it... it's wrong!
+	//
 	bool suffix_subset_of(const bv192 & x, pos_t p) const {
 		if ((bv[0] & x.bv[0]) != bv[0])
 			return false;
@@ -256,6 +294,19 @@ public:
 		return r;
 	}
 #endif
+
+	static pos_t popcount(uint64_t v) {
+#ifdef HAVE_BUILTIN_POPCOUNT
+		return __builtin_popcount(v);
+#else
+		// taken from http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+		v = v - ((v >> 1) & 0x5555555555555555);
+		v = (v & 0x3333333333333333) + ((v >> 2) & 0x3333333333333333);
+		v = (v + (v >> 4)) & 0x0f0f0f0f0f0f0f0f;
+		v = (v * 0x0101010101010101) >> 56;
+		return v;
+#endif
+	}
 
 	static pos_t most_significant_diff_pos(const bv192 &x, const bv192 &y) {
 		//
