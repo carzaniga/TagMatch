@@ -160,7 +160,32 @@ int main(int argc, char *argv[]) {
                 std::cout << " N=" << update_count << "\r";
         }else if (command =="#"){
             std::cin.ignore(500,'\n');            
-        } else {
+        }else if (command == "sd"){
+            predicate_delta pd;
+            pd.ifx = atoi(interface.c_str());
+                pd.tree = atoi(tree.c_str());
+            std::cin >> command >> tree >> interface >> filter_string;
+            while(command!="ed"){
+                filter_t filter(filter_string);
+                if(command=="d+")
+                    pd.additions.insert(filter);
+                else if(command=="d-")
+                    pd.removals.insert(filter);
+                else if (command =="#")
+                    std::cin.ignore(500,'\n'); 
+                std::cin >> command >> tree >> interface >> filter_string;
+            }
+            std::cin.ignore(500,'\n');
+            set<predicate_delta> out;
+#ifdef WITH_TIMERS
+			update_timer.start();
+#endif
+            R.apply_delta(out,pd);
+#ifdef WITH_TIMERS
+			update_timer.stop();
+#endif
+
+        }else {
 			std::cerr << "unknown command: " << command << std::endl;
 		}
 	}

@@ -85,6 +85,26 @@ case "$ac_cv_clzl" in
 esac
 ])
 dnl
+dnl AC_CHECK_BUILTIN_CLZL([action-if-available [, action-if-not-available])
+dnl
+AC_DEFUN([AC_CHECK_BUILTIN_POPCOUNT], [
+AC_CACHE_CHECK([for __builtin_popcount], [ac_cv_popcount], [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+int popcount(unsigned long d) {
+    return __builtin_popcount(d);
+}
+]])], [ ac_cv_popcount=yes ], [ ac_cv_popcount=no ])])
+case "$ac_cv_popcount" in
+    yes)
+        AC_DEFINE(HAVE_BUILTIN_POPCOUNT, 1, [We may use the compiler's built-in popcount function])
+	ifelse([$1], , :, [$1])
+	;;
+    *)
+	ifelse([$2], , :, [$2])
+	;;
+esac
+])
+dnl
 dnl AC_CHECK_RDTSC([action-if-available [, action-if-not-available])
 dnl
 AC_DEFUN([AC_CHECK_RDTSC], [

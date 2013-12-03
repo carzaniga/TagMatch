@@ -7,6 +7,9 @@
 
 using namespace std;
 
+
+/** sets exists_match to true and return true. used in the exists_subsets
+**/
 class matcher_exists : public match_handler {
 public:
 	matcher_exists(): exists_match(0) {};
@@ -40,6 +43,7 @@ private:
 };
 
 
+/** count the numebr of subsets on each interface **/
 class matcher_count_subsets_by_ifx : public match_handler {
 public:
 	matcher_count_subsets_by_ifx() {};
@@ -86,9 +90,15 @@ public:
 	}
 
 	bool operator == (const predicate_delta &x) const {
-		return ifx == x.ifx && tree == x.tree;
-            //do something better here!!!
-            //additions == x.additions && removals == x.removals;
+		if(ifx == x.ifx && tree == x.tree)
+            return true;
+        //this is not correct, do something better!
+        if(additions ==  x.additions &&
+            removals == x.removals){
+            return true;            
+        }
+        return false;
+        
 	}
 
 	bool operator < (const predicate_delta &x) const {
@@ -99,48 +109,36 @@ public:
 
 
     //load the sets additions and removals with minimal sets. interface i is the one that we want to 
-    //skip reading the content of the map. this procedure is not really efficient and maybe we should find a better
-    //way to do this
+    //skip reading the content of the map. this procedure is not really efficient 
     void create_minimal_delta(const filter_t & remove, map<interface_t,set<filter_t>> & add, const interface_t i ){
-        removals.insert(remove);
+        //we need to remove the filter remove and so we try to add it to removals
+        add_removal_filter(remove);        
         map<interface_t,set<filter_t>>::iterator it_map;
-        //this flag is used to skip some check
-        bool first=true;
         for(it_map = add.begin(); it_map!=add.end(); it_map++){
+            //for each inetrface which is not i we add the uncovered filters, 
+            //mining supersets of remove, to the additions set  
             if(it_map->first!=i){
                 set<filter_t>::iterator it_set;
-                if(first){
-                    first=false;
-                    for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
-                        additions.insert(*it_set);
-                    }
-                }else{
-                     for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
-                        if(is_needed_add(*it_set))
-                            additions.insert(*it_set);
-                    }
+                for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
+                    add_additional_filter(*it_set);
                 }                
             }
         }
     }
     
-    //this funtion merges two predicate delta minimizing the list of filters 
+    //this fucntion merges two predicate delta minimizing the list of filters 
     void merge_deltas(const predicate_delta & d){
         //merge the removal list
         for(set<filter_t>::iterator it = d.removals.begin(); it!=d.removals.end(); it++){
-            if(is_needed_rm(*it)){
-                removals.insert(*it);
-            }
+            add_removal_filter(*it);
         }
         //merge additional list
         for(set<filter_t>::iterator it = d.additions.begin(); it!=d.additions.end(); it++){
-            if(is_needed_add(*it)){
-                additions.insert(*it);
-            }
+            add_additional_filter(*it);
         }
     }
     
-    void add_addional_filter(const filter_t t){
+    void add_additional_filter(const filter_t t){
         if(is_needed_add(t))
             additions.insert(t);
     }
@@ -152,7 +150,8 @@ public:
 
 
 private:
-    //return false if the filter f or one of is subset is in removal
+    //return false if the filter f or one of is subset is in removal.
+    //it also remove all the superstes in case we add the filter
     //this can be improved using the sorting by hamming weight (TO DO)
     bool is_needed_rm(filter_t f){
         set<filter_t>::iterator it = removals.find(f);
@@ -160,7 +159,7 @@ private:
             return false;
         it = additions.find(f);
         if(it!=additions.end()){
-            //erase the fitler from addtions (see is_needed_add below
+            //erase the fitler from additions (see is_needed_add below
             //for explanations)
             additions.erase(it);
             return false;
@@ -198,7 +197,7 @@ private:
         it = additions.find(f);
         if(it!=additions.end())
             return false;
-        //check if the filter is a super set of somthing additions set
+        //check if the filter is a superset of something in the additions set
         for(it=additions.begin(); it!=additions.end(); it++){
             if(it->subset_of(f))
                 return false;
@@ -215,10 +214,9 @@ private:
         }
 
         //????????
-        //is there any relation bitween removals and additions?
+        //is there any relation bitween removals and additions that we need to check?
         //can we have an addition filter that is a subset of a removal one?
         //can we have an addition filter that is a super set of a removal one?
-        //can I have  
         //????????
         return true;
     } 
@@ -230,8 +228,7 @@ class router {
 private:
     predicate P;
 
-    //do something better here...one set for each tree??
-    set<interface_t> interfaces;
+    map<tree_t,set<interface_t>> interfaces;
               
 public:
     router(): P() {};
@@ -253,7 +250,8 @@ public:
     void remove_filter (set<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i);
 
     /**  produces a set of predicate deltas as a result of applying d to P **/
-    void apply_delta(set<predicate_delta> & output, predicate & p, const predicate_delta & d);
+    void apply_delta(set<predicate_delta> & output, const predicate_delta & d);
+
 
 };
 #endif

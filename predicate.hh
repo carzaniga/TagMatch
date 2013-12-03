@@ -9,6 +9,8 @@
 #define NODE_USES_MALLOC
 #endif
 
+
+#include "params.h"
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
@@ -17,10 +19,14 @@
 #include <new>
 #endif
 
+#ifdef WITH_BV192
 #include "bv192.hh"
-#include "params.h"
 
 typedef bv192 filter_t;
+#else
+#include "bv.hh"
+typedef bv<192> filter_t;
+#endif
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
