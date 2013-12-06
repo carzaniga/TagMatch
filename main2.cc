@@ -159,32 +159,55 @@ int main(int argc, char *argv[]) {
 				//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
                 std::cout << " N=" << update_count << "\r";
         }else if (command =="#"){
-            std::cin.ignore(500,'\n');            
-        }else if (command == "sd"){
+            std::cin.ignore(5000,'\n');            
+        }else if (command == "sd"){ //start delta tree ifx random_val
             predicate_delta pd;
             pd.ifx = atoi(interface.c_str());
-                pd.tree = atoi(tree.c_str());
+            pd.tree = atoi(tree.c_str());
             std::cin >> command >> tree >> interface >> filter_string;
-            while(command!="ed"){
+            while(command!="ed"){ //end delta random_val random_val random_val
                 filter_t filter(filter_string);
-                if(command=="d+")
+                if(command=="d+") 
                     pd.additions.insert(filter);
                 else if(command=="d-")
                     pd.removals.insert(filter);
                 else if (command =="#")
-                    std::cin.ignore(500,'\n'); 
+                    std::cin.ignore(5000,'\n'); 
                 std::cin >> command >> tree >> interface >> filter_string;
             }
-            std::cin.ignore(500,'\n');
             set<predicate_delta> out;
 #ifdef WITH_TIMERS
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
+#if 0
+            cout << "out size:" << out.size() <<endl;
+            for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
+                cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
+                << it->removals.size() <<endl; 
+                cout << "additions" << endl;
+                for(set<filter_t>::iterator ii = it->additions.begin(); ii!=it->additions.end(); ii++)
+                    cout << ii->print(cout) << endl;
+                cout << "removals" << endl;
+                for(set<filter_t>::iterator ii = it->removals.begin(); ii!=it->removals.end(); ii++)
+                    cout << ii->print(cout) << endl;
+               
+
+            }
+#endif
+
 #ifdef WITH_TIMERS
 			update_timer.stop();
 #endif
+        ++update_count;
+		if (wheel_of_death(count, 12))
+			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+            std::cout << " N=" << update_count << "\r";
 
+        }else if(command == "+ti"){ //command tree ifx random_val
+            interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+            R.add_ifx_to_tree(t,i);
         }else {
 			std::cerr << "unknown command: " << command << std::endl;
 		}
