@@ -92,7 +92,8 @@ class match_handler;
 class predicate {   
 
 public:
-    predicate(): root(), filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){};
+    predicate(): filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){};
+                 
     ~predicate() { destroy(); }
 
 
@@ -133,8 +134,10 @@ public:
     */
     void find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const;
 
-    /** iteretes over the trie to find all the super set of x on the give tree on all the interfaces
+    /** iteretes over the trie to find all the super set of x on the given tree on all the interfaces
     * matcher_collect_supersets defines in router.hh collects all the found supersets
+    *
+    *
     */
     void find_supersets(const filter_t & x, tree_t t, match_handler & h) const;
 
@@ -280,8 +283,9 @@ public:
 		}
 #endif
     };
-
-    node root;
+    
+    node roots [192];
+    //node root;
 	unsigned long filter_count;
     tags_t t;  
 

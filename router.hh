@@ -112,7 +112,6 @@ public:
     //skip reading the content of the map. this procedure is not really efficient 
     void create_minimal_delta(const filter_t & remove, map<interface_t,set<filter_t>> & add, const interface_t i ){
         //we need to remove the filter remove and so we try to add it to removals
-        //cout<<"try to add rm filter " << remove.print(cout) << endl;
         add_removal_filter(remove);        
         map<interface_t,set<filter_t>>::iterator it_map;
         for(it_map = add.begin(); it_map!=add.end(); it_map++){
@@ -121,7 +120,6 @@ public:
             if(it_map->first!=i){
                 set<filter_t>::iterator it_set;
                 for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
-                    //cout << "try to add filter " << it_set->print(cout) << endl; 
                     add_additional_filter(*it_set);
                 }                
             }
@@ -130,7 +128,6 @@ public:
     
     //this fucntion merges two predicate delta minimizing the list of filters 
     void merge_deltas(const predicate_delta & d){
-        //cout << "merge_deltas " << ifx << " " << d.ifx << endl;
         //merge the removal list
         for(set<filter_t>::iterator it = d.removals.begin(); it!=d.removals.end(); it++){
             add_removal_filter(*it);
@@ -143,14 +140,12 @@ public:
     
     void add_additional_filter(const filter_t t){
         if(is_needed_add(t)){
-            //cout << "(add_additional_filter)add filter" << endl;
             additions.insert(t);
         }
     }
     
     void add_removal_filter(const filter_t t){
         if(is_needed_rm(t)){
-            //cout << "remove filter" << endl;
             removals.insert(t);
         }
     }
@@ -177,6 +172,13 @@ private:
         //remove A and AB produce a different effect than remove
         //only A!
         //??????
+        
+        //????????
+        //is there any relation bitween removals and additions that we need to check?
+        //can we have an addition filter that is a subset of a removal one?
+        //can we have an addition filter that is a super set of a removal one?
+        //????????
+
 
         for(it=removals.begin(); it!=removals.end(); it++){
             if(it->subset_of(f))
@@ -196,10 +198,9 @@ private:
     }
     
     //this function is similar to the previos one but is used fro the addition
-    //filters. As in the previuos case we cna take advange from the sorting in order
+    //filters. As in the previuos case we can take advange from the sorting in order
     //to cut some checks (TO DO)
     bool is_needed_add(filter_t f){
-        //cout<<"is_needed_add"<< endl;
         //check if the filter is in the removals set
         //if it is there we remove the filter from the removals 
         //set and we return false
@@ -214,9 +215,6 @@ private:
             return false;
         //check if the filter is a superset of something in the additions set
         for(it=additions.begin(); it!=additions.end(); it++){
-            //cout << it->print(cout) << endl;
-            //cout << " is a subset of " << endl;
-            //cout << f.print(cout) << endl;
             if(it->subset_of(f))
                 return false;
         }
@@ -230,12 +228,6 @@ private:
                 ++it;
             }
         }
-
-        //????????
-        //is there any relation bitween removals and additions that we need to check?
-        //can we have an addition filter that is a subset of a removal one?
-        //can we have an addition filter that is a super set of a removal one?
-        //????????
         return true;
     } 
 };

@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
-#if 0
+#if 1
             cout << "out size:" << out.size() <<endl;
             for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
