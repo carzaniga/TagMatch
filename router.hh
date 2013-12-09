@@ -171,6 +171,13 @@ private:
             additions.erase(it);
             return false;
         }
+        
+        //???????
+        //do we really need to make this set minimal?
+        //remove A and AB produce a different effect than remove
+        //only A!
+        //??????
+
         for(it=removals.begin(); it!=removals.end(); it++){
             if(it->subset_of(f))
                 return false;
