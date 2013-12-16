@@ -292,13 +292,6 @@ public:
     void destroy();
 };
 
-struct stack {
-   predicate::node * n;
-   filter_t::pos_t branch;
-};
-
-typedef stack stack_t;
-
 class filter_handler {
 public:
 	// this will be called by predicate::find_subsets_of()
