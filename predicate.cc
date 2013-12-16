@@ -170,7 +170,7 @@ bool tree_ifx_matcher::handle_filter(const filter_t & filter, const predicate::n
 
 #define TREE_MASK 0
 #define APP 0
-#define TAG_SET 0
+#define TAG_SET 1
 
 void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h) const {
 //TO DO
@@ -329,7 +329,7 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 	//  for datailt see the next implementaiotn of find_subset_of()
     //
 
-    unsigned int stop = x.popcount();
+    unsigned int stop = x.popcount()-2;
     for(unsigned int i=0; i<stop; i++){
         node root = roots[i];
         const node * S[filter_t::WIDTH];
@@ -455,9 +455,9 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
     if(stop%7==0)
         stop-=7;
     else
-        stop=(int) floor(stop/7)*7;
+        stop=(int) floor(stop/7)*7-1;
 #else
-    unsigned int stop = x.popcount();
+    unsigned int stop = x.popcount()-2;
 #endif
     for(unsigned int i=0; i<stop; i++){
         node root = roots[i];
@@ -584,11 +584,11 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 #if TAG_SET
     unsigned int stop = x.popcount();
     if(stop%7==0)
-        stop-=7;
+        stop-=8;
     else
-        stop=(int) floor(stop/7)*7;
+        stop=(int) floor(stop/7)*7-1;
 #else
-    unsigned int stop = x.popcount();
+    unsigned int stop = x.popcount()-2;
 #endif
     for(unsigned int i=0; i<stop; i++){ 
         node root = roots[i];
@@ -622,7 +622,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 }
 
 
-#define SUPERSET_CUT 0
+#define SUPERSET_CUT 1
 
 void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
 	//
@@ -630,14 +630,14 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 	//
 #if TAG_SET
     unsigned int start = x.popcount();
-    if(start%7==0)
-        start++;
-    else
+    if(start%7!=0)
         start=(unsigned int) ceil(20/7)*7+8;
 #else
-    unsigned int start = x.popcount()+1;
+    unsigned int start = x.popcount();
 #endif
+    
     for(unsigned int i=start; i<192; i++){ 
+
         node root = roots[i];
 #if SUPERSET_CUT
         const stack_t * S[filter_t::WIDTH];
@@ -657,6 +657,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
             // (i.e., lower position) of root.left->pos.
             // 
             && x.most_significant_one_pos() <= root.left->pos){
+            std::cout << "i= " << i << " start= " << start << " branch= " << (i-(start-1)) <<std::endl;
 #if SUPERSET_CUT
             stack_t sn = {root.left, (filter_t::pos_t) (i-(start-1))};
             S[head++] = &sn;
@@ -727,12 +728,10 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	//
 #if TAG_SET
     unsigned int start = x.popcount();
-    if(start%7==0)
-        start++;
-    else
-        start=(int) ceil(20/7)*7+8;
+    if(start%7!=0)
+        start=(int) ceil(20/7)*7+7;
 #else
-    unsigned int start = x.popcount()+1;
+    unsigned int start = x.popcount();
 #endif 
     for(unsigned int i=start; i<192; i++){
         node root = roots[i];        

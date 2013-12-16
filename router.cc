@@ -16,7 +16,6 @@ bool matcher_exists::match(const filter_t & filter, tree_t tree, interface_t ifx
 can collect all the supersets. Depending on the matcher used in predicate.cc we may collect
 the filters on a particular interface or all the filter in the trie **/
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
-    cout << "(matcher supersets) ifx:" << ifx << " tree:" << tree << " filter:" << filter.print(cout) << endl;
     std::map<interface_t,set<filter_t>>::iterator it;
     it=supersets.find(ifx);
     if(it==supersets.end()){
@@ -72,7 +71,6 @@ void router::remove_filter_without_check (const filter_t & x, tree_t t, interfac
 broadcast the update to all the interfaces **/
 bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     matcher_exists m;
-     cout<<"add filter"<<endl;
     //if the filter exists we discard the filter and return 0
     if(P.exists_filter(x,t,i))
         return 0;
@@ -80,15 +78,13 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     P.exists_subset(x,t,i,m);
     if(m.get_match())
         return 0;
-    cout<<"check for supersets"<<endl;    
     matcher_collect_supersets m_super;
     P.find_supersets_on_ifx(x,t,i,m_super);
     map<interface_t,set<filter_t>> * sup = m_super.get_supersets();
     map<interface_t,set<filter_t>>::iterator it_sup = sup->find(i);
     if(it_sup!=sup->end()){
         for (set<filter_t>::iterator it=it_sup->second.begin(); it!=it_sup->second.end(); ++it){
-            cout<<"remove"<<endl;
-            cout << (*it).print(cout) << endl;
+            cout << "remove " << (*it).print(cout) << endl;
             P.remove(*it,t,i);
         }
     }
