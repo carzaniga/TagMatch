@@ -282,7 +282,7 @@ public:
 			free(p);
 		}
 #endif
-    };
+    }__attribute__ ((aligned(64)));
     
     node roots [192];
     //node root;
@@ -291,6 +291,13 @@ public:
 
     void destroy();
 };
+
+struct stack {
+   predicate::node * n;
+   filter_t::pos_t branch;
+};
+
+typedef stack stack_t;
 
 class filter_handler {
 public:

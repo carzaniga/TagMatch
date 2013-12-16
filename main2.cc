@@ -79,10 +79,12 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
     unsigned int update_count = 0;
+    unsigned int add = 0;
+    unsigned int rm = 0;
 
     
 #ifdef WITH_TIMERS
-	//unsigned long long prev_nsec = 0;
+	unsigned long long prev_nsec = 0;
 	Timer add_timer, update_timer, delete_timer;
 #endif
 	
@@ -167,11 +169,13 @@ int main(int argc, char *argv[]) {
             std::cin >> command >> tree >> interface >> filter_string;
             while(command!="ed"){ //end delta random_val random_val random_val
                 filter_t filter(filter_string);
-                if(command=="d+") 
+                if(command=="d+"){ 
+                    add++;
                     pd.additions.insert(filter);
-                else if(command=="d-")
+                }else if(command=="d-"){
+                    rm++;
                     pd.removals.insert(filter);
-                else if (command =="#")
+                }else if (command =="#")
                     std::cin.ignore(5000,'\n'); 
                 std::cin >> command >> tree >> interface >> filter_string;
             }
@@ -180,7 +184,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
-#if 1
+#if 0
             cout << "out size:" << out.size() <<endl;
             for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
@@ -200,9 +204,15 @@ int main(int argc, char *argv[]) {
 			update_timer.stop();
 #endif
         ++update_count;
-		if (wheel_of_death(count, 12))
+		if (wheel_of_death(update_count, 7)){
 			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
-            std::cout << " N=" << update_count << "\r";
+            std::cout << " N=" << update_count << " add=" << add << " rm=" << rm
+#ifdef WITH_TIMERS
+            << " Tu (us)=" << ((update_timer.read_nanoseconds()/1000 - prev_nsec) >> 7)
+#endif
+            << "\r";
+            prev_nsec = update_timer.read_nanoseconds()/1000;
+        }
 
         }else if(command == "+ti"){ //command tree ifx random_val
             interface_t i = atoi(interface.c_str());
@@ -215,10 +225,11 @@ int main(int argc, char *argv[]) {
 	std::cout << std::endl << "Final statistics:" << std::endl
 			  //<< "N=" << count << "  Unique=" << P.size() << std::endl
               << "N=" << count << std::endl  
-			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl;
+			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl
+              << "U=" << update_count << " add=" << add << " rm=" << rm << std::endl;
 #ifdef WITH_TIMERS
 	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tu+ (us)=" << (update_timer.read_microseconds() / update_count) << std::endl;
+			  << "Tu (us)=" << (update_timer.read_microseconds() / update_count) << std::endl;
 #endif
 
 	return 0;
