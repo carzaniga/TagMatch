@@ -211,7 +211,9 @@ int main(int argc, char *argv[]) {
             << " Tu (us)=" << ((update_timer.read_nanoseconds()/1000 - prev_nsec) >> 7)
 #endif
             << "\r";
+#ifdef WITH_TIMERS
             prev_nsec = update_timer.read_nanoseconds()/1000;
+#endif
         }
 
         }else if(command == "+ti"){ //command tree ifx random_val

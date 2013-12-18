@@ -324,21 +324,50 @@ predicate::node * predicate::find(const filter_t & x) const {
 }
 
 
+#define SUPERSET_CUT 1
+
+#if SUPERSET_CUT
+struct stack_t {
+	const predicate::node * n;
+	filter_t::pos_t branch;
+
+	void assign(const predicate::node * nx, filter_t::pos_t bx) {
+		n = nx;
+		branch = bx;
+	}
+};
+#endif
+
 void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const {
 	//
 	//  for datailt see the next implementaiotn of find_subset_of()
     //
-
-    unsigned int stop = x.popcount()-2;
-    for(unsigned int i=0; i<stop; i++){
+#if TAG_SET
+    unsigned int stop = x.popcount();
+    unsigned int popcount =stop;
+    if(stop%7==0)
+        stop-=8;
+    else
+        stop=(stop/7)*7-1;
+#else
+    unsigned int popcount = x.popcount();
+    unsigned int stop = popcount-2;
+#endif
+    for(unsigned int i=0; i<=stop; i++){
         node root = roots[i];
+#if SUPERSET_CUT
+        stack_t S[filter_t::WIDTH];
+#else
         const node * S[filter_t::WIDTH];
+#endif
         unsigned int head = 0;
-
-        
+ 
         if (root.pos > root.left->pos)
+#if SUPERSET_CUT
+           	S[head++].assign(root.left, ((popcount - 1)-i)); 
+#else
             S[head++] = root.left;
-
+#endif
         //
         // in this implementation we also use the cut 
         // that exploits the application tags
@@ -363,8 +392,14 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 
         while(head != 0) {
             assert(head <= filter_t::WIDTH);
-            const node * n = S[--head];		// for each visited node n...
+#if SUPERSET_CUT
+            --head;
+            const node * n = S[head].n;
+            filter_t::pos_t branch = S[head].branch;
             
+#else
+            const node * n = S[--head];		// for each visited node n...
+#endif            
             //if (n->key.suffix_subset_of(x, n->pos)) 
             if(n->key.subset_of(x))
                 if (h.handle_filter(n->key, *n))
@@ -379,7 +414,17 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
                && n->left->match_tree(t)
                && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
                && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
-                        S[head++] = n->left;
+#if SUPERSET_CUT
+                    if (x[n->pos]) {
+					    if (branch > 0)
+						    S[head++].assign(n->left, branch - 1);
+				    } else {
+					    S[head++].assign(n->left, branch);
+				    }
+
+#else
+                    S[head++] = n->left;
+#endif
             }
             
            
@@ -394,8 +439,18 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
             if (n->left->pos == n->pos - 1 
                 || (n->pos > n->left->pos
                 && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)
-                && n->left->match_tree(t))) 
+                && n->left->match_tree(t))){ 
+#if SUPERSET_CUT
+                    if (x[n->pos]) {
+					    if (branch > 0)
+						    S[head++].assign(n->left, branch - 1);
+				    } else {
+					    S[head++].assign(n->left, branch);
+				    }
+#else
                     S[head++] = n->left;
+#endif
+            }
 
 #endif
      
@@ -418,7 +473,11 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
                     && n->right->match_tree(t)
                     && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
                     && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+#if SUPERSET_CUT
+                        S[head++].assign(n->right, branch);
+#else
                         S[head++] = n->right;
+#endif
             }  
             
 
@@ -430,7 +489,11 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
                     || (n->pos > n->right->pos 
                     && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)
                     &&  n->right->match_tree(t)))
+#if SUPERSET_CUT
+                        S[head++].assign(n->right, branch);
+#else
                         S[head++] = n->right;
+#endif
             }
 
                 
@@ -452,23 +515,35 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	// 
 #if TAG_SET
     unsigned int stop = x.popcount();
+    unsigned int popcount =stop;
     if(stop%7==0)
-        stop-=7;
+        stop-=8;
     else
-        stop=(int) floor(stop/7)*7-1;
+        stop=(stop/7)*7-1;
 #else
-    unsigned int stop = x.popcount()-2;
+    unsigned int popcount = x.popcount();
+    unsigned int stop = popcount-2;
 #endif
-    for(unsigned int i=0; i<stop; i++){
+    for(unsigned int i=0; i<=stop; i++){
         node root = roots[i];
+#if SUPERSET_CUT
+        stack_t S[filter_t::WIDTH];
+#else
         const node * S[filter_t::WIDTH];
+#endif        
         unsigned int head = 0;
         
         // if the trie is not empty we push the root node onto the stack.
         // The true root is root.left, not root, which is a sentinel node.
         //
         if (root.pos > root.left->pos)
+#if SUPERSET_CUT
+           	S[head++].assign(root.left, ((popcount - 1)-i)); 
+#else
             S[head++] = root.left;
+#endif
+
+
 #if APP
         // we need to chck wich application tag is conteined in the message
         // to do this we can simpli do a subset check between the message and 
@@ -517,7 +592,14 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
         // 
         while(head != 0) {
             assert(head <= filter_t::WIDTH);
+#if SUPERSET_CUT
+            --head;
+            const node * n = S[head].n;
+            filter_t::pos_t branch = S[head].branch;
+            
+#else
             const node * n = S[--head];		// for each visited node n...
+#endif 
             //
             // INVARIANT: n is a subset of x up to position n->pos + 1
             // (i.e., excluding position n->pos itself)
@@ -533,7 +615,17 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
                || (n->pos > n->left->pos
                && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
                && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
+#if SUPERSET_CUT
+                    if (x[n->pos]) {
+					    if (branch > 0)
+						    S[head++].assign(n->left, branch - 1);
+				    } else {
+					    S[head++].assign(n->left, branch);
+				    }
+
+#else
                     S[head++] = n->left;
+#endif
             }
         
 #else
@@ -543,8 +635,19 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
             // 
             if (n->left->pos == n->pos - 1 
                 || (n->pos > n->left->pos
-                && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
+                && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){ 
+#if SUPERSET_CUT
+                    if (x[n->pos]) {
+					    if (branch > 0)
+						    S[head++].assign(n->left, branch - 1);
+				    } else {
+					    S[head++].assign(n->left, branch);
+				    }
+
+#else
                     S[head++] = n->left;
+#endif
+            }
 #endif
             
 #if APP
@@ -555,7 +658,11 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
                     || (n->pos > n->right->pos 
                     && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
                     && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+#if SUPERSET_CUT
+                        S[head++].assign(n->right, branch);
+#else
                         S[head++] = n->right;
+#endif            
             }  
 
 
@@ -569,7 +676,12 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
                 if (n->right->pos == n->pos - 1
                     || (n->pos > n->right->pos 
                     && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+#if SUPERSET_CUT
+                        S[head++].assign(n->right, branch);
+#else
                         S[head++] = n->right;
+#endif
+
             }
 #endif	
         }
@@ -586,11 +698,11 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
     if(stop%7==0)
         stop-=8;
     else
-        stop=(int) floor(stop/7)*7-1;
+        stop=(stop/7)*7-1;
 #else
     unsigned int stop = x.popcount()-2;
 #endif
-    for(unsigned int i=0; i<stop; i++){ 
+    for(unsigned int i=0; i<=stop; i++){ 
         node root = roots[i];
         node * S[filter_t::WIDTH];
         unsigned int head = 0;
@@ -622,8 +734,6 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 }
 
 
-#define SUPERSET_CUT 1
-
 void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
 	//
 	// See also the above find_subsets_of for technical details.
@@ -631,16 +741,14 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
 #if TAG_SET
     unsigned int start = x.popcount();
     if(start%7!=0)
-        start=(unsigned int) ceil(20/7)*7+8;
+        start = (start/7 + 1)*7;
 #else
-    unsigned int start = x.popcount();
+	filter_t::pos_t start = x.popcount();
 #endif
-    
-    for(unsigned int i=start; i<192; i++){ 
-
+    for(filter_t::pos_t i = start; i < filter_t::WIDTH; i++){ 
         node root = roots[i];
 #if SUPERSET_CUT
-        const stack_t * S[filter_t::WIDTH];
+        stack_t S[filter_t::WIDTH];
 #else
         const node * S[filter_t::WIDTH];
 #endif
@@ -657,10 +765,8 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
             // (i.e., lower position) of root.left->pos.
             // 
             && x.most_significant_one_pos() <= root.left->pos){
-            std::cout << "i= " << i << " start= " << start << " branch= " << (i-(start-1)) <<std::endl;
 #if SUPERSET_CUT
-            stack_t sn = {root.left, (filter_t::pos_t) (i-(start-1))};
-            S[head++] = &sn;
+			S[head++].assign(root.left, (i - (start - 1)));
 #else
             S[head++] = root.left;
 #endif
@@ -668,9 +774,9 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
         while(head != 0) {
             assert(head <= filter_t::WIDTH);
 #if SUPERSET_CUT
-            head--;
-            const node * n = S[head]->n;
-            filter_t::pos_t branch = S[head]->branch;
+            --head;
+            const node * n = S[head].n;
+            filter_t::pos_t branch = S[head].branch;
 #else
             const node * n = S[--head];		// for each visited node n...
 #endif
@@ -688,12 +794,16 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
             // 
             if (n->right->pos == n->pos - 1 
                 || (n->pos > n->right->pos
-                    && x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))){ 
+                    && x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) { 
 #if SUPERSET_CUT
-                    stack_t sn = {n->right,branch}; 
-                    S[head++] = &sn;
+				if (!x[n->pos]) {
+					if (branch > 0)
+						S[head++].assign(n->right, branch - 1);
+				} else {
+					S[head++].assign(n->right, branch);
+				}
 #else
-                    S[head++] = n->right;
+				S[head++] = n->right;
 #endif
             }
             // push n->left on the stack only when x has a 0 in n->pos,
@@ -701,18 +811,12 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
             // between n->pos and n->left->pos, excluding n->left->pos,
             // are a superset of x
             // 
-#if SUPERSET_CUT 
-            if (!x[n->pos] && branch>0) {
-#else
             if (!x[n->pos]) {
-#endif
                 if (n->left->pos == n->pos - 1
                     || (n->pos > n->left->pos 
                         && x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))){
 #if SUPERSET_CUT
-                    branch--;
-                    stack_t sn = {n->left,branch}; 
-                    S[head++] = &sn;
+                    S[head++].assign(n->left, branch);
 #else
                     S[head++] = n->left;
 #endif
@@ -729,7 +833,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 #if TAG_SET
     unsigned int start = x.popcount();
     if(start%7!=0)
-        start=(int) ceil(20/7)*7+7;
+        start=(start/7 +1)*7;
 #else
     unsigned int start = x.popcount();
 #endif 

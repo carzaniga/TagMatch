@@ -84,7 +84,6 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     map<interface_t,set<filter_t>>::iterator it_sup = sup->find(i);
     if(it_sup!=sup->end()){
         for (set<filter_t>::iterator it=it_sup->second.begin(); it!=it_sup->second.end(); ++it){
-            cout << "remove " << (*it).print(cout) << endl;
             P.remove(*it,t,i);
         }
     }
