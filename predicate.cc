@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <math.h>
+#include <thread>
 
 #include "predicate.hh"
 
@@ -87,36 +88,38 @@ void predicate::node::remove_last_pair() {
 
 void predicate::destroy() {
     for(int i=0;i<192;i++){
-        node r = roots[i];
-    	if (r.pos <= r.left->pos)
-	    	return;
+        for(int j=0; i< roots[i].size; j++){
+            node r = roots[i].tries[j];
+            if (r.pos <= r.left->pos)
+                return;
 
-	    node * S[filter_t::WIDTH];
-    	unsigned int head = 0;
-	    S[0] = r.left;
-    
-	    for (;;) {
-		    node * n = S[head];
-	    	if (n->left) {
-	    		if (n->pos > n->left->pos) {
-		    		S[++head] = n->left;
-			    	n->left = 0;
-				    continue;
-    			} 
-	    		n->left = 0;
-		    }
-		    if (n->right) {
-			    if (n->pos > n->right->pos) {
-				    S[++head] = n->right;
-				    n->right = 0;
-				    continue;
-			    }
-	    	}
-	    	delete(n);
-		    if (head == 0)
-			    return;
-		    --head;
-	    }
+            node * S[filter_t::WIDTH];
+            unsigned int head = 0;
+            S[0] = r.left;
+        
+            for (;;) {
+                node * n = S[head];
+                if (n->left) {
+                    if (n->pos > n->left->pos) {
+                        S[++head] = n->left;
+                        n->left = 0;
+                        continue;
+                    } 
+                    n->left = 0;
+                }
+                if (n->right) {
+                    if (n->pos > n->right->pos) {
+                        S[++head] = n->right;
+                        n->right = 0;
+                        continue;
+                    }
+                }
+                delete(n);
+                if (head == 0)
+                    return;
+                --head;
+            }
+        }
     }
 };
 
@@ -172,64 +175,146 @@ bool tree_ifx_matcher::handle_filter(const filter_t & filter, const predicate::n
 #define APP 0
 #define TAG_SET 1
 
-void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h) const {
-//TO DO
-//implements the cut based on tree mask on the superset
-//think about cuts based on interface
+#define SUPERSET_CUT 1
 
-    //can we skip until the next hw for tags?
-    //for example if we receive a filter with hw 8, chan we start the
-    //superset check from 15? In theroy no, but which is the probability
-    //have problems?
+#if SUPERSET_CUT
+struct stack_t {
+	const predicate::node * n;
+	filter_t::pos_t branch;
+
+	void assign(const predicate::node * nx, filter_t::pos_t bx) {
+		n = nx;
+		branch = bx;
+	}
+};
+#endif
+
+void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
+
     tree_matcher matcher(t,h);
-    find_supersets_of(x, matcher);
+
+#if TAG_SET
+    unsigned int start = x.popcount();
+    if(start%7!=0)
+        start = (start/7 + 1)*7;
+#else
+	filter_t::pos_t start = x.popcount();
+#endif
+    for(filter_t::pos_t hw = start; hw < filter_t::WIDTH; hw++){ 
+        if(roots[hw].size==1)
+            find_supersets_of(x, roots[hw].tries[0], matcher);
+        else if(roots[hw].size>1){
+            std::vector<std::thread> ts; 
+            for(filter_t::pos_t i=0; i<roots[hw].size; i++)
+                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+            for(auto& t : ts)
+    	        t.join();
+        }
+    }
 }
 
 
 void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
-//TO DO
-//implements the cut based on tree mask on the superset
-//think about cuts based on interface 
     tree_ifx_matcher matcher(t,i,h);
-    find_supersets_of(x, matcher);
+    
+#if TAG_SET
+    filter_t::pos_t start = x.popcount();
+    if(start%7!=0)
+        start = (start/7 + 1)*7;
+#else
+	filter_t::pos_t start = x.popcount();
+#endif
+    for(filter_t::pos_t hw = start; hw < filter_t::WIDTH; hw++){ 
+        if(roots[hw].size==1)
+            find_supersets_of(x, roots[hw].tries[0], matcher);
+        else if(roots[hw].size>1){
+            std::vector<std::thread> ts; 
+            for(filter_t::pos_t i=0; i<roots[hw].size; i++)
+                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+            for(auto& t : ts)
+    	        t.join();
+        }
+    }
 }
 
 void predicate::exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
-#if TREE_MASK
-//TO DO
-//modify the remove function using the tree mask
     tree_ifx_matcher matcher(t,i,h);
-    find_subsets_of(x, t, matcher);
+
+#if TAG_SET
+    filter_t::pos_t stop = x.popcount();
+    if(stop%7==0)
+        stop-=8;
+    else
+        stop=(stop/7)*7-1;
 #else
-    tree_ifx_matcher matcher(t,i,h);
-    find_subsets_of(x, matcher);
+    filter_t::pos_t stop = x.popcount()-2;
 #endif
+    for(filter_t::pos_t hw=0; hw<=stop; hw++){
+        if(roots[hw].size==1)
+            find_subsets_of(x, roots[hw].tries[0], matcher);
+        else if(roots[hw].size>1){
+            std::vector<std::thread> ts; 
+            for(filter_t::pos_t i=0; i<roots[hw].size; i++)
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+            for(auto& t : ts)
+    	        t.join();
+        }
+    }
 }
 
 bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t i) const {
-//the tree_mask may help also here
-    node * n =find(x);
-    if(n==0)
+    filter_t::pos_t hw = x.popcount()-1;
+    if(roots[hw].size==0)
         return false;
-    else{
-        for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
-		    if (ti->tree == t && ti->interface == i)
-		        return true;
-	    return false;
+    //this can be parallelized, for now we go sequentially 
+    for(filter_t::pos_t i=0; i<roots[hw].size; i++){
+        node * n =find(x,roots[hw].tries[i]);
+        if(n!=0)
+            for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
+                if (ti->tree == t && ti->interface == i)
+                    return true;
     }
+    return false;
 }
 
 void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const {
     tree_matcher matcher(t,h);
-    node * n =find(x);
-    if(n!=0){
-        matcher.handle_filter(x,*n);
+    //first we look if the filter exist, becuase the filter is a subset of itself
+    //than we look at the subsets
+
+    //exaxt match
+    filter_t::pos_t hw = x.popcount()-1;
+    if(roots[hw].size!=0){
+        for(filter_t::pos_t i=0; i<roots[hw].size; i++){
+            node * n =find(x,roots[hw].tries[i]);
+            if(n!=0){
+                matcher.handle_filter(x,*n);
+                break;
+            }    
+        }
     }   
-#if TREE_MASK
-    find_subsets_of(x, t, matcher);
+    
+    //subsets
+#if TAG_SET
+    filter_t::pos_t stop =hw+1;
+    if(stop%7==0)
+        stop-=8;
+    else
+        stop=(stop/7)*7-1;
 #else
-    find_subsets_of(x, matcher);
+    filter_t::pos_t stop = hw-1;
 #endif
+    for(filter_t::pos_t hw=0; hw<=stop; hw++){
+        if(roots[hw].size==1)
+            find_subsets_of(x, roots[hw].tries[0], matcher);
+        else if(roots[hw].size>1){
+            std::vector<std::thread> ts; 
+            for(filter_t::pos_t i=0; i<roots[hw].size; i++)
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+            for(auto& t : ts)
+    	        t.join();
+        }
+    }
 }
 
 
@@ -239,26 +324,57 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	// this is the modular matching function that uses the above match
 	// handler through the modular find_subset_of function
 	//
-   
-#if TREE_MASK
+   std::cout << "match" << std::endl;
     tree_matcher matcher(t,h);
-    find_subsets_of(x, t, matcher);
-#else
-    tree_matcher matcher(t,h);
-    find_subsets_of(x, matcher);
-#endif
 
+//exaxt match
+    filter_t::pos_t hw = x.popcount()-1;
+    if(roots[hw].size!=0){
+        for(filter_t::pos_t i=0; i<roots[hw].size; i++){
+            node * n =find(x,roots[hw].tries[i]);
+            if(n!=0){
+                matcher.handle_filter(x,*n);
+                break;
+            }    
+        }
+    }   
+    
+    //subsets
+#if TAG_SET
+    filter_t::pos_t stop =hw+1;
+    if(stop%7==0)
+        stop-=8;
+    else
+        stop=(stop/7)*7-1;
+#else
+    filter_t::pos_t stop = hw-1;
+#endif
+    for(filter_t::pos_t hw=0; hw<=stop; hw++){
+        if(roots[hw].size==1)
+            find_subsets_of(x, roots[hw].tries[0], matcher);
+        else if(roots[hw].size>1){
+            std::vector<std::thread> ts; 
+            for(filter_t::pos_t i=0; i<roots[hw].size; i++)
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+            for(auto& t : ts)
+    	        t.join();
+        }
+    }
 }
 
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
-   	node * n = add(x);
-#if TREE_MASK
-    set_mask(x,t);       
-#endif
-	n->add_pair(t, i);
-	return n;
+    filter_t::pos_t hw = x.popcount()-1;
+    //if there are multiple tries we add in a round-robin way to keep the load balanced
+    if(roots[hw].size!=0){
+        roots[hw].last_add = ( roots[hw].last_add + 1) %  roots[hw].size;
+        node * n = add(x,roots[hw].tries[roots[hw].last_add]);
+        n->add_pair(t, i);
+        return n;
+    }
+    return 0;
 }
 
+#if 0
 void predicate::set_mask(const filter_t & x, tree_t t) {
     node root = roots[x.popcount()-1];
 	node * prev = &root;
@@ -279,13 +395,12 @@ void predicate::set_mask(const filter_t & x, tree_t t) {
     if(curr->right!=&root && curr->right->pos < curr->pos)
         curr->init_tree_mask(curr->right);
 }
+#endif
 
 
-
-predicate::node * predicate::add(const filter_t & x) {
-    node * root = &(roots[x.popcount()-1]);
-  	node * prev = root;
-	node * curr = root->left;
+predicate::node * predicate::add(const filter_t & x, node & root) {
+  	node * prev = &(root);
+	node * curr = root.left;
     while(prev->pos > curr->pos) {
 		prev = curr;
 		curr = x[curr->pos] ? curr->right : curr->left;
@@ -294,8 +409,8 @@ predicate::node * predicate::add(const filter_t & x) {
 		return curr;
 	filter_t::pos_t pos = filter_t::most_significant_diff_pos(curr->key, x);
 
-	prev = root;
-	curr = root->left;
+	prev = &(root);
+	curr = root.left;
 	
 	while(prev->pos > curr->pos && curr->pos > pos) {
 		prev = curr;
@@ -311,8 +426,7 @@ predicate::node * predicate::add(const filter_t & x) {
 	}     
 }
 
-predicate::node * predicate::find(const filter_t & x) const {
-    node root = roots[x.popcount()-1];
+predicate::node * predicate::find(const filter_t & x, node & root) const {
     const node * prev = &root;
 	node * curr = root.left;
 
@@ -323,21 +437,7 @@ predicate::node * predicate::find(const filter_t & x) const {
 	return (x == curr->key) ? curr : 0;
 }
 
-
-#define SUPERSET_CUT 1
-
-#if SUPERSET_CUT
-struct stack_t {
-	const predicate::node * n;
-	filter_t::pos_t branch;
-
-	void assign(const predicate::node * nx, filter_t::pos_t bx) {
-		n = nx;
-		branch = bx;
-	}
-};
-#endif
-
+#if 0
 void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const {
 	//
 	//  for datailt see the next implementaiotn of find_subset_of()
@@ -368,27 +468,6 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 #else
             S[head++] = root.left;
 #endif
-        //
-        // in this implementation we also use the cut 
-        // that exploits the application tags
-        //
-     
-#if APP   
-        filter_t app;
-        
-        if(predicate::t.yt.subset_of(x))
-            app=predicate::t.yt;
-        else if(predicate::t.tw.subset_of(x))
-            app=predicate::t.tw;
-        else if(predicate::t.blog.subset_of(x))
-            app=predicate::t.blog;
-        else if(predicate::t.del.subset_of(x))
-            app=predicate::t.del;
-        else if(predicate::t.bt.subset_of(x))
-            app=predicate::t.bt;
-        else
-            return;
-#endif
 
         while(head != 0) {
             assert(head <= filter_t::WIDTH);
@@ -405,37 +484,6 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
                 if (h.handle_filter(n->key, *n))
                     return;
 
-#if APP
-
-            if((n->left->pos == n->pos - 1 
-               && n->left->match_tree(t)
-               && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))
-               || (n->pos > n->left->pos
-               && n->left->match_tree(t)
-               && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
-               && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
-#if SUPERSET_CUT
-                    if (x[n->pos]) {
-					    if (branch > 0)
-						    S[head++].assign(n->left, branch - 1);
-				    } else {
-					    S[head++].assign(n->left, branch);
-				    }
-
-#else
-                    S[head++] = n->left;
-#endif
-            }
-            
-           
-            /*if (n->pos > n->left->pos){
-               if (n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1) &&
-                    //app.prefix_subset_of(n->left->key, n->left->pos + 1) && 
-                    app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1) &&
-                    n->left->match_tree(t))  
-                    S[head++] = n->left;
-            }*/
-#else
             if (n->left->pos == n->pos - 1 
                 || (n->pos > n->left->pos
                 && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1)
@@ -452,38 +500,7 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 #endif
             }
 
-#endif
      
-#if APP
-
-            /*if (n->pos > n->right->pos && x[n->pos]){ 
-
-                if (n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1) &&
-                    //app.prefix_subset_of(n->right->key, n->right->pos + 1) &&
-                    app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1) && 
-                    n->right->match_tree(t)) 
-                    S[head++] = n->right;
-            }*/
-        
-            if (x[n->pos]){
-                if ((n->right->pos == n->pos - 1
-                    && n->right->match_tree(t)
-                    && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))
-                    || (n->pos > n->right->pos 
-                    && n->right->match_tree(t)
-                    && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
-                    && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
-#if SUPERSET_CUT
-                        S[head++].assign(n->right, branch);
-#else
-                        S[head++] = n->right;
-#endif
-            }  
-            
-
-            
-
-#else
             if (x[n->pos]) {
                 if (n->right->pos == n->pos - 1
                     || (n->pos > n->right->pos 
@@ -496,16 +513,13 @@ void predicate::find_subsets_of(const filter_t & x, tree_t t, filter_const_handl
 #endif
             }
 
-                
-#endif
-            
         }
     }
 }
+#endif
 
 
-
-void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) const {
+void predicate::find_subsets_of(const filter_t & x, node & root, filter_const_handler & h) const {
 	//
 	// this is a non-recursive (i.e., iterative) exploration of the
 	// PATRICIA trie that looks for subsets.  The pattern is almost
@@ -513,19 +527,6 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	// to keep track of the visited nodes, and we visit new nodes
 	// along a subset (resp. superset) prefix.
 	// 
-#if TAG_SET
-    unsigned int stop = x.popcount();
-    unsigned int popcount =stop;
-    if(stop%7==0)
-        stop-=8;
-    else
-        stop=(stop/7)*7-1;
-#else
-    unsigned int popcount = x.popcount();
-    unsigned int stop = popcount-2;
-#endif
-    for(unsigned int i=0; i<=stop; i++){
-        node root = roots[i];
 #if SUPERSET_CUT
         stack_t S[filter_t::WIDTH];
 #else
@@ -538,49 +539,9 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
         //
         if (root.pos > root.left->pos)
 #if SUPERSET_CUT
-           	S[head++].assign(root.left, ((popcount - 1)-i)); 
+           	S[head++].assign(root.left, ((x.popcount())-root.left->key.popcount())); 
 #else
             S[head++] = root.left;
-#endif
-
-
-#if APP
-        // we need to chck wich application tag is conteined in the message
-        // to do this we can simpli do a subset check between the message and 
-        // the application tags in predicate::t. if no tag is in the
-        // message we can discard it
-        
-        filter_t app;
-        /*int count =0;
-        if(t.yt.subset_of(x))
-            count++;
-        if(t.tw.subset_of(x))
-            count++;
-        if(t.blog.subset_of(x))
-            count++;
-        if(t.del.subset_of(x))
-            count++;
-        if(t.bt.subset_of(x))
-            count++;
-
-        if(count>1)
-            std::cout << "msg with multiple application tags" << std::endl;
-        else if(count==0)
-            std::cout << "msg with no application tag" << std::endl;*/
-
-        
-        if(t.yt.subset_of(x))
-            app=t.yt;
-        else if(t.tw.subset_of(x))
-            app=t.tw;
-        else if(t.blog.subset_of(x))
-            app=t.blog;
-        else if(t.del.subset_of(x))
-            app=t.del;
-        else if(t.bt.subset_of(x))
-            app=t.bt;
-        else
-            return;
 #endif
 
 
@@ -607,28 +568,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
             //if (n->key.suffix_subset_of(x, n->pos)) 
             if(n->key.subset_of(x))
                 if (h.handle_filter(n->key, *n))
-                    return;
-#if APP
-
-            if((n->left->pos == n->pos - 1 
-               && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))
-               || (n->pos > n->left->pos
-               && app.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)
-               && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){
-#if SUPERSET_CUT
-                    if (x[n->pos]) {
-					    if (branch > 0)
-						    S[head++].assign(n->left, branch - 1);
-				    } else {
-					    S[head++].assign(n->left, branch);
-				    }
-
-#else
-                    S[head++] = n->left;
-#endif
-            }
-        
-#else
+                    return;          
             // push n->left on the stack only when the bits of
             // n->left->key in positions between n->pos and
             // n->left->pos, excluding n->left->pos, are a subset of x
@@ -647,26 +587,7 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 #else
                     S[head++] = n->left;
 #endif
-            }
-#endif
-            
-#if APP
-
-            if (x[n->pos]){
-                if ((n->right->pos == n->pos - 1
-                    && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))
-                    || (n->pos > n->right->pos 
-                    && app.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1)
-                    && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
-#if SUPERSET_CUT
-                        S[head++].assign(n->right, branch);
-#else
-                        S[head++] = n->right;
-#endif            
-            }  
-
-
-#else
+            }    
             // push n->right on the stack only when x has a 1 in n->pos,
             // and then when the bits of n->right->key in positions
             // between n->pos and n->right->pos, excluding n->right->pos,
@@ -683,11 +604,10 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 #endif
 
             }
-#endif	
         }
-    }
 }
 
+#if 0
 void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
 
 	//
@@ -732,21 +652,14 @@ void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
         }
     }
 }
+#endif
 
-
-void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
+void predicate::find_supersets_of(const filter_t & x, node & root, filter_const_handler & h) const {
 	//
 	// See also the above find_subsets_of for technical details.
 	//
-#if TAG_SET
-    unsigned int start = x.popcount();
-    if(start%7!=0)
-        start = (start/7 + 1)*7;
-#else
-	filter_t::pos_t start = x.popcount();
-#endif
-    for(filter_t::pos_t i = start; i < filter_t::WIDTH; i++){ 
-        node root = roots[i];
+
+    
 #if SUPERSET_CUT
         stack_t S[filter_t::WIDTH];
 #else
@@ -766,7 +679,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
             // 
             && x.most_significant_one_pos() <= root.left->pos){
 #if SUPERSET_CUT
-			S[head++].assign(root.left, (i - (start - 1)));
+			S[head++].assign(root.left, (root.left->key.popcount() - (x.popcount())));
 #else
             S[head++] = root.left;
 #endif
@@ -823,9 +736,10 @@ void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) 
                 }
             }
         }
-    }
+    
 }
 
+#if 0
 void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 	//
 	// See the above "const" find_superset_of for technical details.
@@ -868,11 +782,18 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
         }
     }
 }
+#endif
 
 void predicate::remove(const filter_t & x , tree_t t, interface_t i){
-	node * n = find(x);
-	if(n!=0){
-		n->remove_pair(t,i);
-	}
+    filter_t::pos_t hw = x.popcount()-1;
+    if(roots[hw].size==0)
+        return;
+    //this can be parallelized, for now we go sequentially 
+    for(filter_t::pos_t i=0; i<roots[hw].size; i++){
+        node * n =find(x,roots[hw].tries[i]);
+        if(n!=0)
+            n->remove_pair(t,i);
+            return;
+    }
 }
 

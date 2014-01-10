@@ -3,6 +3,7 @@
 
 #include <set>
 #include <map>
+#include <mutex>
 #include "predicate.hh"
 
 using namespace std;
@@ -26,7 +27,7 @@ private:
 * - in add_filter is used in combination with a tree_ifx_mathcer
 * (see predicate.cc) in order to get all the subset of one 
 * particular interface
-* - in remove_filter we use a tree_matcher in predicate.ccto get
+* - in remove_filter we use a tree_matcher in predicate.cc to get
 * all the supersets 
 **/
 class matcher_collect_supersets : public match_handler {
@@ -40,6 +41,7 @@ public:
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
 private: 
     map<interface_t,set<filter_t>> supersets;
+    mutex mtx;
 };
 
 
@@ -65,6 +67,7 @@ private:
     //input interface from where we received the update
     interface_t i;
     map<interface_t,unsigned int> subsets;
+    mutex mtx;
 };
 
 

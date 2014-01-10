@@ -6,7 +6,9 @@ using namespace std;
 
 /** match always returns true becuase is called only when we alredy matched the filter,
 the tree and the interface. Sets also exists_match to true in order to check the result
-later **/ 
+later **/
+
+//synch???
 bool matcher_exists::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     exists_match=true;
 	return true;
@@ -15,7 +17,9 @@ bool matcher_exists::match(const filter_t & filter, tree_t tree, interface_t ifx
 /** match always returns false becuase we don't wont to stop the algorithm. In this way we
 can collect all the supersets. Depending on the matcher used in predicate.cc we may collect
 the filters on a particular interface or all the filter in the trie **/
+
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
+    mtx.lock();
     std::map<interface_t,set<filter_t>>::iterator it;
     it=supersets.find(ifx);
     if(it==supersets.end()){
@@ -25,12 +29,14 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
     }else{
         it->second.insert(filter);
     }
+    mtx.unlock();
 	return false;
 }
 
 /** returns always false because we want to visit the whole trie. counts the number
 of subsets on each interface **/
 bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, interface_t ifx) {
+    mtx.lock();
     if(ifx==i)
         return false;
     std::map<interface_t,unsigned int>::iterator it;
@@ -40,6 +46,7 @@ bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, i
     }else{
         it->second++;    
     }
+    mtx.unlock();
 	return false;
 }
 

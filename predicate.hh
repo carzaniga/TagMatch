@@ -14,6 +14,7 @@
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #ifdef NODE_USES_MALLOC
 #include <new>
@@ -91,13 +92,49 @@ class match_handler;
 
 class predicate {   
 
+#define N_FILTERS 10000000
+#define TOT_FILTERS 91092205
 public:
-    predicate(): filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){};
+    predicate(): filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){
+        for(filter_t::pos_t i =0; i< filter_t::WIDTH; i++){
+            //we need to consider always the numebr of ones - 1
+            if (i<6){ //up to 6
+                roots.push_back(p_node(0)); 
+            }else if(i>=6 && i<=10){ //from 7 to 11
+                roots.push_back(p_node(1));
+            }else if(i==11){ //hw = 12 (max load ~ 1M)
+                int n = N_FILTERS*4/TOT_FILTERS;
+                if(n == 0)
+                    n=1;
+                std::cout << "i=11 hw=12 n threads= " << n << std::endl; 
+                roots.push_back(p_node(n));
+            }else if(i==12){ //hw = 13 (max load ~ 1M)
+                int n = N_FILTERS*26/TOT_FILTERS;
+                if(n == 0)
+                    n=1;
+                std::cout << "i=12 hw=13 n threads= " << n << std::endl; 
+                roots.push_back(p_node(n));
+            }else if(i==13){ //hw = 14 (max load ~ 1M)
+                int n = N_FILTERS*57/TOT_FILTERS;
+                if(n == 0)
+                    n=1;
+                std::cout << "i=13 hw=14 n threads= " << n << std::endl; 
+                roots.push_back(p_node(n));
+            }else if(i>=14 && i<=76){ //(from 15 to 77)
+                roots.push_back(p_node(1));
+            }else{ //from 78 to 192
+                roots.push_back(p_node(0));
+            }
+        }
+    };
                  
-    ~predicate() { destroy(); }
+    ~predicate() { 
+        destroy(); 
+    }
 
 
 	class node;
+    class p_node;
 
     /** sets the tree mask for the filter x
 	 */ 
@@ -105,7 +142,7 @@ public:
 
 	/** adds a filter, without adding anything to it
 	 */ 
-	node * add(const filter_t & x);
+	node * add(const filter_t & x, node & root);
 
 	/** adds a filter together with the association to a
 	 *  tree--interface pair
@@ -118,7 +155,7 @@ public:
 
 	/** exact-match filter search
 	 */
-	node * find(const filter_t & x) const;
+	node * find(const filter_t & x, node & root) const;
 
     /** return if a subset of x is found on the interface i on the tree t. 
     * uses matcher_exists defined in router.hh
@@ -139,13 +176,12 @@ public:
     *
     *
     */
-    void find_supersets(const filter_t & x, tree_t t, match_handler & h) const;
+    void find_supersets(const filter_t & x, tree_t t, match_handler & h);
 
     /** count all the subsets of x on a given trie and return them divided by interfaces
     * matcher_count_subsets_by_ifx is defined in router.hh and stores the results in a map
     */
     void count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const;
-
 
 	/** processes the subsets of the given filter
 	 *
@@ -154,11 +190,12 @@ public:
 	 *  specifically, the predicate calls the handle_filter method of
 	 *  the handler, which may terminate the search by returning true.
 	 */
-	void find_subsets_of(const filter_t & x, filter_const_handler & h) const;
-	void find_supersets_of(const filter_t & x, filter_const_handler & h) const;
-    void find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const;
-	void find_subsets_of(const filter_t & x, filter_handler & h);
-	void find_supersets_of(const filter_t & x, filter_handler & h);
+	void find_subsets_of(const filter_t & x, node & root, filter_const_handler & h) const;
+	void find_supersets_of(const filter_t & x, node & root, filter_const_handler & h) const;
+    //void find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const;
+    //void find_subsets_of(const filter_t & x, const * node root, filter_const_handler & h ) const;
+	//void find_subsets_of(const filter_t & x, filter_handler & h);
+	//void find_supersets_of(const filter_t & x, filter_handler & h);
 
 	void remove(const filter_t & x,tree_t t, interface_t i);
 	void clear();
@@ -283,13 +320,59 @@ public:
 		}
 #endif
     }__attribute__ ((aligned(64)));
-    
-    node roots [192];
-    //node root;
+
+    class p_node {
+        friend class predicate;
+        public: 
+        filter_t::pos_t size;
+        filter_t::pos_t last_add;
+        node * tries;
+        
+        p_node(filter_t::pos_t n): size(n){
+            //we may want to create an empty trie
+            //since this is workload dependent
+            if(n>0){
+                tries = new node [size];
+            }else
+                tries=NULL;
+            last_add=0;
+        }
+
+        p_node(const p_node &pn){
+            size = pn.size;
+            last_add = pn.size;
+            tries = pn.tries;
+        }
+        
+/*        p_node & operator= (const p_node & other){
+            if(this != &other){
+                node * new_array = new node[other.size];
+                std::copy(other.tries, other.tries + other.size, new_array);
+ 
+                delete [] tries;
+ 
+                tries = new_array;
+                size = other.size;
+                last_add = other.size;
+            }
+            return *this;
+        }*/
+
+       /* ~p_node() {
+            std::cout<<"destroy"<<std::endl;
+            if (size!=0)
+                delete [] tries;
+            std::cout<<"dstr done"<<std::endl;
+
+        }*/
+    };
+
+    std::vector<p_node> roots;    
 	unsigned long filter_count;
     tags_t t;  
 
     void destroy();
+
 };
 
 class filter_handler {
