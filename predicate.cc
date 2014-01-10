@@ -282,7 +282,7 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
     //first we look if the filter exist, becuase the filter is a subset of itself
     //than we look at the subsets
 
-    //exaxt match
+    //exact match
     filter_t::pos_t hw = x.popcount()-1;
     if(roots[hw].size!=0){
         for(filter_t::pos_t i=0; i<roots[hw].size; i++){

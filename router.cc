@@ -37,8 +37,10 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
 of subsets on each interface **/
 bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     mtx.lock();
-    if(ifx==i)
+    if(ifx==i){
+        mtx.unlock();
         return false;
+    }
     std::map<interface_t,unsigned int>::iterator it;
     it=subsets.find(ifx);
     if(it==subsets.end()){
@@ -147,8 +149,10 @@ void router::apply_delta(set<predicate_delta> & output, const predicate_delta & 
     //map_it is the pointer to the set of interfaces use on tree d.tree.
     map<tree_t,set<interface_t>>::iterator map_it = interfaces.find(d.tree);
 
+    //cout<<"new delta"<<endl;
     //first part: add filters
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
+        //cout<<"add"<<endl;
         bool add = add_filter(*add_it,d.tree,d.ifx);
         if(add){
             //if add we need to broadcast the filter to all the interfaces except to interface 
@@ -173,6 +177,7 @@ void router::apply_delta(set<predicate_delta> & output, const predicate_delta & 
     set<predicate_delta> out;
     //remove_fitler
     for(set<filter_t>::iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++){
+        //cout<<"remove"<<endl;
         out.clear();
         remove_filter(out,*rm_it,d.tree,d.ifx);
         for(set<predicate_delta>::iterator out_it=out.begin(); out_it!=out.end(); out_it++){
