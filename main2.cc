@@ -8,6 +8,8 @@
 #include "router.hh"
 #include "timing.hh"
 
+#define PRINT 0 
+
 class filter_printer : public filter_const_handler {
 public:
 	filter_printer(std::ostream & s): os(s) {};
@@ -101,10 +103,10 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
+#if PRINT
 			if (wheel_of_death(count, 12))
-				//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
                 std::cout << " N=" << count << "\r";
-
+#endif
 		} else if (command == "+q") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
@@ -157,9 +159,10 @@ int main(int argc, char *argv[]) {
 			update_timer.stop();
 #endif
 			++update_count;
+#if PRINT
 			if (wheel_of_death(count, 12))
-				//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
                 std::cout << " N=" << update_count << "\r";
+#endif
         }else if (command =="#"){
             std::cin.ignore(5000,'\n');            
         }else if (command == "sd"){ //start delta tree ifx random_val
@@ -184,7 +187,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
-#if 0
+#if 1
             cout << "out size:" << out.size() <<endl;
             for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
@@ -206,14 +209,17 @@ int main(int argc, char *argv[]) {
         ++update_count;
 		if (wheel_of_death(update_count, 7)){
 			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
+#if PRINT
             std::cout << " N=" << update_count << " add=" << add << " rm=" << rm
 #ifdef WITH_TIMERS
             << " Tu (us)=" << ((update_timer.read_nanoseconds()/1000 - prev_nsec) >> 7)
 #endif
             << "\r";
+#endif
 #ifdef WITH_TIMERS
             prev_nsec = update_timer.read_nanoseconds()/1000;
 #endif
+
         }
 
         }else if(command == "+ti"){ //command tree ifx random_val

@@ -103,18 +103,21 @@ public:
             }else if(i>=6 && i<=10){ //from 7 to 11
                 roots.push_back(p_node(1));
             }else if(i==11){ //hw = 12 (max load ~ 1M)
+                //1
                 int n = N_FILTERS*4/TOT_FILTERS;
                 if(n == 0)
                     n=1;
                 std::cout << "i=11 hw=12 n threads= " << n << std::endl; 
                 roots.push_back(p_node(n));
             }else if(i==12){ //hw = 13 (max load ~ 1M)
+                //7
                 int n = N_FILTERS*26/TOT_FILTERS;
                 if(n == 0)
                     n=1;
                 std::cout << "i=12 hw=13 n threads= " << n << std::endl; 
                 roots.push_back(p_node(n));
             }else if(i==13){ //hw = 14 (max load ~ 1M)
+                //28
                 int n = N_FILTERS*57/TOT_FILTERS;
                 if(n == 0)
                     n=1;

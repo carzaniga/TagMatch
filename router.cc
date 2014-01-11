@@ -8,7 +8,6 @@ using namespace std;
 the tree and the interface. Sets also exists_match to true in order to check the result
 later **/
 
-//synch???
 bool matcher_exists::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     exists_match=true;
 	return true;
