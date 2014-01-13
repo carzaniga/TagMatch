@@ -13,6 +13,9 @@
 #include "predicate.hh"
 
 void predicate::node::add_pair(tree_t t, interface_t i) {
+    //here we don't check if the tree-interface pair already exists
+    //becuase we assume that triple filter,tree,interface is unique
+    //becuase of the compresion algorithm 
 	if (pairs_count < LOCAL_PAIRS_CAPACITY) {
 		// if the local table is not yet full, we simply add the new
 		// pair to the local table
@@ -218,8 +221,8 @@ void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
 }
 
 
-void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
-    tree_ifx_matcher matcher(t,i,h);
+void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) const {
+    tree_ifx_matcher matcher(t,ifx,h);
     
 #if TAG_SET
     filter_t::pos_t start = x.popcount();
@@ -245,8 +248,8 @@ void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t 
         t.join();
 }
 
-void predicate::exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h) const {
-    tree_ifx_matcher matcher(t,i,h);
+void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) const {
+    tree_ifx_matcher matcher(t,ifx,h);
 
 #if TAG_SET
     filter_t::pos_t stop = x.popcount();
@@ -274,23 +277,17 @@ void predicate::exists_subset(const filter_t & x, tree_t t, interface_t i, match
         t.join();
 }
 
-bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t i) const {
+bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t ifx) const {
     filter_t::pos_t hw = x.popcount()-1;
-    if(roots[hw].size==0){
-        std::cout<<"size 0" << std::endl;
+    if(roots[hw].size==0)
         return false;
-    }
     //this can be parallelized, for now we go sequentially 
     for(filter_t::pos_t i=0; i<roots[hw].size; i++){
         node * n =find(x,roots[hw].tries[i]);
         if(n!=0){
-            std::cout<<"node found"<<std::endl;
-            for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
-                if (ti->tree == t && ti->interface == i){
-                    std::cout << "match" << std::endl;
+            for(tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
+                if (ti->equals(t,ifx))
                     return true;
-                }
-            std::cout << "no match" << std::endl;
             return false;
         }
     }
@@ -348,7 +345,6 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	// this is the modular matching function that uses the above match
 	// handler through the modular find_subset_of function
 	//
-   std::cout << "match" << std::endl;
     tree_matcher matcher(t,h);
 
 //exaxt match
@@ -391,36 +387,30 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 
 }
 
-predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
+predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;
     //if there are multiple tries we add in a round-robin way to keep the load balanced
     if(roots[hw].size==0){
-        std::cout<<"size 0!!!"<< std::endl;
         return 0;
     }
     if(roots[hw].size==1){
-        std::cout<<"size 1 last_add "<<roots[hw].last_add<< std::endl;
         node * n = add(x,roots[hw].tries[0]);
-        n->add_pair(t, i);
-        std::cout<<"done"<< std::endl;
+        n->add_pair(t, ifx);
         return n;
     }else{
         //try to find the filter (it may be on differt tries)
         //here we do the find twice! 
-        std::cout<<"size >1"<< std::endl;
         for(filter_t::pos_t i=0; i<roots[hw].size; i++){
             node * n = find(x,roots[hw].tries[i]);
             if(n!=0){
-                n->add_pair(t, i);
-                std::cout<<"done"<< std::endl;
+                n->add_pair(t, ifx);
                 return n;
             }
         }
         //if the filter does not exist insert it           
-        roots[hw].last_add = ( roots[hw].last_add + 1) %  roots[hw].size;
+        roots[hw].last_add = (roots[hw].last_add + 1) %  roots[hw].size;
         node * n = add(x,roots[hw].tries[roots[hw].last_add]);
-        n->add_pair(t, i);
-        std::cout<<"done"<< std::endl;
+        n->add_pair(t, ifx);
         return n;
     }
 }
@@ -450,7 +440,7 @@ void predicate::set_mask(const filter_t & x, tree_t t) {
 
 
 predicate::node * predicate::add(const filter_t & x, node & root) {
-  	node * prev = &(root);
+  	node * prev = &root;
 	node * curr = root.left;
     while(prev->pos > curr->pos) {
 		prev = curr;
@@ -458,6 +448,7 @@ predicate::node * predicate::add(const filter_t & x, node & root) {
 	}
 	if (x == curr->key)
 		return curr;
+    
 	filter_t::pos_t pos = filter_t::most_significant_diff_pos(curr->key, x);
 
 	prev = &(root);
@@ -835,7 +826,7 @@ void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
 }
 #endif
 
-void predicate::remove(const filter_t & x , tree_t t, interface_t i){
+void predicate::remove(const filter_t & x , tree_t t, interface_t ifx){
     filter_t::pos_t hw = x.popcount()-1;
     if(roots[hw].size==0)
         return;
@@ -843,7 +834,7 @@ void predicate::remove(const filter_t & x , tree_t t, interface_t i){
     for(filter_t::pos_t i=0; i<roots[hw].size; i++){
         node * n =find(x,roots[hw].tries[i]);
         if(n!=0)
-            n->remove_pair(t,i);
+            n->remove_pair(t,ifx);
             return;
     }
 }

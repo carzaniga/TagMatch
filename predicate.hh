@@ -343,7 +343,7 @@ public:
 
         p_node(const p_node &pn){
             size = pn.size;
-            last_add = pn.size;
+            last_add = pn.last_add;
             tries = pn.tries;
         }
         

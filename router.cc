@@ -80,10 +80,8 @@ broadcast the update to all the interfaces **/
 bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     matcher_exists m;
     //if the filter exists we discard the filter and return 0
-    if(P.exists_filter(x,t,i)){
-        cout<<"6 exist"<< endl;
+    if(P.exists_filter(x,t,i))
         return 0;
-    }
     //same if exists a subset of x
     P.exists_subset(x,t,i,m);
     if(m.get_match())
@@ -150,10 +148,8 @@ void router::apply_delta(set<predicate_delta> & output, const predicate_delta & 
     //map_it is the pointer to the set of interfaces use on tree d.tree.
     map<tree_t,set<interface_t>>::iterator map_it = interfaces.find(d.tree);
 
-    //cout<<"new delta"<<endl;
     //first part: add filters
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
-        //cout<<"add"<<endl;
         bool add = add_filter(*add_it,d.tree,d.ifx);
         if(add){
             //if add we need to broadcast the filter to all the interfaces except to interface 
