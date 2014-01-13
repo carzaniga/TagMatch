@@ -394,13 +394,35 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
     filter_t::pos_t hw = x.popcount()-1;
     //if there are multiple tries we add in a round-robin way to keep the load balanced
-    if(roots[hw].size!=0){
+    if(roots[hw].size==0){
+        std::cout<<"size 0!!!"<< std::endl;
+        return 0;
+    }
+    if(roots[hw].size==1){
+        std::cout<<"size 1 last_add "<<roots[hw].last_add<< std::endl;
+        node * n = add(x,roots[hw].tries[0]);
+        n->add_pair(t, i);
+        std::cout<<"done"<< std::endl;
+        return n;
+    }else{
+        //try to find the filter (it may be on differt tries)
+        //here we do the find twice! 
+        std::cout<<"size >1"<< std::endl;
+        for(filter_t::pos_t i=0; i<roots[hw].size; i++){
+            node * n = find(x,roots[hw].tries[i]);
+            if(n!=0){
+                n->add_pair(t, i);
+                std::cout<<"done"<< std::endl;
+                return n;
+            }
+        }
+        //if the filter does not exist insert it           
         roots[hw].last_add = ( roots[hw].last_add + 1) %  roots[hw].size;
         node * n = add(x,roots[hw].tries[roots[hw].last_add]);
         n->add_pair(t, i);
+        std::cout<<"done"<< std::endl;
         return n;
     }
-    return 0;
 }
 
 #if 0
