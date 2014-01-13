@@ -281,10 +281,12 @@ bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t i) const
     //this can be parallelized, for now we go sequentially 
     for(filter_t::pos_t i=0; i<roots[hw].size; i++){
         node * n =find(x,roots[hw].tries[i]);
-        if(n!=0)
+        if(n!=0){
             for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
                 if (ti->tree == t && ti->interface == i)
                     return true;
+            return false;
+        }
     }
     return false;
 }
