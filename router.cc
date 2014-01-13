@@ -80,8 +80,10 @@ broadcast the update to all the interfaces **/
 bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     matcher_exists m;
     //if the filter exists we discard the filter and return 0
-    if(P.exists_filter(x,t,i))
+    if(P.exists_filter(x,t,i)){
+        cout<<"6 exist"<< endl;
         return 0;
+    }
     //same if exists a subset of x
     P.exists_subset(x,t,i,m);
     if(m.get_match())

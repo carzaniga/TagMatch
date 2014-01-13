@@ -276,15 +276,21 @@ void predicate::exists_subset(const filter_t & x, tree_t t, interface_t i, match
 
 bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t i) const {
     filter_t::pos_t hw = x.popcount()-1;
-    if(roots[hw].size==0)
+    if(roots[hw].size==0){
+        std::cout<<"size 0" << std::endl;
         return false;
+    }
     //this can be parallelized, for now we go sequentially 
     for(filter_t::pos_t i=0; i<roots[hw].size; i++){
         node * n =find(x,roots[hw].tries[i]);
         if(n!=0){
+            std::cout<<"node found"<<std::endl;
             for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
-                if (ti->tree == t && ti->interface == i)
+                if (ti->tree == t && ti->interface == i){
+                    std::cout << "match" << std::endl;
                     return true;
+                }
+            std::cout << "no match" << std::endl;
             return false;
         }
     }

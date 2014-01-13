@@ -192,13 +192,13 @@ int main(int argc, char *argv[]) {
             for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
                 << it->removals.size() <<endl; 
-                cout << "additions" << endl;
+                /*cout << "additions" << endl;
                 for(set<filter_t>::iterator ii = it->additions.begin(); ii!=it->additions.end(); ii++)
                     cout << ii->print(cout) << endl;
                 cout << "removals" << endl;
                 for(set<filter_t>::iterator ii = it->removals.begin(); ii!=it->removals.end(); ii++)
                     cout << ii->print(cout) << endl;
-               
+                */
 
             }
 #endif
