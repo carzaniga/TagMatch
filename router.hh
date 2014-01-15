@@ -70,6 +70,23 @@ private:
     mutex mtx;
 };
 
+class matcher_get_out_interfaces : public match_handler {
+public:
+	matcher_get_out_interfaces() {};
+    
+    set<interface_t>  * get_interfaces() {
+        return &interfaces;
+    }
+
+	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
+private: 
+    //input interface from where we received the update
+    interface_t i;
+    set<interface_t> interfaces;
+    mutex mtx;
+};
+
+
 
 
 
@@ -266,6 +283,8 @@ public:
     void apply_delta(set<predicate_delta> & output, const predicate_delta & d);
 
     void add_ifx_to_tree(tree_t t, interface_t i);
+
+    void match(const filter_t & x, tree_t t, interface_t i);
 
 
 };

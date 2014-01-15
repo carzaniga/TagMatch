@@ -51,6 +51,25 @@ bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, i
 	return false;
 }
 
+/**matcher for the normal match... */
+bool matcher_get_out_interfaces::match(const filter_t & filter, tree_t tree, interface_t ifx) {
+    mtx.lock();
+    if(ifx==i){
+        mtx.unlock();
+        return false;
+    }
+    //the tree should be alredy checked!
+    interfaces.insert(ifx);
+    mtx.unlock();
+    return false;
+}
+
+/**normal match**/
+void router::match(const filter_t & x, tree_t t, interface_t i){
+    matcher_get_out_interfaces m;
+    P.match(x,t,m);
+}
+
 
 /** adds a new filter in predicate without any check. the initialization of the map
 **/

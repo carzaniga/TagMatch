@@ -8,7 +8,7 @@
 #include "router.hh"
 #include "timing.hh"
 
-#define PRINT 0 
+#define PRINT 1 
 
 class filter_printer : public filter_const_handler {
 public:
@@ -81,13 +81,15 @@ int main(int argc, char *argv[]) {
 	unsigned int count = 0;
 	unsigned int query_count = 0;
     unsigned int update_count = 0;
+    unsigned int match_c = 0;
     unsigned int add = 0;
     unsigned int rm = 0;
 
     
 #ifdef WITH_TIMERS
 	unsigned long long prev_nsec = 0;
-	Timer add_timer, update_timer, delete_timer;
+    unsigned long long prev_match =0;
+	Timer add_timer, update_timer, delete_timer, match_timer;
 #endif
 	
 	while(std::cin >> command >> tree >> interface >> filter_string) {
@@ -119,7 +121,25 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
-		} else if (command =="-"){
+		} else if (command == "!") {
+            filter_t filter(filter_string);
+			interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+#ifdef WITH_TIMERS
+			match_timer.start();
+#endif
+			R.match (filter,t,i);
+#ifdef WITH_TIMERS
+			match_timer.stop();
+#endif
+            match_c++;
+#if PRINT
+			if (wheel_of_death(match_c, 7))
+               cout <<"Matches "<< match_c << " Tm (us)=" << ((match_timer.read_nanoseconds()/1000 - prev_match) >> 7) << "\r";
+            prev_match=match_timer.read_nanoseconds()/1000;
+#endif
+            
+        } else if (command =="-"){
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
@@ -238,6 +258,7 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
 			  << "Tu (us)=" << (update_timer.read_microseconds() / update_count) << std::endl;
+              std::cout<< "Tm (us)=" << (match_timer.read_microseconds() / match_c) << std::endl;
 #endif
 
 	return 0;

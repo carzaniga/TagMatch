@@ -92,7 +92,7 @@ class match_handler;
 
 class predicate {   
 
-#define N_FILTERS 10000000
+#define N_FILTERS 20000000
 #define TOT_FILTERS 91092205
 public:
     predicate(): filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){
