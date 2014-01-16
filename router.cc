@@ -3,7 +3,6 @@
 
 using namespace std;
 
-
 /** match always returns true becuase is called only when we alredy matched the filter,
 the tree and the interface. Sets also exists_match to true in order to check the result
 later **/
@@ -119,7 +118,7 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
 }
 
 
-void router::remove_filter (set<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i){
+void router::remove_filter (vector<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i){
     if(P.exists_filter(x,t,i)){
 
         //remove the filter from intreface i on tree t
@@ -148,7 +147,7 @@ void router::remove_filter (set<predicate_delta> & output, const filter_t & x, t
                 if(!m_subs.exists_subsets_on_other_ifx(*it)){
                     predicate_delta pd(*it,t);
                     pd.create_minimal_delta(x,*(m_super.get_supersets()),*it);
-                    output.insert(pd);
+                    output.push_back(pd);
                 }
             }
         }
@@ -159,7 +158,7 @@ void router::remove_filter (set<predicate_delta> & output, const filter_t & x, t
     }
 }
 
-void router::apply_delta(set<predicate_delta> & output, const predicate_delta & d) {
+void router::apply_delta(vector<predicate_delta> & output, const predicate_delta & d) {
     // produces a set of predicate deltas as a result of applying d to p
 
     //this map stores temporally the set pf predicate_delta that we need to output
@@ -190,13 +189,13 @@ void router::apply_delta(set<predicate_delta> & output, const predicate_delta & 
      
     //second part: remove filters
     //this is a temporary set used to store the outputs of remove_fitler
-    set<predicate_delta> out;
+    vector<predicate_delta> out;
     //remove_fitler
     for(set<filter_t>::iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++){
         //cout<<"remove"<<endl;
         out.clear();
         remove_filter(out,*rm_it,d.tree,d.ifx);
-        for(set<predicate_delta>::iterator out_it=out.begin(); out_it!=out.end(); out_it++){
+        for(vector<predicate_delta>::iterator out_it=out.begin(); out_it!=out.end(); out_it++){
             //for each predicate_delta in out we need to store it in tmp (each predicate_delta
             //has to be minimal)
             map<interface_t,predicate_delta>::iterator it = tmp.find(out_it->ifx);
@@ -229,9 +228,9 @@ void router::apply_delta(set<predicate_delta> & output, const predicate_delta & 
 #ifdef CHECK_LOCAL
         //in case we want to add the check we have to write it here
 #endif
-            output.insert(it_tmp->second);
+            output.push_back(it_tmp->second);
         }else if(it_tmp->second.removals.size()!=0){
-            output.insert(it_tmp->second);
+            output.push_back(it_tmp->second);
         }
     }    
 }

@@ -92,41 +92,16 @@ private:
 
 class predicate_delta {
 public:
-    interface_t ifx;
-    tree_t tree;
+    const interface_t ifx;
+    const tree_t tree;
 
     set<filter_t> additions;
     set<filter_t> removals;
 
+#if 0
     predicate_delta() {};
+#endif
     predicate_delta(interface_t i, tree_t t): ifx(i), tree(t) {};
-
-    predicate_delta & operator=(const predicate_delta &x) {
-		ifx = x.ifx;
-		tree = x.tree;
-		additions = x.additions;
-        removals = x.removals;
-		return *this;
-	}
-
-	bool operator == (const predicate_delta &x) const {
-		if(ifx == x.ifx && tree == x.tree)
-            return true;
-        //this is not correct, do something better!
-        if(additions ==  x.additions &&
-            removals == x.removals){
-            return true;            
-        }
-        return false;
-        
-	}
-
-	bool operator < (const predicate_delta &x) const {
-		return ifx < x.ifx || tree < x.tree || 
-			additions.size() < x.additions.size() || 
-            removals.size() < x.removals.size();
-	}
-
 
     //load the sets additions and removals with minimal sets. interface i is the one that we want to 
     //skip reading the content of the map. this procedure is not really efficient 
@@ -252,7 +227,6 @@ private:
     } 
 };
 
-
 class router {
     
 private:
@@ -277,10 +251,10 @@ public:
     bool add_filter (const filter_t & x, tree_t t, interface_t i);
     
     /** removes a filter from predicate P. **/
-    void remove_filter (set<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i);
+    void remove_filter (vector<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i);
 
     /**  produces a set of predicate deltas as a result of applying d to P **/
-    void apply_delta(set<predicate_delta> & output, const predicate_delta & d);
+    void apply_delta(vector<predicate_delta> & output, const predicate_delta & d);
 
     void add_ifx_to_tree(tree_t t, interface_t i);
 

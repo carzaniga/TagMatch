@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
             filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-            set<predicate_delta> out;
+            vector<predicate_delta> out;
 #ifdef WITH_TIMERS
 			update_timer.start();
 #endif
@@ -186,9 +186,7 @@ int main(int argc, char *argv[]) {
         }else if (command =="#"){
             std::cin.ignore(5000,'\n');            
         }else if (command == "sd"){ //start delta tree ifx random_val
-            predicate_delta pd;
-            pd.ifx = atoi(interface.c_str());
-            pd.tree = atoi(tree.c_str());
+            predicate_delta pd(atoi(interface.c_str()), atoi(tree.c_str()));
             std::cin >> command >> tree >> interface >> filter_string;
             while(command!="ed"){ //end delta random_val random_val random_val
                 filter_t filter(filter_string);
@@ -202,14 +200,14 @@ int main(int argc, char *argv[]) {
                     std::cin.ignore(5000,'\n'); 
                 std::cin >> command >> tree >> interface >> filter_string;
             }
-            set<predicate_delta> out;
+            vector<predicate_delta> out;
 #ifdef WITH_TIMERS
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
 #if 0
             cout << "out size:" << out.size() <<endl;
-            for(set<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
+            for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
                 << it->removals.size() <<endl; 
                 /*cout << "additions" << endl;
