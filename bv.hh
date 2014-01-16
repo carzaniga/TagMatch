@@ -139,7 +139,10 @@ public:
 		return c;
 	}
 
-    int hash (pos_t n) const{
+    pos_t hash (pos_t n) const{
+		if (n == 1)
+			return 0;
+
         block_t s = 0;
         for(int i = 0; i < BLOCK_COUNT; i++)
             s+=b[i];

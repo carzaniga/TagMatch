@@ -338,10 +338,9 @@ public:
         friend class predicate;
         public: 
         filter_t::pos_t size;
-        filter_t::pos_t last_add; // TODO: check whether this is still necessary
         node * tries;
         
-		p_node(): size(0), last_add(0), tries(0) {};
+		p_node(): size(0), tries(0) {};
 
 		// this is an initialization performed ONCE for each p_node
 		// 
@@ -352,6 +351,10 @@ public:
             } else
                 tries=NULL;
         }
+
+		node & trie_of(const filter_t & x) const {
+			return tries[x.hash(size)];
+		}
 
 		~p_node() {
             if (size > 0)
