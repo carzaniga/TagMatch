@@ -139,6 +139,13 @@ public:
 		return c;
 	}
 
+    int hash (pos_t n) const{
+        block_t s = 0;
+        for(int i = 0; i < BLOCK_COUNT; i++)
+            s+=b[i];
+        return s % n;
+    }
+
 	bool prefix_subset_of(const bv & x, pos_t pp, pos_t p) const {
 		//
 		// Check that *this is a subset of x only up to position pos,

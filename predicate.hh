@@ -322,7 +322,7 @@ public:
 			free(p);
 		}
 #endif
-    }__attribute__ ((aligned(64)));
+    };//__attribute__ ((aligned(64)));
 
     class p_node {
         friend class predicate;

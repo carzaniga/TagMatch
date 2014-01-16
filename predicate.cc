@@ -387,6 +387,8 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 
 }
 
+#define HASH 1
+
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;
     //if there are multiple tries we add in a round-robin way to keep the load balanced
@@ -399,7 +401,18 @@ predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) 
         return n;
     }else{
         //try to find the filter (it may be on differt tries)
-        //here we do the find twice! 
+        //here we do the find twice!
+#if HASH
+        node * n = find(x,roots[hw].tries[x.hash(roots[hw].size)]);
+        if(n!=0){
+            n->add_pair(t, ifx);
+            return n;
+        }
+        n = add(x,roots[hw].tries[x.hash(roots[hw].size)]);
+        n->add_pair(t, ifx);
+        return n;
+
+#else 
         for(filter_t::pos_t i=0; i<roots[hw].size; i++){
             node * n = find(x,roots[hw].tries[i]);
             if(n!=0){
@@ -412,6 +425,7 @@ predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) 
         node * n = add(x,roots[hw].tries[roots[hw].last_add]);
         n->add_pair(t, ifx);
         return n;
+#endif
     }
 }
 
