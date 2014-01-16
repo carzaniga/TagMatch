@@ -92,49 +92,59 @@ class match_handler;
 
 class predicate {   
 
-#define N_FILTERS 20000000
-#define TOT_FILTERS 91092205
 public:
-    predicate(): filter_count(0), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG){
-        for(filter_t::pos_t i =0; i< filter_t::WIDTH; i++){
-            //we need to consider always the numebr of ones - 1
-            if (i<6){ //up to 6
-                roots.push_back(p_node(0)); 
-            }else if(i>=6 && i<=10){ //from 7 to 11
-                roots.push_back(p_node(1));
-            }else if(i==11){ //hw = 12 (max load ~ 1M)
-                //1
-                int n = N_FILTERS*4/TOT_FILTERS;
-                if(n == 0)
-                    n=1;
-                std::cout << "i=11 hw=12 n threads= " << n << std::endl; 
-                roots.push_back(p_node(n));
-            }else if(i==12){ //hw = 13 (max load ~ 1M)
-                //7
-                int n = N_FILTERS*26/TOT_FILTERS;
-                if(n == 0)
-                    n=1;
-                std::cout << "i=12 hw=13 n threads= " << n << std::endl; 
-                roots.push_back(p_node(n));
-            }else if(i==13){ //hw = 14 (max load ~ 1M)
-                //28
-                int n = N_FILTERS*57/TOT_FILTERS;
-                if(n == 0)
-                    n=1;
-                std::cout << "i=13 hw=14 n threads= " << n << std::endl; 
-                roots.push_back(p_node(n));
-            }else if(i>=14 && i<=76){ //(from 15 to 77)
-                roots.push_back(p_node(1));
-            }else{ //from 78 to 192
-                roots.push_back(p_node(0));
-            }
-        }
+    predicate(): filter_count(0) , t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
+
+		static const unsigned int TOT_FILTERS = 91092205;
+		static const unsigned int N_FILTERS = 20000000;
+
+		// this is a static configuration parameter representing the
+		// distribution of hamming weights derived from the workload.  We
+		// assume that such a configuration parameter can be derived from
+		// a simple statistical analysis of the workload and, more
+		// importantly, that the distribution would be *stable*.
+		//
+		// These are the number of million filters for each hamming wight
+		// in a workload with 91092205 filters, corresponding to the
+		// (compressed) set of filters corresponding to a population of
+		// 500 million users.
+		//
+		static const unsigned int Hamming_Weight_Dist[filter_t::WIDTH] = {
+			0,  0,  0,  0,  0,  0,  0,  1,  1,  1,
+			1,  4, 26, 57,  1,  1,  1,  1,  1,  1,
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1, 
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1, 
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1, 
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1, 
+			1,  1,  1,  1,  1,  1,  1,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
+			0,  0
+		};
+
+        for(filter_t::pos_t i =0; i< filter_t::WIDTH; i++) {
+			if (Hamming_Weight_Dist[i]) {
+				unsigned n = N_FILTERS*Hamming_Weight_Dist[i] / TOT_FILTERS;
+				if (n == 0)
+					n = 1;
+				roots[i].set_size(n);
+			}
+		}
     };
-                 
+
     ~predicate() { 
         destroy(); 
     }
-
 
 	class node;
     class p_node;
@@ -328,49 +338,28 @@ public:
         friend class predicate;
         public: 
         filter_t::pos_t size;
-        filter_t::pos_t last_add;
+        filter_t::pos_t last_add; // TODO: check whether this is still necessary
         node * tries;
         
-        p_node(filter_t::pos_t n): size(n){
-            //we may want to create an empty trie
-            //since this is workload dependent
-            if(n>0){
+		p_node(): size(0), last_add(0), tries(0) {};
+
+		// this is an initialization performed ONCE for each p_node
+		// 
+        void set_size(filter_t::pos_t n) {
+			size = n;
+            if (n>0) {
                 tries = new node [size];
-            }else
+            } else
                 tries=NULL;
-            last_add=0;
         }
 
-        p_node(const p_node &pn){
-            size = pn.size;
-            last_add = pn.last_add;
-            tries = pn.tries;
+		~p_node() {
+            if (size > 0)
+                delete [] tries;
         }
-        
-/*        p_node & operator= (const p_node & other){
-            if(this != &other){
-                node * new_array = new node[other.size];
-                std::copy(other.tries, other.tries + other.size, new_array);
- 
-                delete [] tries;
- 
-                tries = new_array;
-                size = other.size;
-                last_add = other.size;
-            }
-            return *this;
-        }*/
-
-       /* ~p_node() {
-            std::cout<<"destroy"<<std::endl;
-            if (size!=0)
-                delete [] tries;
-            std::cout<<"dstr done"<<std::endl;
-
-        }*/
     };
 
-    std::vector<p_node> roots;    
+    p_node roots[filter_t::WIDTH];    
 	unsigned long filter_count;
     tags_t t;  
 
