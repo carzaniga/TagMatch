@@ -206,12 +206,12 @@ void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw = start; hw < filter_t::WIDTH; hw++){  
         if(roots[hw].size==1)
-            ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[0]), matcher));
+            ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[0]), std::ref(matcher)));
             //find_supersets_of(x, roots[hw].tries[0], matcher);
         else if(roots[hw].size>1){
             //std::vector<std::thread> ts; 
             for(filter_t::pos_t i=0; i<roots[hw].size; i++)
-                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), std::ref(matcher)));
             //for(auto& t : ts)
     	    //    t.join();
         }
@@ -234,12 +234,12 @@ void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t 
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw = start; hw < filter_t::WIDTH; hw++){ 
         if(roots[hw].size==1)
-            ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[0]), matcher));
+            ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[0]), std::ref(matcher)));
             //find_supersets_of(x, roots[hw].tries[0], matcher);
         else if(roots[hw].size>1){
             //std::vector<std::thread> ts; 
             for(filter_t::pos_t i=0; i<roots[hw].size; i++)
-                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+                ts.push_back(std::thread(&predicate::find_supersets_of, this, x, std::ref(roots[hw].tries[i]), std::ref(matcher)));
             //for(auto& t : ts)
     	        //t.join();
         }
@@ -263,12 +263,12 @@ void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, mat
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw=0; hw<=stop; hw++){
         if(roots[hw].size==1)
-             ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), matcher));
+			ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), std::ref(matcher)));
             //find_subsets_of(x, roots[hw].tries[0], matcher);
         else if(roots[hw].size>1){
             //std::vector<std::thread> ts; 
             for(filter_t::pos_t i=0; i<roots[hw].size; i++)
-                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), std::ref(matcher)));
             //for(auto& t : ts)
     	    //    t.join();
         }
@@ -324,12 +324,12 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw=0; hw<=stop; hw++){
         if(roots[hw].size==1)
-           ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), matcher)); 
+			ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), std::ref(matcher))); 
             //find_subsets_of(x, roots[hw].tries[0], matcher);
         else if(roots[hw].size>1){
             //std::vector<std::thread> ts; 
             for(filter_t::pos_t i=0; i<roots[hw].size; i++)
-                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), std::ref(matcher)));
             //for(auto& t : ts)
     	    //    t.join();
         }
@@ -372,12 +372,12 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw=0; hw<=stop; hw++){
         if(roots[hw].size==1)
-             ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), matcher));
+			ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[0]), std::ref(matcher)));
             //find_subsets_of(x, roots[hw].tries[0], matcher);
         else if(roots[hw].size>1){
             //std::vector<std::thread> ts; 
             for(filter_t::pos_t i=0; i<roots[hw].size; i++)
-                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), matcher));
+                ts.push_back(std::thread(&predicate::find_subsets_of, this, x, std::ref(roots[hw].tries[i]), std::ref(matcher)));
             //for(auto& t : ts)
     	    //    t.join();
         }
