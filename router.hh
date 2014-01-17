@@ -34,13 +34,13 @@ class matcher_collect_supersets : public match_handler {
 public:
 	matcher_collect_supersets() {};
     
-    map<interface_t,set<filter_t>> * get_supersets() {
+    map<interface_t,vector<filter_t>> * get_supersets() {
         return &supersets;
     }
 
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
 private: 
-    map<interface_t,set<filter_t>> supersets;
+    map<interface_t,vector<filter_t>> supersets;
     mutex mtx;
 };
 
@@ -98,22 +98,19 @@ public:
     set<filter_t> additions;
     set<filter_t> removals;
 
-#if 0
-    predicate_delta() {};
-#endif
     predicate_delta(interface_t i, tree_t t): ifx(i), tree(t) {};
 
     //load the sets additions and removals with minimal sets. interface i is the one that we want to 
     //skip reading the content of the map. this procedure is not really efficient 
-    void create_minimal_delta(const filter_t & remove, map<interface_t,set<filter_t>> & add, const interface_t i ){
+    void create_minimal_delta(const filter_t & remove, map<interface_t,vector<filter_t>> & add, const interface_t i ){
         //we need to remove the filter remove and so we try to add it to removals
         add_removal_filter(remove);        
-        map<interface_t,set<filter_t>>::iterator it_map;
+        map<interface_t,vector<filter_t>>::iterator it_map;
         for(it_map = add.begin(); it_map!=add.end(); it_map++){
             //for each inetrface which is not i we add the uncovered filters, 
             //mining supersets of remove, to the additions set  
             if(it_map->first!=i){
-                set<filter_t>::iterator it_set;
+                vector<filter_t>::iterator it_set;
                 for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
                     add_additional_filter(*it_set);
                 }                
@@ -175,13 +172,15 @@ private:
         //????????
 
 
-        for(it=removals.begin(); it!=removals.end(); it++){
-            if(it->subset_of(f))
-                return false;
-        }
+        //for(it=removals.begin(); it!=removals.end(); it++){
+        //    if(it->subset_of(f))
+        //        return false;
+        //}
         //if we have to insert the filter we want to make sure that 
         //there is no super set of the filter in the set
         for(it=removals.begin(); it!=removals.end();){
+            if(it->subset_of(f))
+                return false;
             if (f.subset_of(*it)) {
                 removals.erase(it++);
             }
@@ -209,13 +208,15 @@ private:
         if(it!=additions.end())
             return false;
         //check if the filter is a superset of something in the additions set
-        for(it=additions.begin(); it!=additions.end(); it++){
-            if(it->subset_of(f))
-                return false;
-        }
+        //for(it=additions.begin(); it!=additions.end(); it++){
+        //    if(it->subset_of(f))
+        //        return false;
+        //}
         //here we need to remove all the possibile supersets of the filter that
         //we are introducing
         for(it=additions.begin(); it!=additions.end();){
+            if(it->subset_of(f))
+                return false;
             if (f.subset_of(*it)) {
                 additions.erase(it++);
             }
@@ -232,7 +233,7 @@ class router {
 private:
     predicate P;
 
-    map<tree_t,set<interface_t>> interfaces;
+    map<tree_t,vector<interface_t>> interfaces;
               
 public:
     router(): P() {};

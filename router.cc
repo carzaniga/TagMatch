@@ -18,14 +18,14 @@ the filters on a particular interface or all the filter in the trie **/
 
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     mtx.lock();
-    std::map<interface_t,set<filter_t>>::iterator it;
+    std::map<interface_t,vector<filter_t>>::iterator it;
     it=supersets.find(ifx);
     if(it==supersets.end()){
-        set<filter_t> s;
-        s.insert(filter);
-        supersets.insert(pair<interface_t,set<filter_t>>(ifx,s));
+        vector<filter_t> s;
+        s.push_back(filter);
+        supersets.insert(pair<interface_t,vector<filter_t>>(ifx,s));
     }else{
-        it->second.insert(filter);
+        it->second.push_back(filter);
     }
     mtx.unlock();
 	return false;
@@ -78,13 +78,13 @@ void router::add_filter_without_check (const filter_t & x, tree_t t, interface_t
 
 /** add an interface to a tree **/
 void router::add_ifx_to_tree(tree_t t, interface_t i){
-     map<tree_t,set<interface_t>>::iterator it = interfaces.find(t);
+     map<tree_t,vector<interface_t>>::iterator it = interfaces.find(t);
     if(it==interfaces.end()){
-        set<interface_t> s;
-        s.insert(i);
-        interfaces.insert(pair<tree_t,set<interface_t>>(t,s));
+        vector<interface_t> s;
+        s.push_back(i);
+        interfaces.insert(pair<tree_t,vector<interface_t>>(t,s));
     }else{
-        it->second.insert(i);
+        it->second.push_back(i);
     }
 }
 
@@ -96,22 +96,22 @@ void router::remove_filter_without_check (const filter_t & x, tree_t t, interfac
 /** add a new filter if needed, removing all supersets. returns true if we need to 
 broadcast the update to all the interfaces **/
 bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
-    matcher_exists m;
     //if the filter exists we discard the filter and return 0
     if(P.exists_filter(x,t,i))
         return 0;
     //same if exists a subset of x
+    matcher_exists m;    
     P.exists_subset(x,t,i,m);
     if(m.get_match())
         return 0;
     matcher_collect_supersets m_super;
     P.find_supersets_on_ifx(x,t,i,m_super);
-    map<interface_t,set<filter_t>> * sup = m_super.get_supersets();
-    map<interface_t,set<filter_t>>::iterator it_sup = sup->find(i);
-    if(it_sup!=sup->end()){
-        for (set<filter_t>::iterator it=it_sup->second.begin(); it!=it_sup->second.end(); ++it){
+    map<interface_t,vector<filter_t>> * sup = m_super.get_supersets();
+    if(sup->size()==1){
+        for (vector<filter_t>::iterator it=(*sup)[i].begin(); it!=(*sup)[i].end(); ++it){
             P.remove(*it,t,i);
         }
+
     }
     P.add(x,t,i);
     return 1;
@@ -141,8 +141,8 @@ void router::remove_filter (vector<predicate_delta> & output, const filter_t & x
         //find all the supersets...(always needed??) 
         matcher_collect_supersets m_super;
         P.find_supersets(x,t,m_super);
-        map<tree_t,set<interface_t>>::iterator map_it = interfaces.find(t);
-        for (set<interface_t>::iterator it=map_it->second.begin(); it!=map_it->second.end(); ++it){
+        map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(t);
+        for (vector<interface_t>::iterator it=map_it->second.begin(); it!=map_it->second.end(); ++it){
             if(*it != i){
                 if(!m_subs.exists_subsets_on_other_ifx(*it)){
                     predicate_delta pd(*it,t);
@@ -151,10 +151,6 @@ void router::remove_filter (vector<predicate_delta> & output, const filter_t & x
                 }
             }
         }
-  
-    }else{
-        //the filter does not exists, so we return
-        return;
     }
 }
 
@@ -164,15 +160,15 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
     //this map stores temporally the set pf predicate_delta that we need to output
     map<interface_t,predicate_delta> tmp;
     //map_it is the pointer to the set of interfaces use on tree d.tree.
-    map<tree_t,set<interface_t>>::iterator map_it = interfaces.find(d.tree);
+    map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(d.tree);
 
     //first part: add filters
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
-        bool add = add_filter(*add_it,d.tree,d.ifx);
-        if(add){
+        if(add_filter(*add_it,d.tree,d.ifx)){
             //if add we need to broadcast the filter to all the interfaces except to interface 
             //d.ifx
-            for(set<interface_t>::iterator if_it = map_it->second.begin(); if_it!=map_it->second.end();if_it++){
+            for(vector<interface_t>::iterator if_it = map_it->second.begin(); if_it!=map_it->second.end();if_it++){
+
                 if(*if_it!=d.ifx){
                     map<interface_t,predicate_delta>::iterator it = tmp.find(*if_it);
                     if(it==tmp.end()){
@@ -223,15 +219,14 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
 
         //if additions list is not empty minimize (if CHECK_LOCAL) it and add the pd to output
         //else add the pd only if the removal set is not empty
-        if(it_tmp->second.additions.size()!=0){
-#define CHECK_LOCAL 0
-#ifdef CHECK_LOCAL
-        //in case we want to add the check we have to write it here
-#endif
-            output.push_back(it_tmp->second);
-        }else if(it_tmp->second.removals.size()!=0){
-            output.push_back(it_tmp->second);
+        if(it_tmp->second.additions.size()!=0 || it_tmp->second.removals.size()!=0){
+             output.push_back(it_tmp->second);
         }
+        //in case we want to add the check we have to write it here
+        //     output.push_back(it_tmp->second);
+        // }else if(it_tmp->second.removals.size()!=0){
+        //     output.push_back(it_tmp->second);
+        // }
     }    
 }
   
