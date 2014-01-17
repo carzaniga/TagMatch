@@ -92,8 +92,8 @@ private:
 
 class predicate_delta {
 public:
-    const interface_t ifx;
-    const tree_t tree;
+    interface_t ifx;
+    tree_t tree;
 
     set<filter_t> additions;
     set<filter_t> removals;

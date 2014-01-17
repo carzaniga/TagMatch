@@ -304,7 +304,6 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;
-    //if there are multiple tries we add in a round-robin way to keep the load balanced
     assert(roots[hw].size != 0);
 
     node * n = add(x,roots[hw].trie_of(x));
