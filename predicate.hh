@@ -93,10 +93,10 @@ class match_handler;
 class predicate {   
 
 public:
-    predicate(): filter_count(0) , t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
+    predicate(unsigned int nf): filter_count(0) , N_FILTERS(nf), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
 
 		static const unsigned int TOT_FILTERS = 63651601;
-		static const unsigned int N_FILTERS = 37400000;
+		//static const unsigned int N_FILTERS = 37400000;
 
 		// this is a static configuration parameter representing the
 		// distribution of hamming weights derived from the workload.  We
@@ -364,6 +364,7 @@ public:
 
     p_node roots[filter_t::WIDTH];    
 	unsigned long filter_count;
+    unsigned int N_FILTERS;
     tags_t t;  
 
     void destroy();

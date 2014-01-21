@@ -72,7 +72,8 @@ int main(int argc, char *argv[]) {
 	std::string interface;
 	std::string filter_string;
 	
-	router R;
+    //argv[1] contains the number of expected filters
+	router R(atoi(argv[1]));
 
 	filter_printer filter_output(std::cout);
 	match_printer match_output(std::cout);
@@ -225,20 +226,20 @@ int main(int argc, char *argv[]) {
 			update_timer.stop();
 #endif
         ++update_count;
+#if PRINT
 		if (wheel_of_death(update_count, 7)){
 			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
-#if PRINT
             std::cout << " N=" << update_count << " add=" << add << " rm=" << rm
 #ifdef WITH_TIMERS
             << " Tu (us)=" << ((update_timer.read_nanoseconds()/1000 - prev_nsec) >> 7)
 #endif
             << "\r";
-#endif
+
 #ifdef WITH_TIMERS
             prev_nsec = update_timer.read_nanoseconds()/1000;
 #endif
-
         }
+#endif
 
         }else if(command == "+ti"){ //command tree ifx random_val
             interface_t i = atoi(interface.c_str());

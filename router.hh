@@ -236,7 +236,8 @@ private:
     map<tree_t,vector<interface_t>> interfaces;
               
 public:
-    router(): P() {};
+    //nf is the number of expected filters
+    router(unsigned int nf): P(nf) {};
     ~router() {}
 
 
