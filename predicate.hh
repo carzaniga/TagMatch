@@ -95,8 +95,8 @@ class predicate {
 public:
     predicate(): filter_count(0) , t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
 
-		static const unsigned int TOT_FILTERS = 91092205;
-		static const unsigned int N_FILTERS = 20000000;
+		static const unsigned int TOT_FILTERS = 63651601;
+		static const unsigned int N_FILTERS = 37400000;
 
 		// this is a static configuration parameter representing the
 		// distribution of hamming weights derived from the workload.  We
@@ -111,13 +111,13 @@ public:
 		//
 		static const unsigned int Hamming_Weight_Dist[filter_t::WIDTH] = {
 			0,  0,  0,  0,  0,  0,  0,  1,  1,  1,      //0   --  9
-			1,  4, 26, 57,  1,  1,  1,  1,  1,  1,      //10  --  19
+			1,  3, 18, 39,  1,  1,  1,  1,  1,  1,      //10  --  19
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //20  --  29
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //30  --  39
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //40  --  49
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //50  --  59    
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //60  --  69
-			1,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //70  --  79    
+			1,  1,  1,  1,  0,  0,  0,  0,  0,  0,      //70  --  79    
 			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //80  --  89      
 			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //90  --  99
 			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //100 --  109

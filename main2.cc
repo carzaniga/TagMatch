@@ -8,7 +8,7 @@
 #include "router.hh"
 #include "timing.hh"
 
-#define PRINT 1
+#define PRINT 0
 
 class filter_printer : public filter_const_handler {
 public:
