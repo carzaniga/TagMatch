@@ -4,6 +4,8 @@
 #include <set>
 #include <map>
 #include <mutex>
+#include <thread>
+
 #include "predicate.hh"
 
 using namespace std;
@@ -85,9 +87,6 @@ private:
     set<interface_t> interfaces;
     mutex mtx;
 };
-
-
-
 
 
 class predicate_delta {
@@ -228,10 +227,41 @@ private:
     } 
 };
 
+class synch_filter_vector {
+public:
+    mutex mtx;
+    std::vector<filter_t> filters;
+    
+    synch_filter_vector () {};
+
+	void add (const filter_t x){
+        mtx.lock();
+        filters.push_back(x);
+        mtx.unlock();
+    }
+};
+
+class synch_pd_vector {
+public:
+    mutex mtx;
+    std::vector<predicate_delta> pd;
+
+    synch_pd_vector () {};
+    
+    void add (predicate_delta x){
+        mtx.lock();
+        pd.push_back(x);
+        mtx.unlock();
+    }
+    
+};
+
+
 class router {
     
 private:
     predicate P;
+    mutex p_mtx;
 
     map<tree_t,vector<interface_t>> interfaces;
               
@@ -249,11 +279,11 @@ public:
     void remove_filter_without_check (const filter_t & x, tree_t t, interface_t i);
  
     /** adds a new filter to predicate P. returns true if the filter has to be sent to 
-    all the neighbors, fasle otherwise **/
-    bool add_filter (const filter_t & x, tree_t t, interface_t i);
+    all the neighbors, fasle otherwise.**/
+    bool add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add);
     
     /** removes a filter from predicate P. **/
-    void remove_filter (vector<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i);
+    void remove_filter (const filter_t & x, tree_t t, interface_t i,synch_pd_vector & out_delta);
 
     /**  produces a set of predicate deltas as a result of applying d to P **/
     void apply_delta(vector<predicate_delta> & output, const predicate_delta & d);

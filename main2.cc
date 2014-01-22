@@ -73,6 +73,10 @@ int main(int argc, char *argv[]) {
 	std::string filter_string;
 	
     //argv[1] contains the number of expected filters
+    if(argc<2){
+        std::cout << "expected number of filters missing" << std::endl;
+        exit(0);
+    }
 	router R(atoi(argv[1]));
 
 	filter_printer filter_output(std::cout);
@@ -151,40 +155,7 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			delete_timer.stop();
 #endif
-		} else if (command =="+u"){
-            filter_t filter(filter_string);
-			interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			update_timer.start();
-#endif
-			R.add_filter(filter,t,i);
-#ifdef WITH_TIMERS
-			update_timer.stop();
-#endif
-			++update_count;
-			if (wheel_of_death(count, 12))
-				//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
-                std::cout << " N=" << update_count << "\r";
-
-        } else if (command =="-u"){
-            filter_t filter(filter_string);
-			interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-            vector<predicate_delta> out;
-#ifdef WITH_TIMERS
-			update_timer.start();
-#endif
-			R.remove_filter(out,filter,t,i);
-#ifdef WITH_TIMERS
-			update_timer.stop();
-#endif
-			++update_count;
-#if PRINT
-			if (wheel_of_death(count, 12))
-                std::cout << " N=" << update_count << "\r";
-#endif
-        }else if (command =="#"){
+		}else if (command =="#"){
             std::cin.ignore(5000,'\n');            
         }else if (command == "sd"){ //start delta tree ifx random_val
             predicate_delta pd(atoi(interface.c_str()), atoi(tree.c_str()));
@@ -206,20 +177,19 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out,pd);
-#if 0
+#if 1
             cout << "out size:" << out.size() <<endl;
-            for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
+            /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
                 << it->removals.size() <<endl; 
-                /*cout << "additions" << endl;
+                cout << "additions" << endl;
                 for(set<filter_t>::iterator ii = it->additions.begin(); ii!=it->additions.end(); ii++)
                     cout << ii->print(cout) << endl;
                 cout << "removals" << endl;
                 for(set<filter_t>::iterator ii = it->removals.begin(); ii!=it->removals.end(); ii++)
                     cout << ii->print(cout) << endl;
-                */
 
-            }
+            }*/
 #endif
 
 #ifdef WITH_TIMERS

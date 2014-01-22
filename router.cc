@@ -95,7 +95,7 @@ void router::remove_filter_without_check (const filter_t & x, tree_t t, interfac
 
 /** add a new filter if needed, removing all supersets. returns true if we need to 
 broadcast the update to all the interfaces **/
-bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
+bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add){
     //if the filter exists we discard the filter and return 0
     if(P.exists_filter(x,t,i))
         return 0;
@@ -109,20 +109,27 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i){
     map<interface_t,vector<filter_t>> * sup = m_super.get_supersets();
     if(sup->size()==1){
         for (vector<filter_t>::iterator it=(*sup)[i].begin(); it!=(*sup)[i].end(); ++it){
+            p_mtx.lock();
             P.remove(*it,t,i);
+            p_mtx.unlock();
         }
 
     }
+    p_mtx.lock();
     P.add(x,t,i);
+    p_mtx.unlock();
+    to_add.add(x);
     return 1;
 }
 
 
-void router::remove_filter (vector<predicate_delta> & output, const filter_t & x, tree_t t, interface_t i){
+void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_pd_vector & out_delta){
     if(P.exists_filter(x,t,i)){
 
         //remove the filter from intreface i on tree t
+        p_mtx.lock();
         P.remove(x,t,i);
+        p_mtx.unlock();
         //for each interface we need to compute a new delta with - and +
         //
         //given an interface j we send the filter x (that we want to remove) 
@@ -147,7 +154,7 @@ void router::remove_filter (vector<predicate_delta> & output, const filter_t & x
                 if(!m_subs.exists_subsets_on_other_ifx(*it)){
                     predicate_delta pd(*it,t);
                     pd.create_minimal_delta(x,*(m_super.get_supersets()),*it);
-                    output.push_back(pd);
+                    out_delta.add(pd);
                 }
             }
         }
@@ -163,6 +170,30 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
     map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(d.tree);
 
     //first part: add filters
+    vector<thread> ts;
+    synch_filter_vector to_add;
+    for(set<filter_t>::iterator it=d.additions.begin(); it!=d.additions.end(); it++){
+        ts.push_back(std::thread(&router::add_filter, this, *it, d.tree, d.ifx, std::ref(to_add)));
+    }
+    for(auto& t : ts)
+        t.join();
+    
+    for(vector<filter_t>::iterator add_it=to_add.filters.begin(); add_it!=to_add.filters.end(); ++add_it){
+        for(vector<interface_t>::iterator if_it = map_it->second.begin(); if_it!=map_it->second.end(); if_it++){
+            if(*if_it!=d.ifx){
+                map<interface_t,predicate_delta>::iterator it = tmp.find(*if_it);
+                if(it==tmp.end()){
+                    predicate_delta pd(*if_it,d.tree);
+                    pd.add_additional_filter(*add_it);
+                    tmp.insert(pair<interface_t,predicate_delta>(*if_it,pd));
+                }else{
+                    it->second.add_additional_filter(*add_it);
+                }
+            }
+        }
+    }
+    
+    /*
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
         if(add_filter(*add_it,d.tree,d.ifx)){
             //if add we need to broadcast the filter to all the interfaces except to interface 
@@ -182,7 +213,31 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
             }
         }
     }
-     
+    */
+    
+    //second part: remove filters
+    //this is a temporary set used to store the outputs of remove_fitler
+    synch_pd_vector out_delta;
+    ts.clear();
+    for(set<filter_t>::iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++){
+        ts.push_back(std::thread(&router::remove_filter, this, *rm_it, d.tree, d.ifx, std::ref(out_delta)));
+    }
+    for(auto& t : ts)
+        t.join();
+    
+    for(vector<predicate_delta>::iterator out_it=out_delta.pd.begin(); out_it!=out_delta.pd.end(); out_it++){
+        //for each predicate_delta in we need to store it in tmp (each predicate_delta
+        //has to be minimal)
+        map<interface_t,predicate_delta>::iterator it = tmp.find(out_it->ifx);
+        if(it==tmp.end()){
+            tmp.insert(pair<interface_t,predicate_delta>(out_it->ifx,*out_it));
+        }else{
+            it->second.merge_deltas(*out_it);
+        }
+     }
+
+
+    /*
     //second part: remove filters
     //this is a temporary set used to store the outputs of remove_fitler
     vector<predicate_delta> out;
@@ -202,7 +257,8 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
             }
         }
     }
-    
+    */    
+
     //store the results in output
     for(map<interface_t,predicate_delta>::iterator it_tmp=tmp.begin(); it_tmp!=tmp.end(); it_tmp++){
         //we need to remove redundant filters in the additional list
