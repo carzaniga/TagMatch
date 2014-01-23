@@ -8,7 +8,9 @@
 #include "router.hh"
 #include "timing.hh"
 
-#define PRINT 0
+#ifdef  WITH_INFO_OUTPUT
+#undef WITH_INFO_OUTPUT
+#endif
 
 class filter_printer : public filter_const_handler {
 public:
@@ -92,8 +94,10 @@ int main(int argc, char *argv[]) {
 
     
 #ifdef WITH_TIMERS
+#ifdef WITH_INFO_OUTPUT
 	unsigned long long prev_nsec = 0;
-    unsigned long long prev_match =0;
+    unsigned long long prev_match = 0;
+#endif
 	Timer add_timer, update_timer, delete_timer, match_timer;
 #endif
 	
@@ -110,7 +114,7 @@ int main(int argc, char *argv[]) {
 			add_timer.stop();
 #endif
 			++count;
-#if PRINT
+#if WITH_INFO_OUTPUT
 			if (wheel_of_death(count, 12))
                 std::cout << " N=" << count << "\r";
 #endif
@@ -138,7 +142,7 @@ int main(int argc, char *argv[]) {
 			match_timer.stop();
 #endif
             match_c++;
-#if PRINT
+#if WITH_INFO_OUTPUT
 			if (wheel_of_death(match_c, 7))
                cout <<"Matches "<< match_c << " Tm (us)=" << ((match_timer.read_nanoseconds()/1000 - prev_match) >> 7) << "\r";
             prev_match=match_timer.read_nanoseconds()/1000;
@@ -158,25 +162,27 @@ int main(int argc, char *argv[]) {
 		}else if (command =="#"){
             std::cin.ignore(5000,'\n');            
         }else if (command == "sd"){ //start delta tree ifx random_val
-            predicate_delta pd(atoi(interface.c_str()), atoi(tree.c_str()));
+            predicate_delta pd;
+			interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
             std::cin >> command >> tree >> interface >> filter_string;
             while(command!="ed"){ //end delta random_val random_val random_val
                 filter_t filter(filter_string);
                 if(command=="d+"){ 
                     add++;
-                    pd.additions.insert(filter);
+                    pd.additions.push_back(filter);
                 }else if(command=="d-"){
                     rm++;
-                    pd.removals.insert(filter);
+                    pd.removals.push_back(filter);
                 }else if (command =="#")
                     std::cin.ignore(5000,'\n'); 
                 std::cin >> command >> tree >> interface >> filter_string;
             }
-            vector<predicate_delta> out;
+            map<interface_t,predicate_delta> out;
 #ifdef WITH_TIMERS
 			update_timer.start();
 #endif
-            R.apply_delta(out,pd);
+            R.apply_delta(out, pd, i, t);
 #if 1
             cout << "out size:" << out.size() <<endl;
             /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
@@ -196,7 +202,7 @@ int main(int argc, char *argv[]) {
 			update_timer.stop();
 #endif
         ++update_count;
-#if PRINT
+#if WITH_INFO_OUTPUT
 		if (wheel_of_death(update_count, 7)){
 			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
             std::cout << " N=" << update_count << " add=" << add << " rm=" << rm

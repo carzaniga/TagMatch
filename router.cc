@@ -63,6 +63,91 @@ bool matcher_get_out_interfaces::match(const filter_t & filter, tree_t tree, int
     return false;
 }
 
+//this fucntion merges two predicate delta minimizing the list of filters 
+void predicate_delta::merge(const predicate_delta & d) {
+	//merge the removal list
+	for(list<filter_t>::const_iterator it = d.removals.begin(); it!=d.removals.end(); it++) 
+		add_removal_filter(*it);
+
+	//merge additional list
+	for(list<filter_t>::const_iterator it = d.additions.begin(); it!=d.additions.end(); it++) 
+		add_additional_filter(*it);
+}
+
+// add a filter (f) to the set of removal filters.  If the removal set
+// already contains f, then it simply ignores this request.  We assume
+// that f is NOT among the additions in this delta.
+//
+void predicate_delta::add_removal_filter(const filter_t & f) {
+#ifdef PARANOIA_CHECKS
+	set<filter_t>::iterator it = additions.find(f);
+	if (it!=additions.end()) {
+		//erase the fitler from additions (see is_needed_add below
+		//for explanations)
+		additions.erase(it);
+		return;
+	}
+#endif        
+
+	for(list<filter_t>::iterator it = removals.begin(); it != removals.end();){
+		if(it->subset_of(f))
+			return;
+		if (f.subset_of(*it)) {
+			removals.erase(it++);
+		} else {
+			++it;
+		}
+	}
+	removals.push_back(f);
+}
+    
+void predicate_delta::add_additional_filter(const filter_t & f) {
+#ifdef PARANOIA_CHECKS
+	//check if the filter is in the removals set
+	//if it is there we remove the filter from the removals 
+	//set and we return false
+	list<filter_t>::iterator it = removals.find(f);
+	if(it != removals.end()) {
+		removals.erase(it);
+		return;
+	}
+#endif
+	//here we need to remove all the possibile supersets of the filter that
+	//we are introducing
+	for(list<filter_t>::iterator it = additions.begin(); it != additions.end();) {
+		if(it->subset_of(f))
+			return;
+		if (f.subset_of(*it)) {
+			additions.erase(it++);
+		}
+		else {
+			++it;
+		}
+	}
+	additions.push_back(f);
+}
+
+
+
+// 
+void predicate_delta::create_minimal_delta(const filter_t & remove, 
+										   map<interface_t,vector<filter_t>> & add, const interface_t i) {
+	//we need to remove the filter remove and so we try to add it to removals
+	add_removal_filter(remove);        
+	map<interface_t,vector<filter_t>>::iterator it_map;
+	for(it_map = add.begin(); it_map!=add.end(); it_map++) {
+		//for each inetrface which is not i we add the uncovered filters, 
+		//mining supersets of remove, to the additions set  
+		if(it_map->first != i){
+			vector<filter_t>::iterator it_set;
+			for(it_set=it_map->second.begin(); it_set!=it_map->second.end(); it_set++){
+				add_additional_filter(*it_set);
+			}                
+		}
+	}
+}
+
+
 /**normal match**/
 void router::match(const filter_t & x, tree_t t, interface_t i){
     matcher_get_out_interfaces m;
@@ -123,9 +208,8 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filt
 }
 
 
-void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_pd_vector & out_delta){
-    if(P.exists_filter(x,t,i)){
-
+void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_ifx_delta_map & out_delta){
+    if(P.exists_filter(x,t,i)) {
         //remove the filter from intreface i on tree t
         p_mtx.lock();
         P.remove(x,t,i);
@@ -141,9 +225,15 @@ void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_p
         //there are supersets of x on interfaces different from j. the + is the sum
         //(minimal) of the supersets that we found.
         //
-            
         matcher_count_subsets_by_ifx m_subs;
-        //here I need to find not only the subsets but also the filter itself!
+
+        // here I need to find not only the subsets but also the filter
+		// itself!  WARNING: we are now a reader of the predicate, and
+		// in particular of the tree-interface pairs, so we need to
+		// lock it as a reader, possibly 
+		//
+		// TODO: implement a read/write lock
+		//
         P.count_subsets_by_ifx(x,t,m_subs);
         //find all the supersets...(always needed??) 
         matcher_collect_supersets m_super;
@@ -152,43 +242,34 @@ void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_p
         for (vector<interface_t>::iterator it=map_it->second.begin(); it!=map_it->second.end(); ++it){
             if(*it != i){
                 if(!m_subs.exists_subsets_on_other_ifx(*it)){
-                    predicate_delta pd(*it,t);
+                    predicate_delta pd;
                     pd.create_minimal_delta(x,*(m_super.get_supersets()),*it);
-                    out_delta.add(pd);
+                    out_delta.add(*it,pd);
                 }
             }
         }
     }
 }
 
-void router::apply_delta(vector<predicate_delta> & output, const predicate_delta & d) {
-    // produces a set of predicate deltas as a result of applying d to p
 
-    //this map stores temporally the set pf predicate_delta that we need to output
-    map<interface_t,predicate_delta> tmp;
+void router::apply_delta(map<interface_t,predicate_delta> & output, 
+						 const predicate_delta & d, interface_t i, tree_t t) {
+
     //map_it is the pointer to the set of interfaces use on tree d.tree.
-    map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(d.tree);
-
+	vector<interface_t> & tree_ifx = interfaces[t];
     //first part: add filters
     vector<thread> ts;
     synch_filter_vector to_add;
-    for(set<filter_t>::iterator it=d.additions.begin(); it!=d.additions.end(); it++){
-        ts.push_back(std::thread(&router::add_filter, this, *it, d.tree, d.ifx, std::ref(to_add)));
+    for(list<filter_t>::const_iterator it=d.additions.begin(); it!=d.additions.end(); it++){
+        ts.push_back(std::thread(&router::add_filter, this, *it, t, i, std::ref(to_add)));
     }
     for(auto& t : ts)
         t.join();
     
     for(vector<filter_t>::iterator add_it=to_add.filters.begin(); add_it!=to_add.filters.end(); ++add_it){
-        for(vector<interface_t>::iterator if_it = map_it->second.begin(); if_it!=map_it->second.end(); if_it++){
-            if(*if_it!=d.ifx){
-                map<interface_t,predicate_delta>::iterator it = tmp.find(*if_it);
-                if(it==tmp.end()){
-                    predicate_delta pd(*if_it,d.tree);
-                    pd.add_additional_filter(*add_it);
-                    tmp.insert(pair<interface_t,predicate_delta>(*if_it,pd));
-                }else{
-                    it->second.add_additional_filter(*add_it);
-                }
+        for(vector<interface_t>::iterator if_it = tree_ifx.begin(); if_it!=tree_ifx.end(); if_it++){
+            if(*if_it != i) {
+				output[i].add_additional_filter(*add_it);
             }
         }
     }
@@ -217,25 +298,13 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
     
     //second part: remove filters
     //this is a temporary set used to store the outputs of remove_fitler
-    synch_pd_vector out_delta;
+    synch_ifx_delta_map out_delta(output);
     ts.clear();
-    for(set<filter_t>::iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++){
-        ts.push_back(std::thread(&router::remove_filter, this, *rm_it, d.tree, d.ifx, std::ref(out_delta)));
+    for(list<filter_t>::const_iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++) {
+        ts.push_back(std::thread(&router::remove_filter, this, *rm_it, t, i, std::ref(out_delta)));
     }
     for(auto& t : ts)
         t.join();
-    
-    for(vector<predicate_delta>::iterator out_it=out_delta.pd.begin(); out_it!=out_delta.pd.end(); out_it++){
-        //for each predicate_delta in we need to store it in tmp (each predicate_delta
-        //has to be minimal)
-        map<interface_t,predicate_delta>::iterator it = tmp.find(out_it->ifx);
-        if(it==tmp.end()){
-            tmp.insert(pair<interface_t,predicate_delta>(out_it->ifx,*out_it));
-        }else{
-            it->second.merge_deltas(*out_it);
-        }
-     }
-
 
     /*
     //second part: remove filters
@@ -258,31 +327,5 @@ void router::apply_delta(vector<predicate_delta> & output, const predicate_delta
         }
     }
     */    
-
-    //store the results in output
-    for(map<interface_t,predicate_delta>::iterator it_tmp=tmp.begin(); it_tmp!=tmp.end(); it_tmp++){
-        //we need to remove redundant filters in the additional list
-        //in the witheboard example (wkld_test_update1) the delta computed for interface 3
-        //includes +ABC. However ABC is covered by AC coming from interface 1, so we need to 
-        //remove it. This filter can be removed also by the node that will recive the delta. With the 
-        //algorithm that we are using the check should have the same complexity, both locally and at
-        //the next hop. If we will implement same sort of mask on interfaces the check can be faster
-        //at the receiver. 
-
-        //thinking a bit better to this it does not make sense to include this check, because if we do this
-        //the check for subsets we we want to add a new filter will become useless, becuase it can never 
-        //happen to see a subset 
-
-        //if additions list is not empty minimize (if CHECK_LOCAL) it and add the pd to output
-        //else add the pd only if the removal set is not empty
-        if(it_tmp->second.additions.size()!=0 || it_tmp->second.removals.size()!=0){
-             output.push_back(it_tmp->second);
-        }
-        //in case we want to add the check we have to write it here
-        //     output.push_back(it_tmp->second);
-        // }else if(it_tmp->second.removals.size()!=0){
-        //     output.push_back(it_tmp->second);
-        // }
-    }    
 }
   
