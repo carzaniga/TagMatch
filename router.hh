@@ -28,7 +28,7 @@ private:
 
 /** finds all the supersets and collect them by interface
 * - in add_filter is used in combination with a tree_ifx_mathcer
-* (see predicate.cc) in order to get all the subset of one 
+* (see predicate.cc) in order to get all the supersets of one 
 * particular interface
 * - in remove_filter we use a tree_matcher in predicate.cc to get
 * all the supersets 
@@ -111,7 +111,7 @@ public:
     
     synch_filter_vector () {};
 
-	void add (const filter_t x){
+	void add (const filter_t & x){
         mtx.lock();
         filters.push_back(x);
         mtx.unlock();
@@ -156,10 +156,10 @@ public:
  
     /** adds a new filter to predicate P. returns true if the filter has to be sent to 
     all the neighbors, fasle otherwise.**/
-    bool add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add);
+    bool add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add, synch_filter_vector & to_rm);
     
     /** removes a filter from predicate P. **/
-    void remove_filter (const filter_t & x, tree_t t, interface_t i, synch_ifx_delta_map & out_delta);
+    void remove_filter (const filter_t & x, tree_t t, interface_t i, synch_ifx_delta_map & out_delta, synch_filter_vector & to_rm);
 
     /**  produces a set of predicate deltas as a result of applying d to P **/
     void apply_delta(map<interface_t,predicate_delta> & output, const predicate_delta & d, interface_t i, tree_t t);

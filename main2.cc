@@ -12,6 +12,11 @@
 #undef WITH_INFO_OUTPUT
 #endif
 
+
+#define WITH_INFO_OUTPUT 1
+
+
+
 class filter_printer : public filter_const_handler {
 public:
 	filter_printer(std::ostream & s): os(s) {};
@@ -183,7 +188,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out, pd, i, t);
-#if 1
+#if 0
             cout << "out size:" << out.size() <<endl;
             /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 

@@ -180,7 +180,7 @@ void router::remove_filter_without_check (const filter_t & x, tree_t t, interfac
 
 /** add a new filter if needed, removing all supersets. returns true if we need to 
 broadcast the update to all the interfaces **/
-bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add){
+bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filter_vector & to_add, synch_filter_vector & to_rm){
     //if the filter exists we discard the filter and return 0
     if(P.exists_filter(x,t,i))
         return 0;
@@ -192,28 +192,21 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filt
     matcher_collect_supersets m_super;
     P.find_supersets_on_ifx(x,t,i,m_super);
     map<interface_t,vector<filter_t>> * sup = m_super.get_supersets();
+    //sup has only 1 interface becuase all the changes are on interface i
     if(sup->size()==1){
         for (vector<filter_t>::iterator it=(*sup)[i].begin(); it!=(*sup)[i].end(); ++it){
-            p_mtx.lock();
-            P.remove(*it,t,i);
-            p_mtx.unlock();
+            to_rm.add(*it);
         }
-
     }
-    p_mtx.lock();
-    P.add(x,t,i);
-    p_mtx.unlock();
     to_add.add(x);
     return 1;
 }
 
 
-void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_ifx_delta_map & out_delta){
+void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_ifx_delta_map & out_delta, synch_filter_vector & to_rm){
     if(P.exists_filter(x,t,i)) {
         //remove the filter from intreface i on tree t
-        p_mtx.lock();
-        P.remove(x,t,i);
-        p_mtx.unlock();
+        to_rm.add(x); 
         //for each interface we need to compute a new delta with - and +
         //
         //given an interface j we send the filter x (that we want to remove) 
@@ -260,19 +253,35 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
     //first part: add filters
     vector<thread> ts;
     synch_filter_vector to_add;
+    synch_filter_vector to_rm;
+    
+    synch_ifx_delta_map out_delta(output);
+
     for(list<filter_t>::const_iterator it=d.additions.begin(); it!=d.additions.end(); it++){
-        ts.push_back(std::thread(&router::add_filter, this, *it, t, i, std::ref(to_add)));
+        ts.push_back(std::thread(&router::add_filter, this, *it, t, i, std::ref(to_add), std::ref(to_rm)));
     }
+    
+    for(list<filter_t>::const_iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++) {
+        ts.push_back(std::thread(&router::remove_filter, this, *rm_it, t, i, std::ref(out_delta), std::ref(to_rm)));
+    }
+    
     for(auto& t : ts)
         t.join();
     
     for(vector<filter_t>::iterator add_it=to_add.filters.begin(); add_it!=to_add.filters.end(); ++add_it){
+        P.add(*add_it,t,i);
         for(vector<interface_t>::iterator if_it = tree_ifx.begin(); if_it!=tree_ifx.end(); if_it++){
             if(*if_it != i) {
 				output[i].add_additional_filter(*add_it);
             }
         }
     }
+    
+    for(vector<filter_t>::iterator rm_it=to_rm.filters.begin(); rm_it!=to_rm.filters.end(); ++rm_it){
+        P.remove(*rm_it,t,i);
+    }
+
+    
     
     /*
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
@@ -298,14 +307,8 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
     
     //second part: remove filters
     //this is a temporary set used to store the outputs of remove_fitler
-    synch_ifx_delta_map out_delta(output);
-    ts.clear();
-    for(list<filter_t>::const_iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++) {
-        ts.push_back(std::thread(&router::remove_filter, this, *rm_it, t, i, std::ref(out_delta)));
-    }
-    for(auto& t : ts)
-        t.join();
-
+   
+   
     /*
     //second part: remove filters
     //this is a temporary set used to store the outputs of remove_fitler
