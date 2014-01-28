@@ -302,6 +302,18 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
         t.join();
 }
 
+void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x){
+    filter_t::pos_t hw = x.begin()->first.popcount()-1;
+    assert(roots[hw].size != 0);
+    
+    for(std::map<filter_t,std::vector<tree_interface_pair>>::const_iterator it = x.begin(); it!=x.end(); ++it){
+        node * n = add(it->first,roots[hw].trie_of(it->first));
+        for(filter_t::pos_t i = 0; i < it->second.size(); i++)
+            n->add_pair(it->second[i].tree, it->second[i].interface);
+    }
+}
+
+
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;
     assert(roots[hw].size != 0);

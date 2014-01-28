@@ -155,10 +155,27 @@ void router::match(const filter_t & x, tree_t t, interface_t i){
 }
 
 
-/** adds a new filter in predicate without any check. the initialization of the map
+/** adds a new filter in predicate without any check. 
 **/
 void router::add_filter_without_check (const filter_t & x, tree_t t, interface_t i){  
     P.add(x,t,i);
+}
+
+void router::add_filter_pre_process (const filter_t & x, tree_t t, interface_t i){
+    filter_t::pos_t index = compute_index(x.popcount()-1, x);
+    tree_interface_pair ti (t,i);
+    to_insert[index][x].push_back(ti);
+}
+
+void router::insertion () {
+    vector<thread> ts;
+    for(filter_t::pos_t i=0; i < to_insert.size(); ++i ){
+        if(to_insert[i].size()!=0){
+            ts.push_back(std::thread(&predicate::add_set_of_filters, std::ref(P), std::ref(to_insert[i])));
+        }
+    }
+    for(auto& t : ts)
+        t.join();
 }
 
 /** add an interface to a tree **/
@@ -272,7 +289,7 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
         P.add(*add_it,t,i);
         for(vector<interface_t>::iterator if_it = tree_ifx.begin(); if_it!=tree_ifx.end(); if_it++){
             if(*if_it != i) {
-				output[i].add_additional_filter(*add_it);
+				output[*if_it].add_additional_filter(*add_it);
             }
         }
     }
@@ -280,8 +297,8 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
     for(vector<filter_t>::iterator rm_it=to_rm.filters.begin(); rm_it!=to_rm.filters.end(); ++rm_it){
         P.remove(*rm_it,t,i);
     }
-
     
+    //cout << out_delta.output.size() << endl;    
     
     /*
     for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){

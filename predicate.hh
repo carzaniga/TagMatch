@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <vector>
+#include <map>
 
 #ifdef NODE_USES_MALLOC
 #include <new>
@@ -161,6 +162,7 @@ public:
 	 *  tree--interface pair
 	 */ 
 	node * add(const filter_t & x, tree_t t, interface_t i);
+    void add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x);
 
 	/** modular matching function (subset search)
 	 */

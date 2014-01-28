@@ -13,7 +13,7 @@
 #endif
 
 
-#define WITH_INFO_OUTPUT 1
+#define WITH_INFO_OUTPUT 0
 
 
 
@@ -111,19 +111,32 @@ int main(int argc, char *argv[]) {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			add_timer.start();
-#endif
-			R.add_filter_without_check (filter,t,i);
-#ifdef WITH_TIMERS
-			add_timer.stop();
-#endif
+//#ifdef WITH_TIMERS
+//			add_timer.start();
+//#endif
+			R.add_filter_pre_process(filter,t,i);
+//#ifdef WITH_TIMERS
+//			add_timer.stop();
+//#endif
 			++count;
 #if WITH_INFO_OUTPUT
 			if (wheel_of_death(count, 12))
                 std::cout << " N=" << count << "\r";
 #endif
-		} else if (command == "+q") {
+		} else if (command == "i"){
+#ifdef WITH_TIMERS
+			add_timer.start();
+#endif
+            R.insertion();
+#ifdef WITH_TIMERS
+			add_timer.stop();
+#endif
+
+#if WITH_INFO_OUTPUT
+            std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
+            std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / count) << std::endl;
+#endif
+        } else if (command == "+q") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
@@ -188,7 +201,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out, pd, i, t);
-#if 0
+#if 1
             cout << "out size:" << out.size() <<endl;
             /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 

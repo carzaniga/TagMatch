@@ -137,19 +137,48 @@ class router {
     
 private:
     predicate P;
-    mutex p_mtx;
-
     map<tree_t,vector<interface_t>> interfaces;
+
+    vector<map<filter_t,vector<tree_interface_pair>>> to_insert;
+    
+    filter_t::pos_t compute_index (filter_t::pos_t hw, const filter_t & x){
+        filter_t::pos_t index = 0;
+        for(filter_t::pos_t i = 0; i < hw; ++i){
+            if(P.roots[i].size <= 1)
+                index++;
+            else
+                index+=P.roots[i].size;
+        }
+
+        if(P.roots[hw].size <= 1)
+            index++;
+        else
+            index+=x.hash(P.roots[hw].size);
+        return index;
+    }    
               
 public:
     //nf is the number of expected filters
-    router(unsigned int nf): P(nf) {};
+    router(unsigned int nf): P(nf) {
+        unsigned int size =0;
+        for (unsigned int i=0; i< filter_t::WIDTH; ++i){
+            size+=P.roots[i].size;
+        }
+        size+=filter_t::WIDTH;
+        for(unsigned int i=0; i< size; ++i){
+            map<filter_t,vector<tree_interface_pair>> to_add_map;
+            to_insert.push_back(to_add_map);
+        }
+        
+    };
     ~router() {}
 
 
     /** adds a new filter to predicate P without checking the existence of a subset
     the filter x. It does not remove any superset of x from P. **/
     void add_filter_without_check (const filter_t & x, tree_t t, interface_t i);
+    void add_filter_pre_process (const filter_t & x, tree_t t, interface_t i);
+    void insertion ();
    
     /** removes a filter from P without any check **/
     void remove_filter_without_check (const filter_t & x, tree_t t, interface_t i);
