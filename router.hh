@@ -53,9 +53,11 @@ class matcher_count_subsets_by_ifx : public match_handler {
 public:
 	matcher_count_subsets_by_ifx() {};
     
-    bool exists_subsets_on_other_ifx(interface_t ifx){
+    //actual_ifx is the interface where we wanto to send an update
+    //delta_ifx is the interface from where we received the delta
+    bool exists_subsets_on_other_ifx(interface_t actual_ifx,interface_t delta_ifx){
         for (map<interface_t,unsigned int>::iterator it=subsets.begin(); it!=subsets.end(); ++it){
-            if(it->second!=0 && ifx!=it->first)
+            if(it->second!=0 && actual_ifx!=it->first && delta_ifx!=it->first)
                 return true;
         }
         return false;
