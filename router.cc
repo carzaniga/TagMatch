@@ -162,7 +162,7 @@ void router::add_filter_without_check (const filter_t & x, tree_t t, interface_t
 }
 
 void router::add_filter_pre_process (const filter_t & x, tree_t t, interface_t i){
-    filter_t::pos_t index = compute_index(x.popcount()-1, x);
+    filter_t::pos_t index = compute_index(x);
     tree_interface_pair ti (t,i);
     to_insert[index][x].push_back(ti);
 }
@@ -176,6 +176,17 @@ void router::insertion () {
     }
     for(auto& t : ts)
         t.join();
+}
+
+unsigned int router::get_unique_filters(){
+    unsigned int count = 0;
+    for(filter_t::pos_t i=0; i < to_insert.size(); ++i )
+        count+=to_insert[i].size();
+    return count;
+}
+
+void router::computes_bootstrap_update(vector<map<filter_t,vector<tree_interface_pair>>> & output, tree_t t, interface_t i){
+    P.computes_bootstrap_update(output, t, i);
 }
 
 /** add an interface to a tree **/

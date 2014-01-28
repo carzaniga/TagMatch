@@ -142,36 +142,35 @@ private:
     map<tree_t,vector<interface_t>> interfaces;
 
     vector<map<filter_t,vector<tree_interface_pair>>> to_insert;
-    
-    filter_t::pos_t compute_index (filter_t::pos_t hw, const filter_t & x){
-        filter_t::pos_t index = 0;
-        for(filter_t::pos_t i = 0; i < hw; ++i){
-            if(P.roots[i].size <= 1)
-                index++;
-            else
-                index+=P.roots[i].size;
-        }
+    vector<filter_t::pos_t> index;
 
-        if(P.roots[hw].size <= 1)
-            index++;
-        else
-            index+=x.hash(P.roots[hw].size);
-        return index;
+//TODO compute the boostrap update
+    filter_t::pos_t compute_index (const filter_t & x){
+        filter_t::pos_t hw = x.popcount()-1;
+        return (index[hw-1] + x.hash(P.roots[hw].size));
     }    
               
 public:
     //nf is the number of expected filters
     router(unsigned int nf): P(nf) {
         unsigned int size =0;
+        filter_t::pos_t pos = 0;
+
         for (unsigned int i=0; i< filter_t::WIDTH; ++i){
             size+=P.roots[i].size;
+        
+            index.push_back(pos);
+             if(P.roots[i].size<= 1)
+                pos++;
+            else
+                pos+=P.roots[i].size;
+
         }
         size+=filter_t::WIDTH;
         for(unsigned int i=0; i< size; ++i){
             map<filter_t,vector<tree_interface_pair>> to_add_map;
             to_insert.push_back(to_add_map);
         }
-        
     };
     ~router() {}
 
@@ -181,6 +180,9 @@ public:
     void add_filter_without_check (const filter_t & x, tree_t t, interface_t i);
     void add_filter_pre_process (const filter_t & x, tree_t t, interface_t i);
     void insertion ();
+    unsigned int get_unique_filters();
+
+    void computes_bootstrap_update(vector<map<filter_t,vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
    
     /** removes a filter from P without any check **/
     void remove_filter_without_check (const filter_t & x, tree_t t, interface_t i);

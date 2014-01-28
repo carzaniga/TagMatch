@@ -313,6 +313,64 @@ void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_
     }
 }
 
+void predicate::computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t ifx){
+    
+    for(filter_t::pos_t hw=0; hw< filter_t::WIDTH; ++hw){
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i){
+            std::map<filter_t,std::vector<tree_interface_pair>> to_add_map;
+            output.push_back(to_add_map);
+        }
+    }
+    
+    filter_t::pos_t index = 0;
+    std::vector<std::thread> ts;
+
+    for(filter_t::pos_t hw=0; hw < filter_t::WIDTH; ++hw){
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i){
+            ts.push_back(std::thread(&predicate::computes_bootstrap_update_on_a_trie, this,
+                                                    output, t, ifx, index, std::ref(roots[hw].tries[i])));
+            index++;
+        }
+    }
+    
+    for(auto& t : ts)
+        t.join();
+}
+
+void predicate::computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, 
+                                                    tree_t t, interface_t ifx, filter_t::pos_t index, node & root){
+    
+    
+    unsigned int head = 0;
+    const node * S[filter_t::WIDTH];
+
+    if (root.pos > root.left->pos){
+         S[head++] = root.left;
+    }
+
+    while (head != 0){
+        const node * n = S[--head];
+        
+        //check if the filter has to be added in the output
+        //meaning the filters appear on tree t on some interfaces
+        //that are not ifx
+        std::vector<tree_interface_pair> list;
+        for(const tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti){
+		    if (ti->tree == t && ti->interface != ifx)
+                list.push_back(*ti); 
+        }
+        if(list.size()!=0)
+            output[index][n->key] = list;
+        
+        //check if node.left has to be added in the stack
+        if(n->pos > n->left->pos)
+             S[head++] = n->left;
+
+        //check if node.right has to be added in the stack
+        if(n->pos > n->right->pos)
+             S[head++] = n->right;
+    }
+}
 
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;

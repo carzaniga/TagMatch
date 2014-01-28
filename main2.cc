@@ -13,7 +13,7 @@
 #endif
 
 
-#define WITH_INFO_OUTPUT 0
+#define WITH_INFO_OUTPUT 1
 
 
 
@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
 	unsigned long long prev_nsec = 0;
     unsigned long long prev_match = 0;
 #endif
-	Timer add_timer, update_timer, delete_timer, match_timer;
+	Timer add_timer, update_timer, delete_timer, match_timer, bootstrap_timer;
 #endif
 	
 	while(std::cin >> command >> tree >> interface >> filter_string) {
@@ -111,13 +111,7 @@ int main(int argc, char *argv[]) {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-//#ifdef WITH_TIMERS
-//			add_timer.start();
-//#endif
 			R.add_filter_pre_process(filter,t,i);
-//#ifdef WITH_TIMERS
-//			add_timer.stop();
-//#endif
 			++count;
 #if WITH_INFO_OUTPUT
 			if (wheel_of_death(count, 12))
@@ -134,8 +128,25 @@ int main(int argc, char *argv[]) {
 
 #if WITH_INFO_OUTPUT
             std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
-            std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / count) << std::endl;
+            std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
 #endif
+        } else if(command == "bs"){
+            vector<map<filter_t,vector<tree_interface_pair>>> output;
+            interface_t i = atoi(interface.c_str());
+			tree_t t = atoi(tree.c_str());
+            bootstrap_timer.reset();
+
+#ifdef WITH_TIMERS
+			bootstrap_timer.start();
+#endif
+            R.computes_bootstrap_update(output, t, i);
+#ifdef WITH_TIMERS
+			bootstrap_timer.stop();
+#endif
+
+#if WITH_INFO_OUTPUT
+            std::cout << "bootstrap time (us) = " << bootstrap_timer.read_microseconds() << std::endl;
+#endif            
         } else if (command == "+q") {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
@@ -201,7 +212,7 @@ int main(int argc, char *argv[]) {
 			update_timer.start();
 #endif
             R.apply_delta(out, pd, i, t);
-#if 1
+#if 0
             cout << "out size:" << out.size() <<endl;
             /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
@@ -252,6 +263,8 @@ int main(int argc, char *argv[]) {
 	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
 			  << "Tu (us)=" << (update_timer.read_microseconds() / update_count) << std::endl;
               std::cout<< "Tm (us)=" << (match_timer.read_microseconds() / match_c) << std::endl;
+              std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
+              std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
 #endif
 
 	return 0;

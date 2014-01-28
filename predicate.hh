@@ -164,6 +164,11 @@ public:
 	node * add(const filter_t & x, tree_t t, interface_t i);
     void add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x);
 
+    void computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
+    void computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, 
+                                                    interface_t i, filter_t::pos_t index, node & root);
+     
+
 	/** modular matching function (subset search)
 	 */
 	void match(const filter_t & x, tree_t t, match_handler & h) const;
