@@ -13,7 +13,7 @@
 #endif
 
 
-#define WITH_INFO_OUTPUT 1
+#define WITH_INFO_OUTPUT 0
 
 
 

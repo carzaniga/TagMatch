@@ -258,11 +258,16 @@ void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_i
         P.count_subsets_by_ifx(x,t,m_subs);
         //find all the supersets...(always needed??) 
         matcher_collect_supersets m_super;
-        P.find_supersets(x,t,m_super);
+        bool superset_executed = false;
+        //P.find_supersets(x,t,m_super);
         map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(t);
         for (vector<interface_t>::iterator it=map_it->second.begin(); it!=map_it->second.end(); ++it){
             if(*it != i){
                 if(!m_subs.exists_subsets_on_other_ifx(*it,i)){
+                    if(!superset_executed){
+                        superset_executed=true;
+                        P.find_supersets(x,t,m_super);
+                    }
                     predicate_delta pd;
                     pd.create_minimal_delta(x,*(m_super.get_supersets()),*it);
                     out_delta.add(*it,pd);
