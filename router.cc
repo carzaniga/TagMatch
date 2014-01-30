@@ -18,7 +18,9 @@ the filters on a particular interface or all the filter in the trie **/
 
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     mtx.lock();
-    std::map<interface_t,vector<filter_t>>::iterator it;
+    supersets[ifx].push_back(filter);
+
+    /*std::map<interface_t,vector<filter_t>>::iterator it;
     it=supersets.find(ifx);
     if(it==supersets.end()){
         vector<filter_t> s;
@@ -26,7 +28,7 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
         supersets.insert(pair<interface_t,vector<filter_t>>(ifx,s));
     }else{
         it->second.push_back(filter);
-    }
+    }*/
     mtx.unlock();
 	return false;
 }
@@ -34,29 +36,26 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
 /** returns always false because we want to visit the whole trie. counts the number
 of subsets on each interface **/
 bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, interface_t ifx) {
+    if(ifx==i)
+        retunr false;
     mtx.lock();
-    if(ifx==i){
-        mtx.unlock();
-        return false;
-    }
-    std::map<interface_t,unsigned int>::iterator it;
+    subsets[ifx]++;
+    /*std::map<interface_t,unsigned int>::iterator it;
     it=subsets.find(ifx);
     if(it==subsets.end()){
         subsets.insert(pair<interface_t,unsigned int>(ifx,1));
     }else{
         it->second++;    
     }
-    mtx.unlock();
+    mtx.unlock();*/
 	return false;
 }
 
 /**matcher for the normal match... */
 bool matcher_get_out_interfaces::match(const filter_t & filter, tree_t tree, interface_t ifx) {
-    mtx.lock();
-    if(ifx==i){
-        mtx.unlock();
+    if(ifx==i)
         return false;
-    }
+    mtx.lock();
     //the tree should be alredy checked!
     interfaces.insert(ifx);
     mtx.unlock();

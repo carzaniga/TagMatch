@@ -35,7 +35,7 @@ private:
 **/
 class matcher_collect_supersets : public match_handler {
 public:
-	matcher_collect_supersets() {};
+	matcher_collect_supersets(vector<filter_t> & r): to_remove(r) {};
     
     map<interface_t,vector<filter_t>> * get_supersets() {
         return &supersets;
@@ -44,6 +44,7 @@ public:
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
 private: 
     map<interface_t,vector<filter_t>> supersets;
+    vector<filter_t> & to_remove;
     mutex mtx;
 };
 
@@ -80,6 +81,7 @@ private:
     //input interface from where we received the update
     interface_t i;
     set<interface_t> interfaces;
+    
     mutex mtx;
 };
 

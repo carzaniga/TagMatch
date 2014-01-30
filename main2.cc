@@ -104,6 +104,8 @@ int main(int argc, char *argv[]) {
     unsigned long long prev_match = 0;
 #endif
 	Timer add_timer, update_timer, delete_timer, match_timer, bootstrap_timer;
+    unsigned long long time_array[1000];
+    unsigned int index = 0;
 #endif
 	
 	while(std::cin >> command >> tree >> interface >> filter_string) {
@@ -124,9 +126,7 @@ int main(int argc, char *argv[]) {
             R.insertion();
 #ifdef WITH_TIMERS
 			add_timer.stop();
-#endif
-
-#if WITH_INFO_OUTPUT
+            
             std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
             std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
 #endif
@@ -142,9 +142,6 @@ int main(int argc, char *argv[]) {
             R.computes_bootstrap_update(output, t, i);
 #ifdef WITH_TIMERS
 			bootstrap_timer.stop();
-#endif
-
-#if WITH_INFO_OUTPUT
             std::cout << "bootstrap time (us) = " << bootstrap_timer.read_microseconds() << std::endl;
 #endif            
         } else if (command == "+q") {
@@ -229,6 +226,9 @@ int main(int argc, char *argv[]) {
 
 #ifdef WITH_TIMERS
 			update_timer.stop();
+            time_array[index] = update_timer.read_microseconds();
+            index++;
+            update_timer.reset();
 #endif
         ++update_count;
 #if WITH_INFO_OUTPUT
@@ -265,6 +265,10 @@ int main(int argc, char *argv[]) {
               std::cout<< "Tm (us)=" << (match_timer.read_microseconds() / match_c) << std::endl;
               std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
               std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
+              
+              for (int i =0; i<1000; i++){
+                std::cout << time_array[i] << std::endl;
+              }
 #endif
 
 	return 0;
