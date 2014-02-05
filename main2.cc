@@ -113,7 +113,8 @@ int main(int argc, char *argv[]) {
 			filter_t filter(filter_string);
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
-			R.add_filter_pre_process(filter,t,i);
+            R.add_filter_without_check(filter,t,i);
+			//R.add_filter_pre_process(filter,t,i);
 			++count;
 #if WITH_INFO_OUTPUT
 			if (wheel_of_death(count, 12))
@@ -123,12 +124,12 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_TIMERS
 			add_timer.start();
 #endif
-            R.insertion();
+            //R.insertion();
 #ifdef WITH_TIMERS
 			add_timer.stop();
             
-            std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
-            std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
+            //std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
+            //std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
 #endif
         } else if(command == "bs"){
             vector<map<filter_t,vector<tree_interface_pair>>> output;

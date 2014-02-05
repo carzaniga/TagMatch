@@ -11,6 +11,20 @@
 
 using namespace std;
 
+class synch_filter_vector {
+public:
+    mutex mtx;
+    std::vector<filter_t> filters;
+    
+    synch_filter_vector () {};
+
+	void add (const filter_t & x){
+        mtx.lock();
+        filters.push_back(x);
+        mtx.unlock();
+    }
+};
+
 
 /** sets exists_match to true and return true. used in the exists_subsets
 **/
@@ -35,7 +49,7 @@ private:
 **/
 class matcher_collect_supersets : public match_handler {
 public:
-	matcher_collect_supersets(vector<filter_t> & r): to_remove(r) {};
+	matcher_collect_supersets(synch_filter_vector & r, filter_t::pos_t i): to_remove(r), interface(i) {};
     
     map<interface_t,vector<filter_t>> * get_supersets() {
         return &supersets;
@@ -44,7 +58,8 @@ public:
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
 private: 
     map<interface_t,vector<filter_t>> supersets;
-    vector<filter_t> & to_remove;
+    synch_filter_vector & to_remove;
+    filter_t::pos_t interface;
     mutex mtx;
 };
 
@@ -108,19 +123,6 @@ public:
     void add_additional_filter(const filter_t & t);
 };
 
-class synch_filter_vector {
-public:
-    mutex mtx;
-    std::vector<filter_t> filters;
-    
-    synch_filter_vector () {};
-
-	void add (const filter_t & x){
-        mtx.lock();
-        filters.push_back(x);
-        mtx.unlock();
-    }
-};
 
 class synch_ifx_delta_map {
 public:
@@ -155,7 +157,7 @@ private:
 public:
     //nf is the number of expected filters
     router(unsigned int nf): P(nf) {
-        unsigned int size =0;
+        /*unsigned int size =0;
         filter_t::pos_t pos = 0;
 
         for (unsigned int i=0; i< filter_t::WIDTH; ++i){
@@ -172,7 +174,7 @@ public:
         for(unsigned int i=0; i< size; ++i){
             map<filter_t,vector<tree_interface_pair>> to_add_map;
             to_insert.push_back(to_add_map);
-        }
+        }*/
     };
     ~router() {}
 

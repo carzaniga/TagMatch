@@ -18,7 +18,10 @@ the filters on a particular interface or all the filter in the trie **/
 
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     mtx.lock();
-    supersets[ifx].push_back(filter);
+    if(ifx==interface)  
+        to_remove.add(filter);
+    else
+        supersets[ifx].push_back(filter);
 
     /*std::map<interface_t,vector<filter_t>>::iterator it;
     it=supersets.find(ifx);
@@ -37,7 +40,7 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
 of subsets on each interface **/
 bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     if(ifx==i)
-        retunr false;
+        return false;
     mtx.lock();
     subsets[ifx]++;
     /*std::map<interface_t,unsigned int>::iterator it;
@@ -46,8 +49,8 @@ bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, i
         subsets.insert(pair<interface_t,unsigned int>(ifx,1));
     }else{
         it->second++;    
-    }
-    mtx.unlock();*/
+    }*/
+    mtx.unlock();
 	return false;
 }
 
@@ -149,8 +152,11 @@ void predicate_delta::create_minimal_delta(const filter_t & remove,
 
 /**normal match**/
 void router::match(const filter_t & x, tree_t t, interface_t i){
-    matcher_get_out_interfaces m;
-    P.match(x,t,m);
+    matcher_exists m;    
+    P.exists_subset(x,t,i,m);
+
+    //matcher_get_out_interfaces m;
+    //P.match(x,t,m);
 }
 
 
@@ -216,15 +222,17 @@ bool router::add_filter (const filter_t & x, tree_t t, interface_t i, synch_filt
     P.exists_subset(x,t,i,m);
     if(m.get_match())
         return 0;
-    matcher_collect_supersets m_super;
+    matcher_collect_supersets m_super(to_rm,i);
     P.find_supersets_on_ifx(x,t,i,m_super);
-    map<interface_t,vector<filter_t>> * sup = m_super.get_supersets();
+    //map<interface_t,vector<filter_t>> * sup = m_super.get_supersets();
     //sup has only 1 interface becuase all the changes are on interface i
-    if(sup->size()==1){
-        for (vector<filter_t>::iterator it=(*sup)[i].begin(); it!=(*sup)[i].end(); ++it){
-            to_rm.add(*it);
-        }
-    }
+
+    //Now this is done by the matcher!!!!
+    //if(sup->size()==1){
+    //    for (vector<filter_t>::iterator it=(*sup)[i].begin(); it!=(*sup)[i].end(); ++it){
+    //        to_rm.add(*it);
+    //    }
+    //}
     to_add.add(x);
     return 1;
 }
@@ -256,7 +264,7 @@ void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_i
 		//
         P.count_subsets_by_ifx(x,t,m_subs);
         //find all the supersets...(always needed??) 
-        matcher_collect_supersets m_super;
+        matcher_collect_supersets m_super(to_rm, i);
         bool superset_executed = false;
         //P.find_supersets(x,t,m_super);
         map<tree_t,vector<interface_t>>::iterator map_it = interfaces.find(t);
