@@ -9,7 +9,7 @@ AM_LDFLAGS = $(LDFLAGS_prof)
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
-bin_PROGRAMS = predicate predicate_old gen gen2
+bin_PROGRAMS = predicate predicate_old gen gen2 msb_partition
 
 gen_SOURCES = gen.cc params.h
 
@@ -22,3 +22,5 @@ predicate_old_SOURCES = predicate.hh predicate_old.cc \
 	filter.hh filter.cc \
 	timing.hh timing.cc allocator.hh allocator.cc
 predicate_old_LDADD = $(LIBS_prof) 
+
+msb_partition_SOURCES = msb_partition.cc

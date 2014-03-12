@@ -94,66 +94,66 @@ class prefix {
     
 public:
     const block_t * begin() const {
-	return b;
+		return b;
     }
 
     const block_t * end() const {
-	return b + Size;
+		return b + Size;
     }
 
     bool subset_of(const block_t * p) const {
-	for (int i = 0; i < BLOCK_COUNT; ++i)
-	    if ((b[i] & ~p[i]) != 0)
-		return false;
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			if ((b[i] & ~p[i]) != 0)
+				return false;
 
-	return true;
+		return true;
     }
 
     void assign(const string & p) {
-	assert(p.size() <= Size);
+		assert(p.size() <= Size);
 
-	// see the layout specification above
-	//
-	block_t mask = BLOCK_ONE;
-	int i = 0;
-	for(string::const_iterator c = p.begin(); c != p.end(); ++c) {
-	    if (*c == '1')
-		b[i] |= mask;
+		// see the layout specification above
+		//
+		block_t mask = BLOCK_ONE;
+		int i = 0;
+		for(string::const_iterator c = p.begin(); c != p.end(); ++c) {
+			if (*c == '1')
+				b[i] |= mask;
 
-	    mask <<= 1;
-	    if (mask == 0) {
-		mask = BLOCK_ONE;
-		if (++i == BLOCK_COUNT)
-		    return;
-	    }
-	}
+			mask <<= 1;
+			if (mask == 0) {
+				mask = BLOCK_ONE;
+				if (++i == BLOCK_COUNT)
+					return;
+			}
+		}
     }
 
     void assign(const block_t * p) {
 #ifdef USING_MEMSET
-	memcpy(b,p,sizeof(b));
+		memcpy(b,p,sizeof(b));
 #else
-	for (int i = 0; i < BLOCK_COUNT; ++i)
-	    b[i] = p[i];
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = p[i];
 #endif
     }
 
     void reset() {
 #ifdef USING_MEMSET
-	memset(b,0,sizeof(b));
+		memset(b,0,sizeof(b));
 #else
-	for (int i = 0; i < BLOCK_COUNT; ++i)
-	    b[i] = 0;
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = 0;
 #endif
     }
 
     prefix(const string & p) {
-	reset();
-	assign(p);
+		reset();
+		assign(p);
     }
 
     prefix(const block_t * p) {
-	assign(p);
+		assign(p);
     }
 };
 
@@ -205,7 +205,7 @@ public:
     vector<queue64> p64;
 
     void add64(const block_t * p, queue * q) {
-	p64.push_back(queue64(p,q));
+		p64.push_back(queue64(p,q));
     }
 };
 
@@ -221,7 +221,7 @@ public:
     vector<queue128> p128;
 
     void add128(const block_t * p, queue * q) {
-	p128.push_back(queue128(p,q));
+		p128.push_back(queue128(p,q));
     }
 };
 
@@ -237,7 +237,7 @@ public:
     vector<queue192> p192;
 
     void add192(const block_t * p, queue * q) {
-	p192.push_back(queue192(p,q));
+		p192.push_back(queue192(p,q));
     }
 };
 
@@ -246,29 +246,25 @@ static p1_container pp1[64];
 static p2_container pp2[64];
 static p3_container pp3[64];
 
-static unsigned long total_matches() {
-    return count;
-}
-
 void fib_add_prefix(const filter_t & f, unsigned int n, queue * q) {
     const block_t * b = f.begin();
 
     if (*b) {
-	if (n <= 64) {
-	    pp1[leftmost_bit(*b)].add64(b,q);
-	} else if (n <= 128) {
-	    pp1[leftmost_bit(*b)].add128(b,q);
-	} else {
-	    pp1[leftmost_bit(*b)].add192(b,q);
-	}
+		if (n <= 64) {
+			pp1[leftmost_bit(*b)].add64(b,q);
+		} else if (n <= 128) {
+			pp1[leftmost_bit(*b)].add128(b,q);
+		} else {
+			pp1[leftmost_bit(*b)].add192(b,q);
+		}
     } else if (*(++b)) {
-	if (n <= 64) {
-	    pp2[leftmost_bit(*b)].add64(b,q);
-	} else {
-	    pp2[leftmost_bit(*b)].add128(b,q);
-	}
+		if (n <= 64) {
+			pp2[leftmost_bit(*b)].add64(b,q);
+		} else {
+			pp2[leftmost_bit(*b)].add128(b,q);
+		}
     } else if (*(++b)) {
-	pp3[leftmost_bit(*b)].add64(b,q);
+		pp3[leftmost_bit(*b)].add64(b,q);
     }
 }
 
@@ -276,55 +272,55 @@ void fib_match(const filter_t & q) {
     const block_t * b = q.begin();
 
     if (*b) {
-	block_t curr_block = *b;
-	do {
-	    int m = leftmost_bit(curr_block);
-	    const p1_container & c = pp1[m];
+		block_t curr_block = *b;
+		do {
+			int m = leftmost_bit(curr_block);
+			const p1_container & c = pp1[m];
 
-	    for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    for(vector<queue192>::const_iterator i = c.p192.begin(); i != c.p192.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue192>::const_iterator i = c.p192.begin(); i != c.p192.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    curr_block ^= (BLOCK_ONE << m);
-	} while (curr_block != 0);
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
 			
     } else if (*(++b)) {
-	block_t curr_block = *b;
-	do {
-	    int m = leftmost_bit(curr_block);
-	    const p1_container & c = pp1[m];
+		block_t curr_block = *b;
+		do {
+			int m = leftmost_bit(curr_block);
+			const p1_container & c = pp1[m];
 
-	    for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    curr_block ^= (BLOCK_ONE << m);
-	} while (curr_block != 0);
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
 
     } else if (*(++b)) {
-	block_t curr_block = *b;
-	do {
-	    int m = leftmost_bit(curr_block);
-	    const p1_container & c = pp1[m];
+		block_t curr_block = *b;
+		do {
+			int m = leftmost_bit(curr_block);
+			const p1_container & c = pp1[m];
 
-	    for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
-		if (i->p.subset_of(b))
-		    ++count;
+			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
+				if (i->p.subset_of(b))
+					++count;
 
-	    curr_block ^= (BLOCK_ONE << m);
-	} while (curr_block != 0);
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
     }
 }
 
@@ -337,33 +333,33 @@ int main () {
     string command, filter_string;
 
     while(std::cin >> command >> filter_string) {
-	if (command == "+") {
-	    filter_t f(filter_string);
-	    unsigned int n = filter_string.size();
-	    fib_add_prefix(f,n,&Q);
-	} else if (command=="!") {
-	    filter_t f(filter_string);
-	    queries.push_back(f);
-	} else if (command == "match") {
-	    break;
-	}
+		if (command == "+") {
+			filter_t f(filter_string);
+			unsigned int n = filter_string.size();
+			fib_add_prefix(f,n,&Q);
+		} else if (command=="!") {
+			filter_t f(filter_string);
+			queries.push_back(f);
+		} else if (command == "match") {
+			break;
+		}
     }
     count = 0;
 
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
     for(int j=0; j<N; j++) {
-	for(int i = 0; i < queries.size(); ++i) {
-	    fib_match(queries[i].begin());
-	}
+		for(size_t i = 0; i < queries.size(); ++i) {
+			fib_match(queries[i].begin());
+		}
     }
 
     high_resolution_clock::time_point stop = high_resolution_clock::now();
     nanoseconds ns = duration_cast<nanoseconds>(stop - start);
     cout << "Average matching time: " << ns.count()/queries.size()/N 
-	 << "ns" << endl
-	 << "queries: " << queries.size() << endl
-	 << "total matches: " << count << endl;
+		 << "ns" << endl
+		 << "queries: " << queries.size() << endl
+		 << "total matches: " << count << endl;
 
     return 0;
 }
