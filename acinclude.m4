@@ -85,7 +85,27 @@ case "$ac_cv_clzl" in
 esac
 ])
 dnl
-dnl AC_CHECK_BUILTIN_CLZL([action-if-available [, action-if-not-available])
+dnl AC_CHECK_BUILTIN_CTZL([action-if-available [, action-if-not-available])
+dnl
+AC_DEFUN([AC_CHECK_BUILTIN_CTZL], [
+AC_CACHE_CHECK([for __builtin_ctzl], [ac_cv_ctzl], [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+int ctzl(unsigned long d) {
+    return __builtin_ctzl(d);
+}
+]])], [ ac_cv_ctzl=yes ], [ ac_cv_ctzl=no ])])
+case "$ac_cv_ctzl" in
+    yes)
+        AC_DEFINE(HAVE_BUILTIN_CTZL, 1, [We may use the compiler's built-in ctzl function])
+	ifelse([$1], , :, [$1])
+	;;
+    *)
+	ifelse([$2], , :, [$2])
+	;;
+esac
+])
+dnl
+dnl AC_CHECK_BUILTIN_POPCOUNT([action-if-available [, action-if-not-available])
 dnl
 AC_DEFUN([AC_CHECK_BUILTIN_POPCOUNT], [
 AC_CACHE_CHECK([for __builtin_popcount], [ac_cv_popcount], [

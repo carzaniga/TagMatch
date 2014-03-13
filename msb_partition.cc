@@ -1,3 +1,6 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 #include <iostream>
 #include <climits>
 #ifdef USING_MEMSET
@@ -8,7 +11,9 @@
 #include <cstdint>
 #include <chrono>
 #include <cassert>
+#ifdef WITH_THREADS
 #include <thread>
+#endif
 
 using namespace std;
 using namespace std::chrono;
@@ -62,12 +67,42 @@ static const block_t BLOCK_ONE = 0x1;
 //
 // leftmost 1-bit position 
 //
+#ifdef HAVE_BUILTIN_CTZL
 static inline int leftmost_bit(const uint64_t x) {
     // Since we represent the leftmost bit in the least-significant
     // position, the leftmost bit corresponds to the count of trailing
     // zeroes (see the layout specification above).
     return __builtin_ctzl(x);
+} 
+#else
+static inline int leftmost_bit(uint64_t x) {
+    int n = 0;
+	if ((x & 0xFFFFFFFF) == 0) {
+		n += 32;
+		x >>= 32;
+	}
+	if ((x & 0xFFFF) == 0) {
+		n += 16;
+		x >>= 16;
+	}
+	if ((x & 0xFF) == 0) {
+		n += 8;
+		x >>= 8;
+	}
+	if ((x & 0xF) == 0) {
+		n += 4;
+		x >>= 4;
+	}
+	if ((x & 0x3) == 0) {
+		n += 2;
+		x >>= 2;
+	}
+	if ((x & 0x1) == 0) {
+		n += 1;
+	}
+    return n;
 }
+#endif
 
 //
 // Main representation of a prefix.  Essentially we will instantiate
@@ -90,7 +125,7 @@ class prefix {
     // prefix "000101" is represented by the three blocks:
     // b[0] = (101000)binary, b[1] = 0, b[2] = 0
     //
-    block_t b[Size];
+    block_t b[BLOCK_COUNT];
     
 public:
     const block_t * begin() const {
@@ -98,7 +133,7 @@ public:
     }
 
     const block_t * end() const {
-		return b + Size;
+		return b + BLOCK_COUNT;
     }
 
     bool subset_of(const block_t * p) const {
