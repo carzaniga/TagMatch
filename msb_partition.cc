@@ -10,6 +10,12 @@
 #include <cstdint>
 #include <chrono>
 #include <cassert>
+#include <thread>
+#define USING_MUTEX 1
+#ifdef USING_MUTEX
+#include <mutex>
+#include <condition_variable>
+#endif
 
 using namespace std;
 using namespace std::chrono;
@@ -171,10 +177,46 @@ public:
 
 typedef prefix<192> filter_t;
 
-//
-// place-holder class for the message queue on the GPU
-//
-class queue {};
+class queue {
+public:
+
+	static const unsigned int MAX_SIZE = 1024;
+
+	unsigned int tail; // one-past the last element
+	unsigned int q[MAX_SIZE]; 
+	queue(): tail(0) {}; 
+
+	void push (unsigned int n) {
+		unsigned int old_t;
+		unsigned int new_t;
+
+	try_push:
+		old_t = tail;
+		new_t = old_t+1;
+
+		if (new_t > MAX_SIZE)
+			goto try_push;
+
+		if (!__sync_bool_compare_and_swap (&tail, old_t, new_t))
+			goto try_push;
+
+		// I am the only one thread that gets here -- ever!
+
+		q[old_t]=n;
+
+		if (new_t == MAX_SIZE) {
+			flush();
+		}
+	}
+
+	void flush () {
+		//send stuff to gpu!
+		//is it better to have two queues? 
+		//in this way you can copy one queue to the gpu
+		//and use the other one for the prefiltering
+		tail = 0;
+	}
+};
 
 //
 // association between a prefix of up to 64 bits, and a queue
@@ -279,9 +321,8 @@ void fib_add_prefix(const filter_t & f, unsigned int n, queue * q) {
     }
 }
 
-unsigned int fib_match(const filter_t & q) {
-	unsigned count = 0;
-    const block_t * b = q.begin();
+void fib_match(const filter_t * q) {
+    const block_t * b = q->begin();
 
     if (*b) {
 		block_t curr_block = *b;
@@ -291,15 +332,15 @@ unsigned int fib_match(const filter_t & q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			for(vector<queue192>::const_iterator i = c.p192.begin(); i != c.p192.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -312,11 +353,11 @@ unsigned int fib_match(const filter_t & q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -329,19 +370,157 @@ unsigned int fib_match(const filter_t & q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					++count;
+					i->q->push(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
     }
-
-	return count;
 }
 
-queue Q;
+static unsigned long total_matches() {
+    unsigned long c = 0;
+    for(int j = 0; j< 64; j++){
+        for(vector<queue64>::const_iterator i = pp1[j].p64.begin(); i != pp1[j].p64.end(); ++i){ 
+            c+=i->q->tail;
+        }
+        for(vector<queue128>::const_iterator i = pp1[j].p128.begin(); i != pp1[j].p128.end(); ++i) 
+            c+=i->q->tail;
+        for(vector<queue192>::const_iterator i = pp1[j].p192.begin(); i != pp1[j].p192.end(); ++i) 
+            c+=i->q->tail;
+        for(vector<queue64>::const_iterator i = pp2[j].p64.begin(); i != pp2[j].p64.end(); ++i) 
+            c+=i->q->tail;
+        for(vector<queue128>::const_iterator i = pp2[j].p128.begin(); i != pp2[j].p128.end(); ++i) 
+            c+=i->q->tail;
+        for(vector<queue64>::const_iterator i = pp3[j].p64.begin(); i != pp3[j].p64.end(); ++i) 
+            c+=i->q->tail;
+    }
+    return c;
+}
+
+static void destroy_fib() {
+    for(int j = 0; j< 64; j++){
+        for(vector<queue64>::const_iterator i = pp1[j].p64.begin(); i != pp1[j].p64.end(); ++i)
+            if (i->q)
+				delete(i->q);
+		pp1[j].p64.clear();
+
+        for(vector<queue128>::const_iterator i = pp1[j].p128.begin(); i != pp1[j].p128.end(); ++i) 
+            if (i->q)
+				delete(i->q);
+		pp1[j].p128.clear();
+
+        for(vector<queue192>::const_iterator i = pp1[j].p192.begin(); i != pp1[j].p192.end(); ++i) 
+            if (i->q)
+				delete(i->q);
+		pp1[j].p192.clear();
+
+        for(vector<queue64>::const_iterator i = pp2[j].p64.begin(); i != pp2[j].p64.end(); ++i) 
+            if (i->q)
+				delete(i->q);
+		pp2[j].p64.clear();
+
+        for(vector<queue128>::const_iterator i = pp2[j].p128.begin(); i != pp2[j].p128.end(); ++i) 
+            if (i->q)
+				delete(i->q);
+		pp2[j].p128.clear();
+
+        for(vector<queue64>::const_iterator i = pp3[j].p64.begin(); i != pp3[j].p64.end(); ++i) 
+            if (i->q)
+				delete(i->q);
+		pp3[j].p64.clear();
+
+    }
+}
+
+const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2
+
+static const filter_t * job_queue[JOB_QUEUE_SIZE];
+size_t job_queue_head = 0;		// position of the first element in the queue
+size_t job_queue_tail = 0;		// one-past position of the last element in the queue
+
+#ifdef USING_MUTEX
+std::mutex job_queue_mtx;
+std::condition_variable job_queue_producer_cv;
+std::condition_variable job_queue_consumers_cv;
+
+unsigned int e_counter = 0;
+unsigned int d_counter = 0;
+
+static void match_job_enqueue(const filter_t * f) {
+	size_t tail_plus_one;
+	std::unique_lock<std::mutex> lock(job_queue_mtx);
+ try_enqueue:
+	tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
+
+	if (tail_plus_one == job_queue_head) { // full queue 
+		job_queue_producer_cv.wait(lock);
+		goto try_enqueue;
+	}
+	job_queue[job_queue_tail] = f;
+	job_queue_tail = tail_plus_one;
+
+	job_queue_consumers_cv.notify_all();
+}
+
+static const filter_t * match_job_dequeue() {
+	std::unique_lock<std::mutex> lock(job_queue_mtx);
+
+ try_dequeue:
+	if (job_queue_head == job_queue_tail) { // empty queue 
+		job_queue_consumers_cv.wait(lock);
+		goto try_dequeue;
+	}
+
+    const filter_t * f = job_queue[job_queue_head];
+	job_queue_head = (job_queue_head + 1) % JOB_QUEUE_SIZE;
+
+	job_queue_producer_cv.notify_one();
+	return f;
+}
+
+#else
+static void match_job_enqueue(const filter_t * f) {
+	size_t tail_plus_one;
+
+ try_enqueue:
+	tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
+
+	if (tail_plus_one == job_queue_head) // full queue 
+		goto try_enqueue;				 // busy loop
+
+	job_queue[job_queue_tail] = f;
+	job_queue_tail = tail_plus_one;
+}
+
+static const filter_t * match_job_dequeue() {
+	size_t my_head, head_plus_one;
+
+ try_dequeue:
+	my_head = job_queue_head;
+
+	if (my_head == job_queue_tail) // empty queue 
+		goto try_dequeue;		   // busy loop
+
+	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
+
+	if (!__sync_bool_compare_and_swap (&job_queue_head, my_head, head_plus_one))
+		goto try_dequeue;
+
+	return job_queue[my_head];
+}
+#endif
+
+const size_t THREAD_COUNT = 10;
+std::thread * thread_pool[THREAD_COUNT];
+
+void thread_loop() {
+	const filter_t * f;
+	while((f = match_job_dequeue()))
+		fib_match(f);
+}
 
 int main () {
-    int N = 1000;				// how many cycles throug the queries?
+    int N = 1;				// how many cycles throug the queries?
     vector<filter_t> queries;	// we store all the queries here
 
     string command, filter_string;
@@ -350,7 +529,7 @@ int main () {
 		if (command == "+") {
 			filter_t f(filter_string);
 			unsigned int n = filter_string.size();
-			fib_add_prefix(f,n,&Q);
+			fib_add_prefix(f,n,new queue());
 		} else if (command=="!") {
 			filter_t f(filter_string);
 			queries.push_back(f);
@@ -359,25 +538,34 @@ int main () {
 		}
     }
 
+	for(size_t i = 0; i < THREAD_COUNT; ++i)
+		thread_pool[i] = new thread(thread_loop);
+
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
+    cout << endl << "Enqueueing jobs." << endl;
+	for(vector<filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
+		match_job_enqueue(&(*i));
 
-    for(int j=0; j<N; j++) {
-		for(size_t i = 0; i < queries.size(); ++i) {
-			fib_match(queries[i].begin());
-		}
-    }
+    cout << endl << "Stopping threads." << endl;
+	for(size_t i = 0; i < THREAD_COUNT; ++i)
+		match_job_enqueue(0);
+
+    cout << endl<< "Waiting for threads to terminate." << endl;
+	for(size_t i = 0; i < THREAD_COUNT; ++i)
+		thread_pool[i]->join();
 
     high_resolution_clock::time_point stop = high_resolution_clock::now();
 
-	for(size_t i = 0; i < queries.size(); ++i) {
-		cout << fib_match(queries[i].begin()) << endl;
-	}
-		
-    nanoseconds ns = duration_cast<nanoseconds>(stop - start);
-    cout << "Average matching time: " << ns.count()/queries.size()/N 
-		 << "ns" << endl
-		 << "queries: " << queries.size() << endl;
+	for(size_t i = 0; i < THREAD_COUNT; ++i)
+		delete(thread_pool[i]);
 
+    nanoseconds ns = duration_cast<nanoseconds>(stop - start);
+    cout << "Average matching time: " << ns.count()/queries.size()/N
+		 << "ns" << endl
+		 << "queries: " << queries.size() << endl
+		 << "total matches: " << total_matches() << endl;
+
+	destroy_fib();
     return 0;
 }
