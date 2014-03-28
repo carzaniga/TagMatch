@@ -35,23 +35,23 @@ static inline size_t round_up_to_alignment(size_t s) {
     // meaning that ALIGNMENT will be optimized out at compile-time, and
     // everything will work nicely and efficiently.
     //
-    static const unsigned int ALIGNMENT = offsetof(
-						   struct {
-						       char x; 
-						       union {
-							   char c;
-							   int i;
-							   long l;
-							   bool b;
-							   double d;
+	struct alignment_struct {
+		char x; 
+		union {
+			char c;
+			int i;
+			long l;
+			bool b;
+			double d;
 #ifdef ALLOCATOR_SUPPORTS_LONG_DOUBLE
-							   long double ld;
+			long double ld;
 #endif
-							   long long ll;
-							   void* vp;
-							   void(*vfp)(void);
-						       } y;},
-						   y);
+			long long ll;
+			void* vp;
+			void(*vfp)(void);
+		} y;
+	};
+    static const unsigned int ALIGNMENT = offsetof(alignment_struct, y);
 
     size_t extra = s % ALIGNMENT;
     return  (extra == 0) ? s : (s - extra + ALIGNMENT);

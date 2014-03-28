@@ -338,11 +338,9 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		static void print_r(ostream & os, string & prefix, const node * n) {
 			if (n == 0) {
 				os << prefix;
-#if 1
 				for(filter::pos_t p = prefix.size(); p < filter::FILTER_SIZE; ++p) {
 					os << '0';
 				}
-#endif
 				os << std::endl;
 				return;
 			} else {
@@ -361,8 +359,11 @@ void match(const node *n, filter::const_iterator fi, filter::const_iterator end,
 		}
 
 		ostream & predicate::print(ostream & os) const {
-////			string s;
-////			print_r(os, s, root);
+			for(int i = 0; i < 192; ++i) {
+				string s("0", i);
+				print_r(os, s, root[i]);
+				os << endl;
+			}
 			return os;
 		}
 
