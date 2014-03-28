@@ -24,3 +24,4 @@ predicate_old_SOURCES = predicate.hh predicate_old.cc \
 predicate_old_LDADD = $(LIBS_prof) 
 
 msb_partition_SOURCES = msb_partition.cc
+msb_partition_CXXFLAGS = -pthread
