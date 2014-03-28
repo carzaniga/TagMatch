@@ -1,19 +1,15 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#else
+#define HAVE_BUILTIN_CTZL
 #endif
 #include <iostream>
 #include <climits>
-#ifdef USING_MEMSET
-#include <cstring>
-#endif
 #include <cstdlib>
 #include <vector>
 #include <cstdint>
 #include <chrono>
 #include <cassert>
-#ifdef WITH_THREADS
-#include <thread>
-#endif
 
 using namespace std;
 using namespace std::chrono;
@@ -144,7 +140,10 @@ public:
 		return true;
     }
 
-    void assign(const string & p) {
+    prefix(const string & p) {
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = 0;
+
 		assert(p.size() <= Size);
 
 		// see the layout specification above
@@ -164,31 +163,9 @@ public:
 		}
     }
 
-    void assign(const block_t * p) {
-#ifdef USING_MEMSET
-		memcpy(b,p,sizeof(b));
-#else
+    prefix(const block_t * p) {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = p[i];
-#endif
-    }
-
-    void reset() {
-#ifdef USING_MEMSET
-		memset(b,0,sizeof(b));
-#else
-		for (int i = 0; i < BLOCK_COUNT; ++i)
-			b[i] = 0;
-#endif
-    }
-
-    prefix(const string & p) {
-		reset();
-		assign(p);
-    }
-
-    prefix(const block_t * p) {
-		assign(p);
     }
 };
 
@@ -276,7 +253,6 @@ public:
     }
 };
 
-static unsigned long count = 0;
 static p1_container pp1[64];
 static p2_container pp2[64];
 static p3_container pp3[64];
@@ -303,7 +279,8 @@ void fib_add_prefix(const filter_t & f, unsigned int n, queue * q) {
     }
 }
 
-void fib_match(const filter_t & q) {
+unsigned int fib_match(const filter_t & q) {
+	unsigned count = 0;
     const block_t * b = q.begin();
 
     if (*b) {
@@ -331,7 +308,7 @@ void fib_match(const filter_t & q) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-			const p1_container & c = pp1[m];
+			const p2_container & c = pp2[m];
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
@@ -348,7 +325,7 @@ void fib_match(const filter_t & q) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-			const p1_container & c = pp1[m];
+			const p3_container & c = pp3[m];
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
@@ -357,12 +334,14 @@ void fib_match(const filter_t & q) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
     }
+
+	return count;
 }
 
 queue Q;
 
 int main () {
-    int N = 10000;		// how many cycles throug the queries
+    int N = 1000;				// how many cycles throug the queries?
     vector<filter_t> queries;	// we store all the queries here
 
     string command, filter_string;
@@ -379,9 +358,9 @@ int main () {
 			break;
 		}
     }
-    count = 0;
 
     high_resolution_clock::time_point start = high_resolution_clock::now();
+
 
     for(int j=0; j<N; j++) {
 		for(size_t i = 0; i < queries.size(); ++i) {
@@ -390,11 +369,15 @@ int main () {
     }
 
     high_resolution_clock::time_point stop = high_resolution_clock::now();
+
+	for(size_t i = 0; i < queries.size(); ++i) {
+		cout << fib_match(queries[i].begin()) << endl;
+	}
+		
     nanoseconds ns = duration_cast<nanoseconds>(stop - start);
     cout << "Average matching time: " << ns.count()/queries.size()/N 
 		 << "ns" << endl
-		 << "queries: " << queries.size() << endl
-		 << "total matches: " << count << endl;
+		 << "queries: " << queries.size() << endl;
 
     return 0;
 }
