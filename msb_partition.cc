@@ -6,6 +6,8 @@
 #include <iostream>
 #include <climits>
 #include <cstdlib>
+#include <cstdio>				// sscanf
+#include <cstring>				// strcmp
 #include <vector>
 #include <cstdint>
 #include <chrono>
@@ -432,19 +434,16 @@ static void destroy_fib() {
     }
 }
 
-const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2
+static const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2
 
 static const filter_t * job_queue[JOB_QUEUE_SIZE];
-volatile size_t job_queue_head = 0;		// position of the first element in the queue
-volatile size_t job_queue_tail = 0;		// one-past position of the last element in the queue
+static volatile size_t job_queue_head = 0;		// position of the first element in the queue
+static volatile size_t job_queue_tail = 0;		// one-past position of the last element in the queue
 
 #ifdef USING_MUTEX
-std::mutex job_queue_mtx;
-std::condition_variable job_queue_producer_cv;
-std::condition_variable job_queue_consumers_cv;
-
-unsigned int e_counter = 0;
-unsigned int d_counter = 0;
+static std::mutex job_queue_mtx;
+static std::condition_variable job_queue_producer_cv;
+static std::condition_variable job_queue_consumers_cv;
 
 static void match_job_enqueue(const filter_t * f) {
 	size_t tail_plus_one;
@@ -521,10 +520,21 @@ void thread_loop() {
 		fib_match(f);
 }
 
-int main () {
-    int N = 1;					// how many cycles throug the queries?
-    vector<filter_t> queries;	// we store all the queries here
+int main(int argc, const char * argv[]) {
+    unsigned int N = 1;			// how many cycles throug the queries?
 
+	for(int i = 1; i < argc; ++i) {
+		if (sscanf(argv[i], "n=%u", &N) || sscanf(argv[i], "N=%u", &N))
+			continue;
+
+		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
+			std::cout << "usage: " << argv[0] << " [n=<number-of-rounds>]\n"
+					  << std::endl;
+			return 1;
+		}
+	}
+
+    vector<filter_t> queries;	// we store all the queries here
     string command, filter_string;
 
     while(std::cin >> command >> filter_string) {
@@ -545,8 +555,9 @@ int main () {
 
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	for(vector<filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
-		match_job_enqueue(&(*i));
+	for(unsigned int round = 0; round < N; ++round) 
+		for(vector<filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
+			match_job_enqueue(&(*i));
 
 	for(size_t i = 0; i < THREAD_COUNT; ++i)
 		match_job_enqueue(0);
