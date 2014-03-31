@@ -435,8 +435,8 @@ static void destroy_fib() {
 const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2
 
 static const filter_t * job_queue[JOB_QUEUE_SIZE];
-size_t job_queue_head = 0;		// position of the first element in the queue
-size_t job_queue_tail = 0;		// one-past position of the last element in the queue
+volatile size_t job_queue_head = 0;		// position of the first element in the queue
+volatile size_t job_queue_tail = 0;		// one-past position of the last element in the queue
 
 #ifdef USING_MUTEX
 std::mutex job_queue_mtx;
@@ -503,14 +503,16 @@ static const filter_t * match_job_dequeue() {
 
 	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
 
-	if (!__sync_bool_compare_and_swap (&job_queue_head, my_head, head_plus_one))
+	const filter_t * result = job_queue[my_head];
+
+	if (!__sync_bool_compare_and_swap(&job_queue_head, my_head, head_plus_one))
 		goto try_dequeue;
 
-	return job_queue[my_head];
+	return result;
 }
 #endif
 
-const size_t THREAD_COUNT = 10;
+const size_t THREAD_COUNT = 4;
 std::thread * thread_pool[THREAD_COUNT];
 
 void thread_loop() {
@@ -520,7 +522,7 @@ void thread_loop() {
 }
 
 int main () {
-    int N = 1;				// how many cycles throug the queries?
+    int N = 1;					// how many cycles throug the queries?
     vector<filter_t> queries;	// we store all the queries here
 
     string command, filter_string;
@@ -543,15 +545,12 @@ int main () {
 
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
-    cout << endl << "Enqueueing jobs." << endl;
 	for(vector<filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
 		match_job_enqueue(&(*i));
 
-    cout << endl << "Stopping threads." << endl;
 	for(size_t i = 0; i < THREAD_COUNT; ++i)
 		match_job_enqueue(0);
 
-    cout << endl<< "Waiting for threads to terminate." << endl;
 	for(size_t i = 0; i < THREAD_COUNT; ++i)
 		thread_pool[i]->join();
 
