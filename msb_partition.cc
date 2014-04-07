@@ -184,7 +184,7 @@ public:
 
 	static const unsigned int MAX_SIZE = 1024;
 
-	unsigned int tail; // one-past the last element
+	volatile unsigned int tail; // one-past the last element
 	unsigned int q[MAX_SIZE]; 
 	queue(): tail(0) {}; 
 
@@ -220,35 +220,18 @@ public:
 	}
 };
 
-//
-// association between a prefix of up to 64 bits, and a queue
-//
-struct queue64 {
-    const prefix<64> p;
-    queue * q;
+template<unsigned int Size>
+class prefix_queue_pair {
+public:
+	const prefix<Size> p;
+	queue * q;
 
-    queue64(const block_t * pb, queue * q_): p(pb), q(q_) {};
+    prefix_queue_pair(const block_t * pb, queue * qq): p(pb), q(qq) {};
 };
 
-//
-// association between a prefix of up to 128 bits, and a queue
-//
-struct queue128 {
-    const prefix<128> p;
-    queue * q;
-
-    queue128(const block_t * pb, queue * q_): p(pb), q(q_) {};
-};
-
-//
-// association between a prefix of up to 192 bits, and a queue
-//
-struct queue192 {
-    const prefix<192> p;
-    queue * q;
-
-    queue192(const block_t * pb, queue * q_): p(pb), q(q_)  {};
-};
+typedef prefix_queue_pair<64> queue64;
+typedef prefix_queue_pair<128> queue128;
+typedef prefix_queue_pair<192> queue192;
 
 // 
 // container of prefixes whose leftmost bit is the 3rd 64-bit block.
