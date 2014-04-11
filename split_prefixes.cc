@@ -146,6 +146,13 @@ int main(int argc, const char * argv[]) {
 			filters_fname = argv[i] + 2;
 			continue;
 		}
+		std::cerr << "usage: " << argv[0] << " [<params>...]\n"
+			"\n  params: any combination of the following:\n"
+			"     [m=<N>]         :: size limit for each partition (default=100)\n"
+			"     [p=<filename>]  :: output for prefixes, '-' means stdout (default=OFF)\n"
+			"     [f=<filename>]  :: output for filters, '-' means stdout (default=OFF)\n"
+				  << std::endl;
+		return 1;
 	}
 
 	std::ostream * prefixes_os = 0;

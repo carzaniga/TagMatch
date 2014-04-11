@@ -9,7 +9,7 @@ AM_LDFLAGS = $(LDFLAGS_prof)
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
-bin_PROGRAMS = predicate predicate_old gen gen2 msb_partition split_predicates
+bin_PROGRAMS = predicate predicate_old gen gen2 msb_partition split_prefixes
 
 gen_SOURCES = gen.cc params.h
 
@@ -26,4 +26,4 @@ predicate_old_LDADD = $(LIBS_prof)
 msb_partition_SOURCES = msb_partition.cc
 msb_partition_CXXFLAGS = -pthread -Wl,--no-as-needed
 
-split_predicates_SOURCES = split_predicates.cc bv.hh predicates.hh
+split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
