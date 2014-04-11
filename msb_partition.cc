@@ -13,10 +13,12 @@
 #include <chrono>
 #include <cassert>
 #include <thread>
-#define USING_MUTEX 1
-#ifdef USING_MUTEX
+#ifdef WITH_MUTEX_THREADPOOL
 #include <mutex>
 #include <condition_variable>
+#endif
+#ifndef WITH_BUILTIN_CAS
+#include <atomic>
 #endif
 
 using namespace std;
@@ -184,13 +186,19 @@ public:
 
 	static const unsigned int MAX_SIZE = 1024;
 
-	volatile unsigned int tail; // one-past the last element
+#ifdef WITH_BUILTIN_CAS
+	volatile unsigned int tail;
+#else
+	std::atomic<unsigned int> tail; // one-past the last element
+#endif
 	unsigned int q[MAX_SIZE]; 
 	queue(): tail(0) {}; 
 
-	void push (unsigned int n) {
+	void enqueue (unsigned int n) {
 		unsigned int old_t;
 		unsigned int new_t;
+
+#ifdef WITH_BUILTIN_CAS
 
 	try_push:
 		old_t = tail;
@@ -201,8 +209,21 @@ public:
 
 		if (!__sync_bool_compare_and_swap (&tail, old_t, new_t))
 			goto try_push;
+#else
+		old_t = tail.load(std::memory_order_acquire);
 
-		// I am the only one thread that gets here -- ever!
+	try_push:
+		new_t = old_t+1;
+
+		if (new_t > MAX_SIZE) {
+			// queue full => busy loop
+			old_t = tail.load(std::memory_order_acquire);
+			goto try_push;
+		}
+
+		if (!std::atomic_compare_exchange_weak(&tail, &old_t, new_t))
+			goto try_push;
+#endif
 
 		q[old_t]=n;
 
@@ -216,7 +237,11 @@ public:
 		//is it better to have two queues? 
 		//in this way you can copy one queue to the gpu
 		//and use the other one for the prefiltering
+#ifdef WITH_BUILTIN_CAS
 		tail = 0;
+#else
+		tail.store(0, std::memory_order_release);
+#endif
 	}
 };
 
@@ -317,15 +342,15 @@ void fib_match(const filter_t * q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			for(vector<queue192>::const_iterator i = c.p192.begin(); i != c.p192.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -338,11 +363,11 @@ void fib_match(const filter_t * q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			for(vector<queue128>::const_iterator i = c.p128.begin(); i != c.p128.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -355,7 +380,7 @@ void fib_match(const filter_t * q) {
 
 			for(vector<queue64>::const_iterator i = c.p64.begin(); i != c.p64.end(); ++i) 
 				if (i->p.subset_of(b))
-					i->q->push(1);
+					i->q->enqueue(1);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -417,13 +442,14 @@ static void destroy_fib() {
     }
 }
 
-static const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2
-
+static const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2 for efficiency
 static const filter_t * job_queue[JOB_QUEUE_SIZE];
-static volatile size_t job_queue_head = 0;		// position of the first element in the queue
-static volatile size_t job_queue_tail = 0;		// one-past position of the last element in the queue
 
-#ifdef USING_MUTEX
+#ifdef WITH_MUTEX_THREADPOOL
+
+static size_t job_queue_head = 0;		// position of the first element in the queue
+static size_t job_queue_tail = 0;		// one-past position of the last element in the queue
+
 static std::mutex job_queue_mtx;
 static std::condition_variable job_queue_producer_cv;
 static std::condition_variable job_queue_consumers_cv;
@@ -461,27 +487,36 @@ static const filter_t * match_job_dequeue() {
 }
 
 #else
+
+#ifdef WITH_BUILTIN_CAS
+
+static volatile unsigned int job_queue_head = 0;	// position of the first element 
+static volatile unsigned int job_queue_tail = 0;	// one-past position of the last element
+
 static void match_job_enqueue(const filter_t * f) {
-	size_t tail_plus_one;
+	unsigned int tail_plus_one;
+	unsigned int my_tail;
 
- try_enqueue:
-	tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
+	my_tail = job_queue_tail;
+	tail_plus_one = (my_tail + 1) % JOB_QUEUE_SIZE;
 
-	if (tail_plus_one == job_queue_head) // full queue 
-		goto try_enqueue;				 // busy loop
+	while (tail_plus_one == job_queue_head) {
+		// full queue => busy loop
+		;
+	}
 
-	job_queue[job_queue_tail] = f;
+	job_queue[my_tail] = f;
 	job_queue_tail = tail_plus_one;
 }
 
 static const filter_t * match_job_dequeue() {
-	size_t my_head, head_plus_one;
+	unsigned int my_head, head_plus_one;
 
  try_dequeue:
 	my_head = job_queue_head;
 
-	if (my_head == job_queue_tail) // empty queue 
-		goto try_dequeue;		   // busy loop
+	if (my_head == job_queue_tail)
+		goto try_dequeue;		   // empty queue => busy loop
 
 	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
 
@@ -492,9 +527,53 @@ static const filter_t * match_job_dequeue() {
 
 	return result;
 }
+
+#else
+
+static std::atomic<unsigned int> job_queue_head(0);	// position of the first element 
+static std::atomic<unsigned int> job_queue_tail(0);	// one-past position of the last element
+
+static void match_job_enqueue(const filter_t * f) {
+	unsigned int tail_plus_one;
+	unsigned int my_tail;
+
+	my_tail = job_queue_tail.load(std::memory_order_acquire);
+	tail_plus_one = (my_tail + 1) % JOB_QUEUE_SIZE;
+
+	while (tail_plus_one == job_queue_head.load(std::memory_order_acquire)) {
+		// full queue => busy loop
+		;
+	}
+
+	job_queue[my_tail] = f;
+	job_queue_tail.store(tail_plus_one, std::memory_order_release);
+}
+
+static const filter_t * match_job_dequeue() {
+	unsigned int my_head, head_plus_one;
+
+	my_head = job_queue_head.load(std::memory_order_acquire);
+ try_dequeue:
+
+	if (my_head == job_queue_tail.load(std::memory_order_acquire))
+		goto try_dequeue;		   // empty queue => busy loop
+
+	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
+
+	const filter_t * result = job_queue[my_head];
+
+	if (!std::atomic_compare_exchange_weak(&job_queue_head, &my_head, head_plus_one))
+		goto try_dequeue;
+
+	return result;
+}
+#endif // HAVE_BUILTIN_CAS
 #endif
 
-const size_t THREAD_COUNT = 4;
+#ifndef THREAD_COUNT
+#define THREAD_COUNT 4
+#endif
+
 std::thread * thread_pool[THREAD_COUNT];
 
 void thread_loop() {

@@ -104,6 +104,30 @@ case "$ac_cv_ctzl" in
 	;;
 esac
 ])
+
+dnl
+dnl AC_CHECK_BUILTIN_CAS([action-if-available [, action-if-not-available])
+dnl
+AC_DEFUN([AC_CHECK_BUILTIN_CAS], [
+AC_CACHE_CHECK([for __sync_bool_compare_and_swap], [ac_cv_cas], [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+volatile unsigned int v;
+bool f() {
+    unsigned int cv;
+    return __sync_bool_compare_and_swap(&v, cv, cv + 1);
+}
+]])], [ ac_cv_cas=yes ], [ ac_cv_cas=no ])])
+case "$ac_cv_cas" in
+    yes)
+        AC_DEFINE(HAVE_BUILTIN_CAS, 1, [We may use the compiler's built-in compare-and-swap function])
+	ifelse([$1], , :, [$1])
+	;;
+    *)
+	ifelse([$2], , :, [$2])
+	;;
+esac
+])
+
 dnl
 dnl AC_CHECK_BUILTIN_POPCOUNT([action-if-available [, action-if-not-available])
 dnl
@@ -256,5 +280,55 @@ AC_ARG_ENABLE(timers,
       if test $must_test_gettime = yes; then
 	 AC_CHECK_LIB(rt,clock_gettime)
       fi
+  ])
+])
+dnl
+dnl AC_OPT_MUTEX_THREADPOOL
+dnl
+AC_DEFUN([AC_OPT_MUTEX_THREADPOOL], [
+AC_ARG_WITH(mutex-threadpool,
+   AC_HELP_STRING([--with-mutex-threadpool],
+      [Use mutex to control access to threadpool. Values are "yes" or "no" (default=no)]), [
+      case "$withval" in
+         yes )
+	    AC_DEFINE([WITH_MUTEX_THREADPOOL], [], [use mutex to control access to threadpool])
+	    ;;
+	 * )
+ 	    AC_MSG_RESULT([using non-blocking queues for threadpool])
+	    ;;
+      esac
+  ])
+])
+
+dnl
+dnl AC_OPT_WITH_BUILTIN_CAS
+dnl
+AC_DEFUN([AC_OPT_WITH_BUILTIN_CAS], [
+AC_ARG_WITH(built-in-cas,
+   AC_HELP_STRING([--with-built-in-cas],
+      [Use mutex to control access to threadpool. Values are "yes" or "no" (default=no)]), [
+      case "$withval" in
+         yes )
+	    AC_CHECK_BUILTIN_CAS([
+ 		AC_DEFINE([WITH_BUILTIN_CAS], [], [using built-in compare-and-swap])
+	      ], [
+		AC_MSG_WARN([built-in compare-and-swap unavailable, using <atomic>.])
+ 	      ])
+	    ;;
+	 * )
+ 	    AC_MSG_RESULT([using compare-and-swap from <atomic>.])
+	    ;;
+      esac
+  ])
+])
+
+dnl
+dnl AC_WITH_THREAD_COUNT
+dnl
+AC_DEFUN([AC_WITH_THREAD_COUNT], [
+AC_ARG_WITH(thread-count,
+   AC_HELP_STRING([--with-thread-count],
+      [Thread-pool size. (default=4)]), [
+      AC_DEFINE_UNQUOTED([THREAD_COUNT], $withval, [threadpool size])
   ])
 ])
