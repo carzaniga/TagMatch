@@ -4,6 +4,8 @@
 #define HAVE_BUILTIN_CTZL
 #endif
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <climits>
 #include <cstdlib>
 #include <cstdio>				// sscanf
@@ -20,9 +22,12 @@
 #ifndef WITH_BUILTIN_CAS
 #include <atomic>
 #endif
+#include "predicate.hh"
+#include "main_GPU.h"
 
 using namespace std;
 using namespace std::chrono;
+//static main_GPU mgpu;
 
 // ***DESIGN OF THE FORWARDING TABLE***
 //
@@ -69,6 +74,7 @@ typedef uint64_t block_t;
 static_assert(sizeof(block_t)*CHAR_BIT == 64, "uint64_t must be a 64-bit word");
 static const int BLOCK_SIZE = 64;
 static const block_t BLOCK_ONE = 0x1;
+main_GPU mgpu;
 
 //
 // leftmost 1-bit position 
@@ -179,13 +185,14 @@ public:
     }
 };
 
-typedef prefix<192> filter_t;
+typedef prefix<192> prefix_filter_t;
 
 class queue {
 public:
 
-	static const unsigned int MAX_SIZE = 1024;
-
+	static const unsigned int MAX_SIZE = 100;//1024;
+	unsigned int prefix_id ;
+	
 #ifdef WITH_BUILTIN_CAS
 	volatile unsigned int tail;
 #else
@@ -193,6 +200,7 @@ public:
 #endif
 	unsigned int q[MAX_SIZE]; 
 	queue(): tail(0) {}; 
+	queue(unsigned int prefix_id_): prefix_id(prefix_id_), tail(0){}; 
 
 	void enqueue (unsigned int n) {
 		unsigned int old_t;
@@ -237,6 +245,7 @@ public:
 		//is it better to have two queues? 
 		//in this way you can copy one queue to the gpu
 		//and use the other one for the prefiltering
+		mgpu.match(prefix_id, MAX_SIZE) ;
 #ifdef WITH_BUILTIN_CAS
 		tail = 0;
 #else
@@ -309,7 +318,7 @@ static p1_container pp1[64];
 static p2_container pp2[64];
 static p3_container pp3[64];
 
-void fib_add_prefix(const filter_t & f, unsigned int n, queue * q) {
+void fib_add_prefix(const prefix_filter_t & f, unsigned int n, queue * q) {
     const block_t * b = f.begin();
 
     if (*b) {
@@ -331,7 +340,7 @@ void fib_add_prefix(const filter_t & f, unsigned int n, queue * q) {
     }
 }
 
-void fib_match(const filter_t * q) {
+void fib_match(const prefix_filter_t * q) {
     const block_t * b = q->begin();
 
     if (*b) {
@@ -443,7 +452,7 @@ static void destroy_fib() {
 }
 
 static const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2 for efficiency
-static const filter_t * job_queue[JOB_QUEUE_SIZE];
+static const prefix_filter_t * job_queue[JOB_QUEUE_SIZE];
 
 #ifdef WITH_MUTEX_THREADPOOL
 
@@ -454,7 +463,7 @@ static std::mutex job_queue_mtx;
 static std::condition_variable job_queue_producer_cv;
 static std::condition_variable job_queue_consumers_cv;
 
-static void match_job_enqueue(const filter_t * f) {
+static void match_job_enqueue(const prefix_filter_t * f) {
 	size_t tail_plus_one;
 	std::unique_lock<std::mutex> lock(job_queue_mtx);
  try_enqueue:
@@ -470,7 +479,7 @@ static void match_job_enqueue(const filter_t * f) {
 	job_queue_consumers_cv.notify_all();
 }
 
-static const filter_t * match_job_dequeue() {
+static const prefix_filter_t * match_job_dequeue() {
 	std::unique_lock<std::mutex> lock(job_queue_mtx);
 
  try_dequeue:
@@ -479,7 +488,7 @@ static const filter_t * match_job_dequeue() {
 		goto try_dequeue;
 	}
 
-    const filter_t * f = job_queue[job_queue_head];
+    const prefix_filter_t * f = job_queue[job_queue_head];
 	job_queue_head = (job_queue_head + 1) % JOB_QUEUE_SIZE;
 
 	job_queue_producer_cv.notify_one();
@@ -493,7 +502,7 @@ static const filter_t * match_job_dequeue() {
 static volatile unsigned int job_queue_head = 0;	// position of the first element 
 static volatile unsigned int job_queue_tail = 0;	// one-past position of the last element
 
-static void match_job_enqueue(const filter_t * f) {
+static void match_job_enqueue(const prefix_filter_t * f) {
 	unsigned int tail_plus_one;
 	unsigned int my_tail;
 
@@ -509,7 +518,7 @@ static void match_job_enqueue(const filter_t * f) {
 	job_queue_tail = tail_plus_one;
 }
 
-static const filter_t * match_job_dequeue() {
+static const prefix_filter_t * match_job_dequeue() {
 	unsigned int my_head, head_plus_one;
 
  try_dequeue:
@@ -520,7 +529,7 @@ static const filter_t * match_job_dequeue() {
 
 	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
 
-	const filter_t * result = job_queue[my_head];
+	const prefix_filter_t * result = job_queue[my_head];
 
 	if (!__sync_bool_compare_and_swap(&job_queue_head, my_head, head_plus_one))
 		goto try_dequeue;
@@ -533,7 +542,7 @@ static const filter_t * match_job_dequeue() {
 static std::atomic<unsigned int> job_queue_head(0);	// position of the first element 
 static std::atomic<unsigned int> job_queue_tail(0);	// one-past position of the last element
 
-static void match_job_enqueue(const filter_t * f) {
+static void match_job_enqueue(const prefix_filter_t * f) {
 	unsigned int tail_plus_one;
 	unsigned int my_tail;
 
@@ -549,7 +558,7 @@ static void match_job_enqueue(const filter_t * f) {
 	job_queue_tail.store(tail_plus_one, std::memory_order_release);
 }
 
-static const filter_t * match_job_dequeue() {
+static const prefix_filter_t * match_job_dequeue() {
 	unsigned int my_head, head_plus_one;
 
 	my_head = job_queue_head.load(std::memory_order_acquire);
@@ -560,7 +569,7 @@ static const filter_t * match_job_dequeue() {
 
 	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
 
-	const filter_t * result = job_queue[my_head];
+	const prefix_filter_t * result = job_queue[my_head];
 
 	if (!std::atomic_compare_exchange_weak(&job_queue_head, &my_head, head_plus_one))
 		goto try_dequeue;
@@ -571,46 +580,170 @@ static const filter_t * match_job_dequeue() {
 #endif
 
 #ifndef THREAD_COUNT
-#define THREAD_COUNT 4
+#define THREAD_COUNT 8
 #endif
 
 std::thread * thread_pool[THREAD_COUNT];
 
 void thread_loop() {
-	const filter_t * f;
+	const prefix_filter_t * f;
 	while((f = match_job_dequeue()))
 		fib_match(f);
 }
 
+static std::vector<tree_interface_pair> ti_pairs;
+//static std::vector<
+
+void read_prefixes_vector(vector<int> & size_of_prefixes, string fname){
+	ifstream is (fname) ;
+	string line;
+	if (is.is_open()) {
+		while(std::getline(is, line)) {
+			istringstream line_s(line);
+			string command;
+			line_s >>command ;
+			if(command != "p"){
+				continue;
+			}
+			unsigned int prefix_id, prefix_size;
+			std::string prefix_string;
+
+			line_s >> prefix_id >> prefix_string >> prefix_size;
+//			int * host_fib= (int *)malloc(prefix_size * 24 ) ;
+			
+			prefix_filter_t f(prefix_string);
+			unsigned int n = prefix_string.size();
+			fib_add_prefix(f,n,new queue(prefix_id));
+			//p_size++ ;
+			size_of_prefixes.push_back(prefix_size) ;
+		}
+	}
+	else 
+		cerr<< " prefix file doesn't exist! " << endl;
+//	return size_of_prefixes; //p_size;
+}
+
+//static std::vector<filter_descr> filters ;//[] ;
+
+
+void read_filters_vector (vector<main_GPU::filter_descr> * filters , string fname) {
+	ifstream is (fname) ;
+	string line;
+	if (is.is_open()) {
+		while(std::getline(is, line)) {
+			istringstream line_s(line);
+			string command;
+			line_s >> command;
+			if (command != "f") 
+				continue;
+
+			unsigned int prefix_no, iface, tree;
+			std::string filter;
+
+			line_s >> prefix_no >> filter;
+
+			unsigned int begin = ti_pairs.size();
+
+			while (line_s >> tree >> iface){
+				ti_pairs.push_back(tree_interface_pair(tree, iface));
+			} 
+
+			unsigned int end = ti_pairs.size();
+			//filters[prefix_no].push_back(main_GPU::filter_descr(filter, begin, end));
+			main_GPU::filter_descr temp = main_GPU::filter_descr(filter, begin, end) ;
+			filters[prefix_no].push_back(temp);
+		}
+	}
+	else 
+		cerr<< " filter file doesn't exist! " << endl;
+
+}
+static vector<prefix_filter_t> queries;	// we store all the queries here
+
+void read_queries_vector(string fname){
+	ifstream is (fname) ;
+	string line;
+	if (is.is_open()) {
+		while(std::getline(is, line)) {
+			istringstream line_s(line);
+			string command;
+			line_s>>command ;
+			if(command != "!")
+				continue;
+			unsigned int tree;
+			std::string query_string;
+			
+			line_s >> tree >> query_string;
+			prefix_filter_t f(query_string);
+			queries.push_back(f) ;
+		}
+	}
+	else 
+		cerr<< " query file doesn't exist! " << endl;
+}
+
 int main(int argc, const char * argv[]) {
     unsigned int N = 1;			// how many cycles throug the queries?
+	string prefixes_fname, filters_fname, queries_fname; 
 
 	for(int i = 1; i < argc; ++i) {
-		if (sscanf(argv[i], "n=%u", &N) || sscanf(argv[i], "N=%u", &N))
+		if (strncmp(argv[i],"p=",2)==0) {
+			prefixes_fname = argv[i] + 2;
 			continue;
+		}
+		if (strncmp(argv[i],"f=",2)==0) {
+			filters_fname = argv[i] + 2;
+			continue;
+		}
+		if (strncmp(argv[i],"q=",2)==0) {
+			queries_fname = argv[i] + 2;
+			continue;
+		}
 
 		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
-			std::cout << "usage: " << argv[0] << " [n=<number-of-rounds>]\n"
+			std::cout << "usage: " << argv[0] << " p=prefix_file_name f=filters_file_name q=queries_file_name\n"
 					  << std::endl;
 			return 1;
 		}
 	}
+	// its better to pass the pointer to each vector for the following methods:
+	vector<int> size_of_prefixes;
+	read_prefixes_vector(size_of_prefixes, prefixes_fname);
+//	for(unsigned int i=0;i<size_of_prefixes.size(); i++){
+//		cout<< i << " " << size_of_prefixes[i] <<"\t" ;
+//	}
+	
+	//filters [no_prefixes] ;
+	mgpu.init(size_of_prefixes);
 
-    vector<filter_t> queries;	// we store all the queries here
-    string command, filter_string;
+	cout<< "2nd done" <<"\n" ;
+	
+	std::vector<main_GPU::filter_descr> * filters;
+	filters = new vector<main_GPU::filter_descr>[size_of_prefixes.size()] ;
+	cout<<"#prefixes = "<< size_of_prefixes.size() << endl;
 
-    while(std::cin >> command >> filter_string) {
-		if (command == "+") {
-			filter_t f(filter_string);
-			unsigned int n = filter_string.size();
-			fib_add_prefix(f,n,new queue());
-		} else if (command=="!") {
-			filter_t f(filter_string);
-			queries.push_back(f);
-		} else if (command == "match") {
-			break;
-		}
-    }
+	cout<< filters_fname <<". reading filters... "<< endl;
+	read_filters_vector(filters, filters_fname);
+	
+	cout<< "3nd done" <<"\n" ;
+	//mgpu.read_tables(filters, size_of_prefixes.size());
+	mgpu.read_tables(filters);
+	cout<< "4nd done" <<"\n" ;
+	mgpu.allocate_result_on_GPU(100); 
+	cout<< "allocated space for result on GPU done. now moving stuff to GPU" <<"\n" ;
+	mgpu.move_to_GPU(); 
+//	cout<<"moving is  done "<< endl;
+
+//	for(unsigned int i=0; i<size_of_prefixes.size(); i++){
+//		cout << i << " " << filters[i].size() << endl;
+//	}
+	cout<<"reading queries ..." ;
+	read_queries_vector(queries_fname);
+
+	cout<<"done" << endl ;
+
+
+
 
 	for(size_t i = 0; i < THREAD_COUNT; ++i)
 		thread_pool[i] = new thread(thread_loop);
@@ -618,7 +751,7 @@ int main(int argc, const char * argv[]) {
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
 	for(unsigned int round = 0; round < N; ++round) 
-		for(vector<filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
+		for(vector<prefix_filter_t>::const_iterator i = queries.begin(); i != queries.end(); ++i)
 			match_job_enqueue(&(*i));
 
 	for(size_t i = 0; i < THREAD_COUNT; ++i)
@@ -638,6 +771,8 @@ int main(int argc, const char * argv[]) {
 		 << "queries: " << queries.size() << endl
 		 << "total matches: " << total_matches() << endl;
 
+	
 	destroy_fib();
-    return 0;
+   	mgpu.destroy_fibs() ; 
+	return 0;
 }
