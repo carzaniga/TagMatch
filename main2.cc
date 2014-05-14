@@ -4,17 +4,18 @@
 
 #include <iostream>
 #include <string>
+#include <chrono>
 
 #include "router.hh"
-#include "timing.hh"
-
-#ifdef  WITH_INFO_OUTPUT
-#undef WITH_INFO_OUTPUT
-#endif
 
 
-#define WITH_INFO_OUTPUT 0
 
+#define WITH_INFO_OUTPUT 1
+#define TIME_DISTRUBUTION 0
+#define TEST_ON 1
+
+
+using namespace std::chrono;
 
 
 class filter_printer : public filter_const_handler {
@@ -85,28 +86,25 @@ int main(int argc, char *argv[]) {
         exit(0);
     }
 	router R(atoi(argv[1]));
+    R.start_threads();
 
-	filter_printer filter_output(std::cout);
-	match_printer match_output(std::cout);
-	match_counter match_count;
 
+    unsigned int update_count =0;
 	unsigned int count = 0;
-	unsigned int query_count = 0;
-    unsigned int update_count = 0;
-    unsigned int match_c = 0;
     unsigned int add = 0;
     unsigned int rm = 0;
 
+#if TEST_ON 
+    unsigned int tot_out=0;
+#endif
+
     
-#ifdef WITH_TIMERS
-#ifdef WITH_INFO_OUTPUT
-	unsigned long long prev_nsec = 0;
-    unsigned long long prev_match = 0;
-#endif
-	Timer add_timer, update_timer, delete_timer, match_timer, bootstrap_timer;
-    unsigned long long time_array[1000];
-    unsigned int index = 0;
-#endif
+    high_resolution_clock::time_point start;
+    high_resolution_clock::time_point stop;
+    
+    vector<microseconds> time_array;
+    microseconds total_time;
+
 	
 	while(std::cin >> command >> tree >> interface >> filter_string) {
 		if (command == "+") {
@@ -114,80 +112,13 @@ int main(int argc, char *argv[]) {
 			interface_t i = atoi(interface.c_str());
 			tree_t t = atoi(tree.c_str());
             R.add_filter_without_check(filter,t,i);
-			//R.add_filter_pre_process(filter,t,i);
 			++count;
 #if WITH_INFO_OUTPUT
-			if (wheel_of_death(count, 12))
+            if((count % 1000)==0)
                 std::cout << " N=" << count << "\r";
 #endif
-		} else if (command == "i"){
-#ifdef WITH_TIMERS
-			add_timer.start();
-#endif
-            //R.insertion();
-#ifdef WITH_TIMERS
-			add_timer.stop();
-            
-            //std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
-            //std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
-#endif
-        } else if(command == "bs"){
-            vector<map<filter_t,vector<tree_interface_pair>>> output;
-            interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-            bootstrap_timer.reset();
-
-#ifdef WITH_TIMERS
-			bootstrap_timer.start();
-#endif
-            R.computes_bootstrap_update(output, t, i);
-#ifdef WITH_TIMERS
-			bootstrap_timer.stop();
-            std::cout << "bootstrap time (us) = " << bootstrap_timer.read_microseconds() << std::endl;
-#endif            
-        } else if (command == "+q") {
-			filter_t filter(filter_string);
-			interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			add_timer.start();
-#endif
-			R.add_filter_without_check (filter,t,i);
-#ifdef WITH_TIMERS
-			add_timer.stop();
-#endif
-			++count;
-		} else if (command == "!") {
-            filter_t filter(filter_string);
-			interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			match_timer.start();
-#endif
-			R.match (filter,t,i);
-#ifdef WITH_TIMERS
-			match_timer.stop();
-#endif
-            match_c++;
-#if WITH_INFO_OUTPUT
-			if (wheel_of_death(match_c, 7))
-               cout <<"Matches "<< match_c << " Tm (us)=" << ((match_timer.read_nanoseconds()/1000 - prev_match) >> 7) << "\r";
-            prev_match=match_timer.read_nanoseconds()/1000;
-#endif
-            
-        } else if (command =="-"){
-			filter_t filter(filter_string);
-			interface_t i = atoi(interface.c_str());
-			tree_t t = atoi(tree.c_str());
-#ifdef WITH_TIMERS
-			delete_timer.start();
-#endif
-			R.remove_filter_without_check (filter,t,i);
-#ifdef WITH_TIMERS
-			delete_timer.stop();
-#endif
-		}else if (command =="#"){
-            std::cin.ignore(5000,'\n');            
+		}else if (command =="# "){
+         //comments               
         }else if (command == "sd"){ //start delta tree ifx random_val
             predicate_delta pd;
 			interface_t i = atoi(interface.c_str());
@@ -201,17 +132,23 @@ int main(int argc, char *argv[]) {
                 }else if(command=="d-"){
                     rm++;
                     pd.removals.push_back(filter);
-                }else if (command =="#")
-                    std::cin.ignore(5000,'\n'); 
+                }else if (command =="#"){
+                   
+                }
                 std::cin >> command >> tree >> interface >> filter_string;
             }
             map<interface_t,predicate_delta> out;
-#ifdef WITH_TIMERS
-			update_timer.start();
-#endif
+
+            start = std::chrono::high_resolution_clock::now();
+		
             R.apply_delta(out, pd, i, t);
-#if 0
-            cout << "out size:" << out.size() <<endl;
+
+            stop = high_resolution_clock::now();
+
+#if TEST_ON
+            
+            tot_out+=out.size();
+            //cout << "out size:" << out.size() <<endl;
             /*for(vector<predicate_delta>::iterator it=out.begin(); it!=out.end(); it++){
                 cout << "ifx:" << it->ifx << " tree:" << it->tree << " add:" << it->additions.size() << " rm:" 
                 << it->removals.size() <<endl; 
@@ -225,26 +162,16 @@ int main(int argc, char *argv[]) {
             }*/
 #endif
 
-#ifdef WITH_TIMERS
-			update_timer.stop();
-            time_array[index] = update_timer.read_microseconds();
-            index++;
-            update_timer.reset();
-#endif
-        ++update_count;
-#if WITH_INFO_OUTPUT
-		if (wheel_of_death(update_count, 7)){
-			//std::cout << " N=" << count << "  Unique=" << P.size() << "\r";
-            std::cout << " N=" << update_count << " add=" << add << " rm=" << rm
-#ifdef WITH_TIMERS
-            << " Tu (us)=" << ((update_timer.read_nanoseconds()/1000 - prev_nsec) >> 7)
-#endif
-            << "\r";
+            microseconds ms = duration_cast<microseconds>(stop - start);
+            time_array.push_back(ms);
+            total_time+=ms;
 
-#ifdef WITH_TIMERS
-            prev_nsec = update_timer.read_nanoseconds()/1000;
-#endif
-        }
+            update_count++;
+
+#if WITH_INFO_OUTPUT	
+		    std::cout << " N=" << update_count << " add=" << add << " rm=" << rm
+            << " Tu (us)=" << (total_time.count()/update_count) 
+            << "\r";
 #endif
 
         }else if(command == "+ti"){ //command tree ifx random_val
@@ -255,22 +182,22 @@ int main(int argc, char *argv[]) {
 			std::cerr << "unknown command: " << command << std::endl;
 		}
 	}
-	std::cout << std::endl << "Final statistics:" << std::endl
-			  //<< "N=" << count << "  Unique=" << P.size() << std::endl
-              << "N=" << count << std::endl  
-			  << "Q=" << query_count << "  Match=" << match_count.get_match_count() << std::endl
-              << "U=" << update_count << " add=" << add << " rm=" << rm << std::endl;
-#ifdef WITH_TIMERS
-	std::cout << "Ta (us)=" << (add_timer.read_microseconds() / count) << std::endl 
-			  << "Tu (us)=" << (update_timer.read_microseconds() / update_count) << std::endl;
-              std::cout<< "Tm (us)=" << (match_timer.read_microseconds() / match_c) << std::endl;
-              std::cout << "insertion time (us) = " << add_timer.read_microseconds() << std::endl;
-              std::cout << "insertion per filter (us) = " << (add_timer.read_microseconds() / R.get_unique_filters()) << std::endl;
-              
-              for (int i =0; i<1000; i++){
+
+	std::cout << std::endl << "Final statistics:" << std::endl;
+              std::cout << "Filters=" << count << std::endl;  
+              std::cout << "Updates=" << update_count << " add=" << add << " rm=" << rm << std::endl;
+			  std::cout << "Tu (us)=" << (total_time.count() / update_count) << std::endl;
+#if TEST_ON
+    std::cout << "Updates Generated=" << tot_out << std::endl;
+#endif
+
+#if TIME_DISTRUBUTION              
+              for (int i =0; i<time_array.size(); i++){
                 std::cout << time_array[i] << std::endl;
               }
 #endif
+
+    R.stop_threads();
 
 	return 0;
 }

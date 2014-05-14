@@ -3,7 +3,7 @@ SUBDIRS = . test
 ACLOCAL_AMFLAGS = -I m4 
 
 AM_CFLAGS = $(CFLAGS_prof) 
-AM_CXXFLAGS = -pthread -std=c++0x $(CXXFLAGS_prof)
+AM_CXXFLAGS = -pthread -std=c++0x -I ../matching/boost_1_55_0/ $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
 
 noinst_LTLIBRARIES = libpredicate.la

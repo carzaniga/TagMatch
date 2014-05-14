@@ -8,7 +8,6 @@
 #include <cassert>
 #include <cstring>
 #include <math.h>
-#include <thread>
 
 #include "predicate.hh"
 
@@ -172,6 +171,34 @@ bool tree_ifx_matcher::handle_filter(const filter_t & filter, const predicate::n
 }
 
 
+class p_params{
+public:
+    bool subset; //true if we want run find_subsets_of
+                 //false if we want run find_supersets_of
+    const filter_t f;
+    predicate::node * r;
+    filter_const_handler * h;         
+    synch_counter * c;
+    
+    p_params(bool subset_, const filter_t & f_, predicate::node * r_, filter_const_handler * h_, synch_counter * c_):
+        subset(subset_), f(f_), r(r_), h(h_), c(c_) {};
+};
+
+void predicate::thread_loop(unsigned int id) {
+    p_params * p;
+	while((p = job_dequeue())){
+        if(p->subset){
+            find_subsets_of(p->f, *p->r, *p->h);
+            p->c->dec();
+        }else {
+            find_supersets_of(p->f, *p->r, *p->h);
+            p->c->dec();
+        }
+    }
+    //std::cout << "EXIT_PRED " << id << std::endl;
+}
+
+
 
 
 #define TREE_MASK 0
@@ -192,8 +219,25 @@ struct stack_t {
 };
 #endif
 
+#define POOL 1
+
 void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
     tree_matcher matcher(t,h);
+#if POOL
+    synch_counter c;
+    
+    for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(false,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+    //std::cout <<"return from a wait" << std::endl;
+#else
     std::vector<std::thread> ts;
 
     for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
@@ -205,11 +249,27 @@ void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
 
     for(auto& t : ts)
         t.join();
+#endif
 }
 
 
-void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) const {
+void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) {
     tree_ifx_matcher matcher(t,ifx,h);
+
+#if POOL
+    synch_counter c;
+    
+    for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(false,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+#else
     std::vector<std::thread> ts;
     
     for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
@@ -221,13 +281,28 @@ void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t 
 
     for(auto& t : ts)
         t.join();
+#endif
 }
 
-void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) const {
+void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, match_handler & h){
     tree_ifx_matcher matcher(t,ifx,h);
 
     filter_t::pos_t stop = x.popcount() - 1;
 
+#if POOL
+    synch_counter c;
+
+    for(filter_t::pos_t hw = 0; hw < stop; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(true,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+    
+    //join
+    while(!c.done());
+    
+#else
     std::vector<std::thread> ts;
     for(filter_t::pos_t hw = 0; hw < stop; hw++) {
 		for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
@@ -238,9 +313,11 @@ void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, mat
 
     for(auto& t : ts)
         t.join();
+#endif
 }
 
 bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t ifx) const {
+    
     filter_t::pos_t hw = x.popcount() - 1;
 
     assert(roots[hw].size!=0);
@@ -254,7 +331,7 @@ bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t ifx) con
     return false;
 }
 
-void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const {
+void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) {
     tree_matcher matcher(t,h);
     //first we look if the filter exist, because the filter is a subset of itself
     //than we look at the subsets
@@ -266,7 +343,21 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
 	node * n = find(x, roots[hw].trie_of(x));
 	if (n != 0)
 		matcher.handle_filter(x,*n);
-    
+ 
+#if POOL
+    synch_counter c;
+
+    for(filter_t::pos_t j = 0; j < hw; ++j) {
+		for(filter_t::pos_t i = 0; i < roots[j].size; ++i){
+            c.inc();
+            job_enqueue(new p_params(true,x,&(roots[j].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+#else   
     std::vector<std::thread> ts;
 
     for(filter_t::pos_t j = 0; j < hw; ++j) {
@@ -276,6 +367,7 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
     }
     for(auto& t : ts)
         t.join();
+#endif
 }
 
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
@@ -290,7 +382,7 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 	node * n = find(x, roots[hw].trie_of(x));
 	if (n != 0)
 		matcher.handle_filter(x,*n);
-    
+ 
     std::vector<std::thread> ts;
 
     for(filter_t::pos_t j = 0; j < hw; ++j) {
@@ -313,7 +405,7 @@ void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_
     }
 }
 
-void predicate::computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t ifx){
+/*void predicate::computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t ifx){
     
     for(filter_t::pos_t hw=0; hw< filter_t::WIDTH; ++hw){
         for(filter_t::pos_t i=0; i < roots[hw].size; ++i){
@@ -335,9 +427,9 @@ void predicate::computes_bootstrap_update(std::vector<std::map<filter_t,std::vec
     
     for(auto& t : ts)
         t.join();
-}
+}*/
 
-void predicate::computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, 
+/*void predicate::computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, 
                                                     tree_t t, interface_t ifx, filter_t::pos_t index, node & root){
     
     
@@ -370,7 +462,7 @@ void predicate::computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_
         if(n->pos > n->right->pos)
              S[head++] = n->right;
     }
-}
+}*/
 
 predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
     filter_t::pos_t hw = x.popcount()-1;

@@ -16,6 +16,12 @@
 #include <cstdlib>
 #include <vector>
 #include <map>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
+#include <boost/lockfree/queue.hpp>
+
+
 
 #ifdef NODE_USES_MALLOC
 #include <new>
@@ -29,6 +35,7 @@ typedef bv192 filter_t;
 #include "bv.hh"
 typedef bv<192> filter_t;
 #endif
+
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
@@ -90,9 +97,48 @@ public:
 class filter_handler;
 class filter_const_handler;
 class match_handler;
+class p_params;
 
-class predicate {   
+class tree_matcher;
+class tree_ifx_matcher;
 
+class synch_counter{
+private:
+    volatile unsigned int c;
+
+
+public:
+    
+    synch_counter(): c(0) {};
+
+    void inc(){
+        unsigned int old_s, new_s;
+    
+        do{
+            old_s = c;
+            new_s = old_s + 1;
+        }while(!__sync_bool_compare_and_swap(&c, old_s, new_s));
+    }   
+
+    void dec(){
+        unsigned int old_s, new_s;
+    
+        do{
+            old_s = c;
+            new_s = old_s - 1;
+        }while(!__sync_bool_compare_and_swap(&c, old_s, new_s));
+    }
+
+    bool done(){
+        if(c==0)
+            return true;
+        return false;
+    }
+};
+
+
+
+class predicate {      
 public:
     predicate(unsigned int nf): filter_count(0) , N_FILTERS(nf), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
 
@@ -141,9 +187,14 @@ public:
 				roots[i].set_size(n);
 			}
 		}
+
+        job_queue_head=0;
+        job_queue_tail=0;
+        start_threads();
     };
 
-    ~predicate() { 
+    ~predicate() {
+        stop_threads();
         destroy(); 
     }
 
@@ -164,9 +215,9 @@ public:
 	node * add(const filter_t & x, tree_t t, interface_t i);
     void add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x);
 
-    void computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
-    void computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, 
-                                                    interface_t i, filter_t::pos_t index, node & root);
+    //void computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
+    //void computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, 
+                                                   // interface_t i, filter_t::pos_t index, node & root);
      
 
 	/** modular matching function (subset search)
@@ -180,7 +231,7 @@ public:
     /** return if a subset of x is found on the interface i on the tree t. 
     * uses matcher_exists defined in router.hh
     */
-    void exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h) const;
+    void exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h);
 
     /** returns true if the filter exists on interface i and on tree t. 
      */
@@ -189,7 +240,7 @@ public:
     /** iteretes over the trie to find all the super set of x on the give tree and interface
     * matcher_collect_supersets defines in router.hh collects all the found supersets
     */
-    void find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h) const;
+    void find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h);
 
     /** iteretes over the trie to find all the super set of x on the given tree on all the interfaces
     * matcher_collect_supersets defines in router.hh collects all the found supersets
@@ -201,7 +252,7 @@ public:
     /** count all the subsets of x on a given trie and return them divided by interfaces
     * matcher_count_subsets_by_ifx is defined in router.hh and stores the results in a map
     */
-    void count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) const;
+    void count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h);
 
 	/** processes the subsets of the given filter
 	 *
@@ -346,7 +397,6 @@ public:
         public: 
         filter_t::pos_t size;
         node * tries;
-        
 		p_node(): size(0), tries(0) {};
 
 		// this is an initialization performed ONCE for each p_node
@@ -376,6 +426,94 @@ public:
 
     void destroy();
 
+    
+
+    private:
+         static const unsigned int THREAD_COUNT = 16;
+    static const unsigned int JOB_QUEUE_SIZE = 1024;
+    p_params * job_queue[JOB_QUEUE_SIZE];
+    boost::lockfree::queue<p_params *, boost::lockfree::capacity<JOB_QUEUE_SIZE>> q;
+
+
+    volatile unsigned int job_queue_head;		// position of the first element in the queue
+    volatile unsigned int job_queue_tail;		// one-past position of the last element in the queue
+
+     std::mutex job_queue_mtx;
+    std::condition_variable job_queue_producer_cv;
+    std::condition_variable job_queue_consumers_cv;
+
+     std::thread * thread_pool[THREAD_COUNT];
+
+    public:
+
+#define MTX 1
+#if MTX
+    void job_enqueue(p_params * p) {
+	    size_t tail_plus_one;
+	    std::unique_lock<std::mutex> lock(job_queue_mtx);
+    try_enqueue:
+	    tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
+
+	    if (tail_plus_one == job_queue_head) { // full queue 
+		    job_queue_producer_cv.wait(lock);
+	    	goto try_enqueue;
+	    }
+	    job_queue[job_queue_tail] = p;
+	    job_queue_tail = tail_plus_one;
+
+	    job_queue_consumers_cv.notify_all();
+    }
+
+    p_params * job_dequeue() {
+	    std::unique_lock<std::mutex> lock(job_queue_mtx);
+
+    try_dequeue:
+	    if (job_queue_head == job_queue_tail) { // empty queue 
+		    job_queue_consumers_cv.wait(lock);
+		    goto try_dequeue;
+	    }
+
+        p_params * p = job_queue[job_queue_head];
+	    job_queue_head = (job_queue_head + 1) % JOB_QUEUE_SIZE;
+
+	    job_queue_producer_cv.notify_one();
+        
+	    return p;
+    }
+#else
+
+    void job_enqueue(p_params * p) {
+        while (!q.push(p))
+            asm volatile("rep; nop" ::: "memory");
+    }
+
+    p_params * job_dequeue() {
+        p_params * p;
+        while (!q.pop(p))
+            asm volatile("rep; nop" ::: "memory");
+        return p;
+    }
+
+#endif
+    void thread_loop(unsigned int id);
+           
+    void start_threads(){
+        //std::cout << "START" << std::endl;
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+	        thread_pool[i] = new std::thread(&predicate::thread_loop, this, i);
+    }
+
+    void stop_threads(){
+        //std::cout << "STOP" << std::endl;
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            job_enqueue(0);
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            thread_pool[i]->join();
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            delete(thread_pool[i]);   
+    }
+
+    
 };
 
 class filter_handler {
@@ -409,5 +547,6 @@ public:
 	// 
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx) = 0;
 };
+
 
 #endif

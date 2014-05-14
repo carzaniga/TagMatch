@@ -17,12 +17,13 @@ can collect all the supersets. Depending on the matcher used in predicate.cc we 
 the filters on a particular interface or all the filter in the trie **/
 
 bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, interface_t ifx) {
-    mtx.lock();
     if(ifx==interface)  
         to_remove.add(filter);
-    else
+    else{
+        mtx.lock();
         supersets[ifx].push_back(filter);
-
+        mtx.unlock();
+    }
     /*std::map<interface_t,vector<filter_t>>::iterator it;
     it=supersets.find(ifx);
     if(it==supersets.end()){
@@ -32,7 +33,6 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
     }else{
         it->second.push_back(filter);
     }*/
-    mtx.unlock();
 	return false;
 }
 
@@ -60,7 +60,7 @@ bool matcher_get_out_interfaces::match(const filter_t & filter, tree_t tree, int
         return false;
     mtx.lock();
     //the tree should be alredy checked!
-    interfaces.insert(ifx);
+    ifxs.insert(ifx);
     mtx.unlock();
     return false;
 }
@@ -151,13 +151,13 @@ void predicate_delta::create_minimal_delta(const filter_t & remove,
 
 
 /**normal match**/
-void router::match(const filter_t & x, tree_t t, interface_t i){
-    matcher_exists m;    
-    P.exists_subset(x,t,i,m);
+/*void router::match(const filter_t & x, tree_t t, interface_t i){
+    //matcher_exists m;    
+    //P.exists_subset(x,t,i,m);
 
-    //matcher_get_out_interfaces m;
-    //P.match(x,t,m);
-}
+    matcher_get_out_interfaces m;
+    P.match(x,t,m);
+}*/
 
 
 /** adds a new filter in predicate without any check. 
@@ -166,13 +166,13 @@ void router::add_filter_without_check (const filter_t & x, tree_t t, interface_t
     P.add(x,t,i);
 }
 
-void router::add_filter_pre_process (const filter_t & x, tree_t t, interface_t i){
-    filter_t::pos_t index = compute_index(x);
-    tree_interface_pair ti (t,i);
-    to_insert[index][x].push_back(ti);
-}
+//void router::add_filter_pre_process (const filter_t & x, tree_t t, interface_t i){
+//    filter_t::pos_t index = compute_index(x);
+//    tree_interface_pair ti (t,i);
+//    to_insert[index][x].push_back(ti);
+//}
 
-void router::insertion () {
+/*void router::insertion () {
     vector<thread> ts;
     for(filter_t::pos_t i=0; i < to_insert.size(); ++i ){
         if(to_insert[i].size()!=0){
@@ -181,18 +181,18 @@ void router::insertion () {
     }
     for(auto& t : ts)
         t.join();
-}
+}*/
 
-unsigned int router::get_unique_filters(){
+/*unsigned int router::get_unique_filters(){
     unsigned int count = 0;
     for(filter_t::pos_t i=0; i < to_insert.size(); ++i )
         count+=to_insert[i].size();
     return count;
-}
+}*/
 
-void router::computes_bootstrap_update(vector<map<filter_t,vector<tree_interface_pair>>> & output, tree_t t, interface_t i){
+/*void router::computes_bootstrap_update(vector<map<filter_t,vector<tree_interface_pair>>> & output, tree_t t, interface_t i){
     P.computes_bootstrap_update(output, t, i);
-}
+}*/
 
 /** add an interface to a tree **/
 void router::add_ifx_to_tree(tree_t t, interface_t i){
@@ -284,6 +284,24 @@ void router::remove_filter (const filter_t & x, tree_t t, interface_t i, synch_i
     }
 }
 
+#define POOL 1
+void router::start_threads(){
+#if POOL
+    for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+	    thread_pool[i] = new thread(&router::thread_loop, this, i);
+#endif
+}
+
+void router::stop_threads(){
+#if POOL
+    for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+        job_enqueue(0);
+    for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+        thread_pool[i]->join();
+    for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+        delete(thread_pool[i]);   
+#endif 
+}
 
 void router::apply_delta(map<interface_t,predicate_delta> & output, 
 						 const predicate_delta & d, interface_t i, tree_t t) {
@@ -297,17 +315,39 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
     
     synch_ifx_delta_map out_delta(output);
 
-    for(list<filter_t>::const_iterator it=d.additions.begin(); it!=d.additions.end(); it++){
+   for(list<filter_t>::const_iterator it=d.additions.begin(); it!=d.additions.end(); it++){
+#if POOL
+        job_enqueue(new r_params(true, *it, t, i, 0, &to_add, &to_rm));
+        //job_enqueue(new params(true,*it,t,i,out_delta,to_add,to_rm));
+        inc_synch_queue();
+#else
         ts.push_back(std::thread(&router::add_filter, this, *it, t, i, std::ref(to_add), std::ref(to_rm)));
+#endif
     }
     
     for(list<filter_t>::const_iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++) {
+#if POOL
+        job_enqueue(new r_params(false,*rm_it,t,i,&out_delta,0,&to_rm));
+        //job_enqueue(new params(false,*rm_it,t,i,out_delta,to_rm,to_rm));
+        inc_synch_queue();
+#else
         ts.push_back(std::thread(&router::remove_filter, this, *rm_it, t, i, std::ref(out_delta), std::ref(to_rm)));
+#endif
     }
-    
+
+
+//wait until the end of all the jobs
+#if POOL
+    while(synch_queue!=0);//{
+        //usleep(250);
+    //}
+#else
     for(auto& t : ts)
         t.join();
+#endif
+
     
+        
     for(vector<filter_t>::iterator add_it=to_add.filters.begin(); add_it!=to_add.filters.end(); ++add_it){
         P.add(*add_it,t,i);
         for(vector<interface_t>::iterator if_it = tree_ifx.begin(); if_it!=tree_ifx.end(); if_it++){
@@ -321,54 +361,5 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
         P.remove(*rm_it,t,i);
     }
     
-    //cout << out_delta.output.size() << endl;    
-    
-    /*
-    for(set<filter_t>::iterator add_it=d.additions.begin(); add_it!=d.additions.end(); add_it++){
-        if(add_filter(*add_it,d.tree,d.ifx)){
-            //if add we need to broadcast the filter to all the interfaces except to interface 
-            //d.ifx
-            for(vector<interface_t>::iterator if_it = map_it->second.begin(); if_it!=map_it->second.end();if_it++){
-
-                if(*if_it!=d.ifx){
-                    map<interface_t,predicate_delta>::iterator it = tmp.find(*if_it);
-                    if(it==tmp.end()){
-                        predicate_delta pd(*if_it,d.tree);
-                        pd.add_additional_filter(*add_it);
-                        tmp.insert(pair<interface_t,predicate_delta>(*if_it,pd));
-                    }else{
-                        it->second.add_additional_filter(*add_it);
-                    }
-                }
-            }
-        }
-    }
-    */
-    
-    //second part: remove filters
-    //this is a temporary set used to store the outputs of remove_fitler
-   
-   
-    /*
-    //second part: remove filters
-    //this is a temporary set used to store the outputs of remove_fitler
-    vector<predicate_delta> out;
-    //remove_fitler
-    for(set<filter_t>::iterator rm_it=d.removals.begin(); rm_it!=d.removals.end(); rm_it++){
-        //cout<<"remove"<<endl;
-        out.clear();
-        remove_filter(out,*rm_it,d.tree,d.ifx);
-        for(vector<predicate_delta>::iterator out_it=out.begin(); out_it!=out.end(); out_it++){
-            //for each predicate_delta in out we need to store it in tmp (each predicate_delta
-            //has to be minimal)
-            map<interface_t,predicate_delta>::iterator it = tmp.find(out_it->ifx);
-            if(it==tmp.end()){
-                tmp.insert(pair<interface_t,predicate_delta>(out_it->ifx,*out_it));
-            }else{
-                it->second.merge_deltas(*out_it);
-            }
-        }
-    }
-    */    
 }
   
