@@ -14,18 +14,18 @@ using namespace std;
 
 class synch_filter_vector {
 public:
-    mutex mtx;
-    //volatile bool lock;
+    //mutex mtx;
+    volatile int lock;
     std::vector<filter_t> filters;
     
-    //synch_filter_vector(): lock(0) {};
-    synch_filter_vector() {};
+    synch_filter_vector(): lock(0) {};
+    //synch_filter_vector() {};
 
 	void add (const filter_t & x){
         //old code
-        mtx.lock();
-        filters.push_back(x);
-        mtx.unlock();
+        //mtx.lock();
+        //filters.push_back(x);
+        //mtx.unlock();
 
 
         //__sync_lock_test_and_set returns the initial value of the variable 
@@ -35,13 +35,13 @@ public:
         //one that can access the critical section
         
         //while true spinn
-        //while(__sync_lock_test_and_set(&lock,true));
+        while(__sync_lock_test_and_set(&lock,1));
         
         //lock acquired
-        //filters.push_back(x);
+        filters.push_back(x);
         
         //__sync_lock_release release the lock and set &lock to 0
-        //__sync_lock_release(&lock);
+        __sync_lock_release(&lock);
     }
 };
 
@@ -69,7 +69,7 @@ private:
 **/
 class matcher_collect_supersets : public match_handler {
 public:
-	matcher_collect_supersets(synch_filter_vector & r, filter_t::pos_t i): to_remove(r), interface(i) {};
+	matcher_collect_supersets(synch_filter_vector & r, filter_t::pos_t i): to_remove(r), interface(i), lock(0) {};
     
     map<interface_t,vector<filter_t>> * get_supersets() {
         return &supersets;
@@ -80,14 +80,15 @@ private:
     map<interface_t,vector<filter_t>> supersets;
     synch_filter_vector & to_remove;
     filter_t::pos_t interface;
-    mutex mtx;
+    //mutex mtx;
+    volatile int lock;
 };
 
 
 /** count the numebr of subsets on each interface **/
 class matcher_count_subsets_by_ifx : public match_handler {
 public:
-	matcher_count_subsets_by_ifx() {};
+	matcher_count_subsets_by_ifx(): lock(0) {};
     
     //actual_ifx is the interface where we wanto to send an update
     //delta_ifx is the interface from where we received the delta
@@ -104,20 +105,21 @@ private:
     //input interface from where we received the update
     interface_t i;
     map<interface_t,unsigned int> subsets;
-    mutex mtx;
+    //mutex mtx;
+    volatile int lock;
 };
 
 class matcher_get_out_interfaces : public match_handler {
 public:
-	matcher_get_out_interfaces() {};
+	matcher_get_out_interfaces(): lock(0) {};
     
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx);
 private: 
     //input interface from where we received the update
     interface_t i;
     set<interface_t> ifxs;
-    
-    mutex mtx;
+    volatile int lock;
+    //mutex mtx;
 };
 
 
@@ -146,15 +148,18 @@ public:
 
 class synch_ifx_delta_map {
 public:
-    mutex mtx;
+    //mutex mtx;
+    volatile int lock;
     std::map<interface_t,predicate_delta> & output;
 
-    synch_ifx_delta_map(std::map<interface_t,predicate_delta> & o) : output(o) {};
+    synch_ifx_delta_map(std::map<interface_t,predicate_delta> & o) : lock(0), output(o) {};
     
     void add (interface_t i, const predicate_delta & d){
-        mtx.lock();
+        //mtx.lock();
+        while(__sync_lock_test_and_set(&lock,1));
         output[i].merge(d);
-        mtx.unlock();
+        __sync_lock_release(&lock);
+        //mtx.unlock();
     }
 };
 
@@ -183,7 +188,7 @@ private:
     //vector<map<filter_t,vector<tree_interface_pair>>> to_insert;
     //vector<filter_t::pos_t> index;
 
-    static const unsigned int THREAD_COUNT = 8;
+    static const unsigned int THREAD_COUNT = 10;
     static const unsigned int JOB_QUEUE_SIZE = 1024;
     r_params * job_queue[JOB_QUEUE_SIZE];
 
@@ -191,6 +196,8 @@ private:
     unsigned int job_queue_tail;		// one-past position of the last element in the queue
 
     volatile unsigned int synch_queue;
+    mutex synch_queue_lock;
+    condition_variable synch_queue_done;
 
     thread * thread_pool[THREAD_COUNT];
 
@@ -278,6 +285,8 @@ void inc_synch_queue(){
     }while(!__sync_bool_compare_and_swap(&synch_queue, old_s, new_s));
 }
 
+#define CV_H 1
+
 void dec_synch_queue(){
    unsigned int old_s, new_s;
     
@@ -285,6 +294,14 @@ void dec_synch_queue(){
         old_s = synch_queue;
         new_s = old_s - 1;
     }while(!__sync_bool_compare_and_swap(&synch_queue, old_s, new_s));
+    
+#if CV_H    
+    //synch_queue can go to 0 only once!
+    if(synch_queue==0){
+        std::unique_lock<std::mutex> lock(synch_queue_lock);
+        synch_queue_done.notify_one();
+    }
+#endif
 }
 
 void thread_loop(unsigned int id) {

@@ -158,7 +158,13 @@ public:
 		//
 		static const unsigned int Hamming_Weight_Dist[filter_t::WIDTH] = {
 			0,  0,  0,  0,  0,  0,  0,  1,  1,  1,      //0   --  9
-			1,  3, 18, 39,  1,  1,  1,  1,  1,  1,      //10  --  19
+			//1,  3, 18, 39,  1,  1,  1,  1,  1,  1,      //10  --  19  //1M filters per trie
+        		//2,  6, 36, 78,  2,  1,  1,  1,  1,  1,      //10  --  19  //0.5M filters per trie
+			//1,  2, 9, 20,  1,  1,  1,  1,  1,  1,      //10  --  19  //2M filters per trie
+			//1,  1, 5, 10,  1,  1,  1,  1,  1,  1,      //10  --  19  //4M filters per trie
+			//1,  1, 3, 7,  1,  1,  1,  1,  1,  1,      //10  --  19  //6M filters per trie
+			1,  1, 2, 5,  1,  1,  1,  1,  1,  1,      //10  --  19  //8M filters per trie
+			//1,  1, 1, 3,  1,  1,  1,  1,  1,  1,      //10  --  19  //16M filters per trie
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //20  --  29
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //30  --  39
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //40  --  49
@@ -429,7 +435,7 @@ public:
     
 
     private:
-         static const unsigned int THREAD_COUNT = 16;
+         static const unsigned int THREAD_COUNT = 40;
     static const unsigned int JOB_QUEUE_SIZE = 1024;
     p_params * job_queue[JOB_QUEUE_SIZE];
     boost::lockfree::queue<p_params *, boost::lockfree::capacity<JOB_QUEUE_SIZE>> q;

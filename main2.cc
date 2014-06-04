@@ -5,14 +5,15 @@
 #include <iostream>
 #include <string>
 #include <chrono>
+#include <math.h> 
 
 #include "router.hh"
 
 
 
-#define WITH_INFO_OUTPUT 1
-#define TIME_DISTRUBUTION 0
-#define TEST_ON 1
+#define WITH_INFO_OUTPUT 0
+#define TIME_DISTRUBUTION 1
+#define TEST_ON 0
 
 
 using namespace std::chrono;
@@ -79,13 +80,24 @@ int main(int argc, char *argv[]) {
 	std::string tree;
 	std::string interface;
 	std::string filter_string;
+
+    std::string wkld_name;
 	
+#if TIME_DISTRUBUTION
     //argv[1] contains the number of expected filters
+    if(argc<3){
+        std::cout << "expected number of filters missing (or WKLD_NAME)" << std::endl;
+        exit(0);
+    }
+	router R(atoi(argv[1]));
+    wkld_name = argv[2];
+#else
     if(argc<2){
         std::cout << "expected number of filters missing" << std::endl;
         exit(0);
     }
 	router R(atoi(argv[1]));
+#endif
     R.start_threads();
 
 
@@ -102,7 +114,7 @@ int main(int argc, char *argv[]) {
     high_resolution_clock::time_point start;
     high_resolution_clock::time_point stop;
     
-    vector<microseconds> time_array;
+    vector<unsigned long> time_array;
     microseconds total_time;
 
 	
@@ -117,8 +129,8 @@ int main(int argc, char *argv[]) {
             if((count % 1000)==0)
                 std::cout << " N=" << count << "\r";
 #endif
-		}else if (command =="# "){
-         //comments               
+		}else if (command =="#"){
+             //this does not work fine          
         }else if (command == "sd"){ //start delta tree ifx random_val
             predicate_delta pd;
 			interface_t i = atoi(interface.c_str());
@@ -163,7 +175,7 @@ int main(int argc, char *argv[]) {
 #endif
 
             microseconds ms = duration_cast<microseconds>(stop - start);
-            time_array.push_back(ms);
+            time_array.push_back(ms.count());
             total_time+=ms;
 
             update_count++;
@@ -179,22 +191,128 @@ int main(int argc, char *argv[]) {
 			tree_t t = atoi(tree.c_str());
             R.add_ifx_to_tree(t,i);
         }else {
+#if WITH_INFO_OUTPUT
 			std::cerr << "unknown command: " << command << std::endl;
+#endif
 		}
 	}
+#if WITH_INFO_OUTPUT
 
 	std::cout << std::endl << "Final statistics:" << std::endl;
               std::cout << "Filters=" << count << std::endl;  
               std::cout << "Updates=" << update_count << " add=" << add << " rm=" << rm << std::endl;
 			  std::cout << "Tu (us)=" << (total_time.count() / update_count) << std::endl;
+#endif
+
 #if TEST_ON
     std::cout << "Updates Generated=" << tot_out << std::endl;
 #endif
 
-#if TIME_DISTRUBUTION              
-              for (int i =0; i<time_array.size(); i++){
-                std::cout << time_array[i] << std::endl;
-              }
+#if TIME_DISTRUBUTION 
+
+/*   
+    for (unsigned int i=0; i < update_count-1; i++) {
+        for (unsigned int j= i+1; j < update_count; j++){ 
+            if (time_array[i] < time_array[j]) {
+                unsigned long tmp = time_array[j];
+                time_array[j] = time_array[i];
+                time_array[i] = tmp;
+            }
+        }
+    }
+
+    unsigned long avg = total_time.count() / update_count;
+    unsigned long median = time_array[50*update_count/100];
+
+    std::cout << std::endl;
+    std::cout << "********** wkld " << wkld_name << " M **********" << std::endl;      
+
+    std::cout << "Average " << wkld_name << " " <<  avg << std::endl;
+    std::cout << "Median " <<  wkld_name << " " <<  median << std::endl;
+
+    double dev = 0.0;
+    unsigned int b =0;
+    unsigned int e =0;
+    double sum = 0.0;
+
+    //standard deviation (-5 percentile)
+    b = 5*update_count/100;
+    e = 95*update_count/100;
+
+    for(unsigned int i = b; i< e; i++){
+        sum+= pow(time_array[i]-avg,2.0);
+    }
+
+    dev = sqrt(sum / (b-e));
+
+    std::cout << "dev_5 " << wkld_name << " " << dev << std::endl;
+    
+    //standard deviation (-10 percentile)
+    sum=0.0;
+    dev=0.0;
+    b = 10*update_count/100;
+    e = 90*update_count/100;
+
+    for(unsigned int i = b; i< e; i++){
+        sum+= pow(time_array[i]-avg,2.0);
+    }
+
+    dev = sqrt(sum / (b-e));
+
+    std::cout << "dev_10 " << wkld_name << " " << dev << std::endl;
+
+
+    //standard deviation (-15 percentile)
+    sum=0.0;
+    dev=0.0;
+    b = 15*update_count/100;
+    e = 85*update_count/100;
+
+    for(unsigned int i = b; i< e; i++){
+        sum+= pow(time_array[i]-avg,2.0);
+    }
+
+    dev = sqrt(sum / (b-e));
+
+    std::cout << "dev_15 " << wkld_name << " " << dev << std::endl;
+
+
+    //standard deviation (-20 percentile)
+    sum=0.0;
+    dev=0.0;
+    b = 20*update_count/100;
+    e = 80*update_count/100;
+
+    for(unsigned int i = b; i< e; i++){
+        sum+= pow(time_array[i]-avg,2.0);
+    }
+
+    dev = sqrt(sum / (b-e));
+
+    std::cout << "dev_20 " << wkld_name << " " << dev << std::endl;
+
+    
+
+    //standard deviation (-25 percentile)
+    sum=0.0;
+    dev=0.0;
+    b = 25*update_count/100;
+    e = 75*update_count/100;
+
+    for(unsigned int i = b; i< e; i++){
+        sum+= pow(time_array[i]-avg,2.0);
+    }
+
+    dev = sqrt(sum / (b-e));
+
+    std::cout << "dev_25 " << wkld_name << " " << dev << std::endl;
+
+    std::cout << "********** wkld " << wkld_name << " M **********" << std::endl;
+    */
+    
+    for (unsigned int i =0; i<time_array.size(); i++){
+        std::cout << time_array[i] << std::endl;
+    }
 #endif
 
     R.stop_threads();

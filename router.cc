@@ -20,9 +20,11 @@ bool matcher_collect_supersets::match(const filter_t & filter, tree_t tree, inte
     if(ifx==interface)  
         to_remove.add(filter);
     else{
-        mtx.lock();
+        //mtx.lock();
+        while(__sync_lock_test_and_set(&lock,1));
         supersets[ifx].push_back(filter);
-        mtx.unlock();
+        __sync_lock_release(&lock);
+        //mtx.unlock();
     }
     /*std::map<interface_t,vector<filter_t>>::iterator it;
     it=supersets.find(ifx);
@@ -41,8 +43,10 @@ of subsets on each interface **/
 bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     if(ifx==i)
         return false;
-    mtx.lock();
+    //mtx.lock();
+    while(__sync_lock_test_and_set(&lock,1));
     subsets[ifx]++;
+    __sync_lock_release(&lock);
     /*std::map<interface_t,unsigned int>::iterator it;
     it=subsets.find(ifx);
     if(it==subsets.end()){
@@ -50,7 +54,7 @@ bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, i
     }else{
         it->second++;    
     }*/
-    mtx.unlock();
+    //mtx.unlock();
 	return false;
 }
 
@@ -58,10 +62,12 @@ bool matcher_count_subsets_by_ifx::match(const filter_t & filter, tree_t tree, i
 bool matcher_get_out_interfaces::match(const filter_t & filter, tree_t tree, interface_t ifx) {
     if(ifx==i)
         return false;
-    mtx.lock();
+    //mtx.lock();
+    while(__sync_lock_test_and_set(&lock,1));
     //the tree should be alredy checked!
     ifxs.insert(ifx);
-    mtx.unlock();
+    __sync_lock_release(&lock);
+    //mtx.unlock();
     return false;
 }
 
@@ -337,10 +343,20 @@ void router::apply_delta(map<interface_t,predicate_delta> & output,
 
 
 //wait until the end of all the jobs
+#define CV_C 1
+
 #if POOL
-    while(synch_queue!=0);//{
-        //usleep(250);
-    //}
+#if CV_C
+    //the wait condition should go in a while loop
+    //spurious wakeups may occur. 
+    std::unique_lock<std::mutex> lock(synch_queue_lock);
+    while(synch_queue!=0){
+        synch_queue_done.wait(lock);
+    }
+#else
+    while(synch_queue!=0);
+#endif
+
 #else
     for(auto& t : ts)
         t.join();
