@@ -167,7 +167,7 @@ private:
     map<tree_t,vector<interface_t>> interfaces;
 
 
-    static const unsigned int THREAD_COUNT = 8;
+    static const unsigned int THREAD_COUNT = 12;
     static const unsigned int JOB_QUEUE_SIZE = 1024;
     r_params * job_queue[JOB_QUEUE_SIZE];
 

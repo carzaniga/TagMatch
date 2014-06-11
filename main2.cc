@@ -11,10 +11,8 @@
 
 
 
-#define WITH_INFO_OUTPUT 1
-#define TIME_DISTRUBUTION 0
-#define TEST_ON 0
-
+#define WITH_INFO_OUTPUT 0
+#define TIME_DISTRUBUTION 1
 
 using namespace std::chrono;
 
@@ -106,7 +104,7 @@ int main(int argc, char *argv[]) {
     unsigned int add = 0;
     unsigned int rm = 0;
 
-#if TEST_ON 
+#if WITH_INFO_OUTPUT
     unsigned int tot_out=0;
 #endif
 
@@ -157,7 +155,7 @@ int main(int argc, char *argv[]) {
 
             stop = high_resolution_clock::now();
 
-#if TEST_ON
+#if WITH_INFO_OUTPUT
             
             tot_out+=out.size();
             //cout << "out size:" << out.size() <<endl;
@@ -202,9 +200,7 @@ int main(int argc, char *argv[]) {
               std::cout << "Filters=" << count << std::endl;  
               std::cout << "Updates=" << update_count << " add=" << add << " rm=" << rm << std::endl;
 			  std::cout << "Tu (us)=" << (total_time.count() / update_count) << std::endl;
-#endif
 
-#if TEST_ON
     std::cout << "Updates Generated=" << tot_out << std::endl;
 #endif
 

@@ -28,17 +28,17 @@ AC_OPT_TIMERS
 #
 # Boost unit testing framework
 #
-AX_BOOST_BASE([1.40], [
-  AX_BOOST_UNIT_TEST_FRAMEWORK
-  if test "x$ax_cv_boost_unit_test_framework" = "xyes"; then
-      USE_BOOST_UTF=yes
-  else
-      USE_BOOST_UTF=no
-  fi],  [USE_BOOST_UTF=no])
-if test "x$USE_BOOST_UTF" != "xyes"; then
-   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
-fi
-AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$USE_BOOST_UTF" = "xyes"])
+#AX_BOOST_BASE([1.40], [
+#  AX_BOOST_UNIT_TEST_FRAMEWORK
+#  if test "x$ax_cv_boost_unit_test_framework" = "xyes"; then
+#      USE_BOOST_UTF=yes
+#  else
+#      USE_BOOST_UTF=no
+#  fi],  [USE_BOOST_UTF=no])
+#if test "x$USE_BOOST_UTF" != "xyes"; then
+#   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
+#fi
+#AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$USE_BOOST_UTF" = "xyes"])
 #
 AC_CHECK_BUILTIN_CLZL
 AC_CHECK_BUILTIN_POPCOUNT
