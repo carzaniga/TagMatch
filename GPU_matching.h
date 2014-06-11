@@ -10,6 +10,7 @@ using namespace std;
 #define BLOCK_DIM_X 32
 #define BLOCK_DIM_Y 32
 #define GPU_BLOCK_SIZE BLOCK_DIM_X * BLOCK_DIM_Y // Statc block size of 32*32 (1024)0
+#define STREAMS 16
 #define PACKETS 100 
 #define GPU_FAST 1 
 
@@ -24,7 +25,7 @@ public:
 	void initialize();
 
 	void memInfo();
-	bool copyMSG(unsigned int * host_message, int packets);
+	bool copyMSG(unsigned int * host_message, int packets, int stream_id);
 	void deleteArray(int * dev_array);
 	int * fillTable(int * host_array, int size);
 	int * allocZeroes(int size);
@@ -32,6 +33,9 @@ public:
 	bool runKernel(int * dev_array, int * dev_result, int size, int packets, int stream_id);
 	void finish();
 	void releaseMem(int * p);
+	struct stream_packets ;
+	void init_streams() ;
+
 private:
 //	__global__ void myKernel_minimal(int* data, int * result,int n, int packets);
 };

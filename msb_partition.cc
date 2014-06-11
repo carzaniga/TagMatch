@@ -245,6 +245,8 @@ public:
 		//is it better to have two queues? 
 		//in this way you can copy one queue to the gpu
 		//and use the other one for the prefiltering
+		
+		// I should copy queries to GPU here. pop a stream_id and move it there. 
 		mgpu.match(prefix_id, MAX_SIZE) ;
 #ifdef WITH_BUILTIN_CAS
 		tail = 0;
@@ -580,7 +582,7 @@ static const prefix_filter_t * match_job_dequeue() {
 #endif
 
 #ifndef THREAD_COUNT
-#define THREAD_COUNT 8
+#define THREAD_COUNT 3 
 #endif
 
 std::thread * thread_pool[THREAD_COUNT];
@@ -670,10 +672,10 @@ void read_queries_vector(string fname){
 			line_s>>command ;
 			if(command != "!")
 				continue;
-			unsigned int tree;
+			unsigned int tree, interface;
 			std::string query_string;
 			
-			line_s >> tree >> query_string;
+			line_s >> tree >> interface >> query_string;
 			prefix_filter_t f(query_string);
 			queries.push_back(f) ;
 		}
@@ -729,9 +731,9 @@ int main(int argc, const char * argv[]) {
 	//mgpu.read_tables(filters, size_of_prefixes.size());
 	mgpu.read_tables(filters);
 	cout<< "4nd done" <<"\n" ;
-	mgpu.allocate_result_on_GPU(100); 
+	mgpu.allocate_result_on_GPU(PACKETS); 
 	cout<< "allocated space for result on GPU done. now moving stuff to GPU" <<"\n" ;
-	mgpu.move_to_GPU(); 
+	mgpu.move_to_GPU(); // moves Forwrding table to GPU. 
 //	cout<<"moving is  done "<< endl;
 
 //	for(unsigned int i=0; i<size_of_prefixes.size(); i++){
@@ -739,7 +741,13 @@ int main(int argc, const char * argv[]) {
 //	}
 	cout<<"reading queries ..." ;
 	read_queries_vector(queries_fname);
-
+	unsigned int * q_packets= new unsigned int[STREAMS*PACKETS*6] ;
+	for(unsigned int i=0;i< queries.size() ; i++){
+		q_packets[i]=7 ;
+	}
+//	for( int stream_id=0 ; stream_id < STREAMS ; stream_id++){
+//		mgpu.copyToConstantMemory(q_packets, PACKETS, stream_id) ;
+//	}
 	cout<<"done" << endl ;
 
 

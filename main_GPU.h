@@ -11,12 +11,35 @@
 #include <stdint.h>
 #include "GPU_matching.h"
 #include <chrono>
+#include <boost/lockfree/queue.hpp>
 
 using namespace std;
 using namespace std::chrono;
 
 class main_GPU{
 	public:
+	unsigned int stream_array[STREAMS] ;
+		template<class T, unsigned long Q_SIZE = STREAMS>
+		class BoostQueue {
+			public:
+				void
+					push(T *x)
+					{
+						while (!q_.push(x))
+							asm volatile("rep; nop" ::: "memory");
+					}
+				T *	pop()
+				{
+					T *x;
+					while (!q_.pop(x))
+						asm volatile("rep; nop" ::: "memory");
+					return x;
+				}
+			private:
+				boost::lockfree::queue<T *, boost::lockfree::capacity<Q_SIZE>> q_;
+		};
+		
+		BoostQueue<unsigned int, 16> stream_queue;
 		struct filter_descr {
 			string filter;
 			unsigned int ti_pairs_begin;
@@ -67,12 +90,9 @@ class main_GPU{
 		void read_tables(vector<filter_descr> * filters_descr);
 		static GPU_matching gpu_matcher;
 		int init(vector<int> & sizes);
-		//int main_GPU(){} ;
 		void move_to_GPU() ;
 		void allocate_result_on_GPU(int size) ;
 		void destroy_fibs() ;
 		void match(int prefix_id, int no_packets );
+		void copyToConstantMemory(unsigned int * packets, int no_packets, int stream_id);
 };
-
-//struct main_GPU::filter_descr {
-

@@ -23,9 +23,11 @@
 	} while (0)
 cudaError_t err ; 
 
-__constant__ unsigned int dev_message [PACKETS*6]; //[194];
-__global__ void myKernel_minimal(int* data, int * result,int n, int packets) //, int t)
+__constant__ unsigned int dev_message [STREAMS][PACKETS*6]; //[194];
+__global__ void myKernel_minimal(int* data, int * result,int n, int packets , int stream_id) //, int t)
 {
+	//here I use packets, instead of PACKETS, because a matching queue can be sent to GPU even
+	//when it is not full. (i.e if a timeout occures) 
 	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
 	if(id>=n)
 		return;
@@ -35,22 +37,22 @@ __global__ void myKernel_minimal(int* data, int * result,int n, int packets) //,
 		d[i]=data[id+i];
 // i can replace it with packets.... 
 	for(int j=0; j<packets*6/*PACKETS*/ ; j+=6){
-		if(d[0] & ~dev_message[j]!=0)
+		if(d[0] & ~dev_message[stream_id][j]!=0)
 			continue;
-		if(d[1] & ~dev_message[j+1]!=0)
+		if(d[1] & ~dev_message[stream_id][j+1]!=0)
 			continue;
-		if(d[2] & ~dev_message[j+2]!=0)
+		if(d[2] & ~dev_message[stream_id][j+2]!=0)
 			continue;
-		if(d[3] & ~dev_message[j+3]!=0)
+		if(d[3] & ~dev_message[stream_id][j+3]!=0)
 			continue;
-		if(d[4] & ~dev_message[j+4]!=0)
+		if(d[4] & ~dev_message[stream_id][j+4]!=0)
 			continue;
-		if(d[5] & ~dev_message[j+5]!=0)
+		if(d[5] & ~dev_message[stream_id][j+5]!=0)
 			continue;
 		result[j/6]+=d[0];
 	}
 }
-__global__ void myKernel_fast(int* data, int * result,int n, int packets)
+__global__ void myKernel_fast(int* data, int * result,int n, int packets, int stream_id)
 {
 ////	unsigned int id = (/*6 * */ blockDim.x * blockDim.y * blockIdx.x) + (6 * blockDim.x * threadIdx.y) + threadIdx.x;
 	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
@@ -65,18 +67,18 @@ __global__ void myKernel_fast(int* data, int * result,int n, int packets)
 	d[3]=data[id+96];
 	d[4]=data[id+128];
 	d[5]=data[id+160];
-	for(int j=0; j<PACKETS*6 ; j+=6){
-		if(d[0] | dev_message[j]!=0xFFFFFFFF)
+	for(int j=0; j<packets*6 ; j+=6){
+		if(d[0] | dev_message[stream_id][j]!=0xFFFFFFFF)
 			continue;
-		if(d[1] | dev_message[j+1]!=0xFFFFFFFF)
+		if(d[1] | dev_message[stream_id][j+1]!=0xFFFFFFFF)
 			continue;
-		if(d[2] | dev_message[j+2]!=0xFFFFFFFF)
+		if(d[2] | dev_message[stream_id][j+2]!=0xFFFFFFFF)
 			continue;
-		if(d[3] | dev_message[j+3]!=0xFFFFFFFF)
+		if(d[3] | dev_message[stream_id][j+3]!=0xFFFFFFFF)
 			continue;
-		if(d[4] | dev_message[j+4]!=0xFFFFFFFF)
+		if(d[4] | dev_message[stream_id][j+4]!=0xFFFFFFFF)
 			continue;
-		if(d[5] | dev_message[j+5]!=0xFFFFFFFF)
+		if(d[5] | dev_message[stream_id][j+5]!=0xFFFFFFFF)
 			continue;
 		result[j/6]+=d[0];
 	}
@@ -111,12 +113,13 @@ return;
 #endif
 }
 
-
+cudaStream_t stream [STREAMS] ;
 
 void GPU_matching::initialize(){
 	cudaSetDevice(0);
 	cudaDeviceSynchronize();
 	cudaThreadSynchronize();
+	init_streams();
 }
 void GPU_matching::memInfo(){
 	size_t free;//size_t fr ;// (0);
@@ -131,8 +134,8 @@ void GPU_matching::memInfo(){
 	printf("free= %f total_Mem=%f\n",(long unsigned)free*1.0/(1024*1024),(long unsigned)total*1.0/(1024*1024));
 
 }
-bool GPU_matching::copyMSG(unsigned int * host_message, int packets){
-	cudaError_t err =cudaMemcpyToSymbol(dev_message, host_message, size_t(6*packets)*sizeof(unsigned int));
+bool GPU_matching::copyMSG(unsigned int * host_message, int packets , int stream_id){
+	cudaError_t err =cudaMemcpyToSymbol(&dev_message[stream_id][0], host_message, size_t(6*packets)*sizeof(unsigned int));
 	if (err != cudaSuccess)
 		return false;
 //	printf("constant allocation done");
@@ -191,6 +194,24 @@ int * GPU_matching::getResults(int * host_result, int * dev_result, int size){
 
 }
 
+
+struct GPU_matching::stream_packets {
+	cudaStream_t st;
+	int * packets;
+	stream_packets (cudaStream_t st_, int * packets_ ){
+		st = st_;
+		packets = packets_ ;
+	}
+};
+
+void GPU_matching::init_streams(){
+	int n= STREAMS;
+	for(int i=0; i<n ; i++){
+		cudaStreamCreate ( &stream[i]) ;	
+	}
+
+}
+
 bool GPU_matching::runKernel(int * dev_array, int * dev_result, int size, int packets, int stream_id){
 //	int gridsize = 1;
 //	// Work out how many blocks of size 1024 are required to perform all of nCombinations
@@ -198,10 +219,10 @@ bool GPU_matching::runKernel(int * dev_array, int * dev_result, int size, int pa
 //			gridsize++, nsize = gridsize * BLOCK_SIZE)
 //		;
 //
-	cudaStream_t stream1;
-	cudaStreamCreate(&stream1);
-	cudaCheckErrors("stream creation failed.");
-	
+//	cudaStream_t stream1 ;
+//	cudaStreamCreate(&stream1);
+//	cudaCheckErrors("stream creation failed.");
+	//printf("steam_id= %d",stream1);
 	dim3 grid, block;
 	block = dim3(BLOCK_DIM_X, BLOCK_DIM_Y);
 	int b=GPU_BLOCK_SIZE;
@@ -211,18 +232,20 @@ bool GPU_matching::runKernel(int * dev_array, int * dev_result, int size, int pa
 	grid = dim3(gridsize);
 #if GPU_FAST
 //	printf(" alg: Fast\n");
-	myKernel_fast<<<gridsize, block,0 , stream1>>>((int*)dev_array, (int*)dev_result, size, packets);
+	myKernel_fast<<<gridsize, block,0 , stream[stream_id] >>> ((int*)dev_array, (int*)dev_result, size, packets, stream_id);
 #else
 //	printf(" alg: simple\n");
-	myKernel_minimal<<<gridsize, block, 0, stream_id>>>((int*)dev_array, (int*)dev_result, size, packets);
+	myKernel_minimal<<<gridsize, block, 0, stream[stream_id] >>> ((int*)dev_array, (int*)dev_result, size, packets, stream_id);
 #endif
 	cudaCheckErrors("kernel fail");
 	// Wait for synchronize
 //	cudaDeviceSynchronize();
-	cudaStreamSynchronize(stream1) ;
+	cudaStreamSynchronize(stream[stream_id]) ;
 	cudaCheckErrors("sync fail");
-	cudaStreamDestroy(stream1);
-	cudaCheckErrors("destruction of stream failed");
+
+//we dont destroy streams anymore
+//	cudaStreamDestroy(stream[stream_id]);
+//	cudaCheckErrors("destruction of stream failed");
 	return true;
 }
 void GPU_matching::finish(){

@@ -21,8 +21,7 @@
 //	 filter (){
 //	 	reset() ;
 //	 }
-//	 void reset (){
-//		 b[0]=0; b[1]=0 ; b[2]=0; b[3]=0; b[4]=0; b[5]=0; 
+
 //	 }
 //	 void set_all(){
 //		 b[0]=0xFFFFFFFF; b[1]=0xFFFFFFFF ; b[2]=0xFFFFFFFF; b[3]=0xFFFFFFFF; b[4]=0xFFFFFFFF; b[5]=0xFFFFFFFF; 
@@ -114,7 +113,7 @@ void main_GPU::move_to_GPU(){
 	int temp=0;
 	for(int prefix_id=0; prefix_id < no_prefixes; prefix_id++){
 		temp= 24*size_of_prefixes[prefix_id]/1024 ;
-//		cout<< temp <<"kb, sofar allocated "<< sum/1024 << "mb"<< endl;
+		cout<< temp <<"kb, sofar allocated "<< sum/1024 << "mb"<< endl;
 		dev_fibs[prefix_id] = gpu_matcher.fillTable( host_fibs[prefix_id], 
 								size_of_prefixes[prefix_id] * 6 ) ;// filters.size()*6);
 		sum+= temp ;//size_of_prefixes[prefix_id] * 6 ; 
@@ -132,6 +131,10 @@ void main_GPU::allocate_result_on_GPU(int size){
 
 GPU_matching main_GPU::gpu_matcher; 
 
+void main_GPU::copyToConstantMemory(unsigned int * packets, int no_packets, int stream_id){
+	gpu_matcher.copyMSG(packets, no_packets, stream_id) ;	
+}
+
 void main_GPU::destroy_fibs(){
 	for(int i=0; i<no_prefixes; i++)
 		gpu_matcher.releaseMem(dev_fibs[i]) ;
@@ -139,9 +142,11 @@ void main_GPU::destroy_fibs(){
 	gpu_matcher.finish() ;
 	cout<< "... done " <<endl;
 }
-void main_GPU::match(int prefix_id, int no_packets ){
-
-		gpu_matcher.runKernel( dev_fibs[prefix_id], dev_results[prefix_id], size_of_prefixes[prefix_id], no_packets, prefix_id) ; 
+void main_GPU::match(int prefix_id, int no_packets){
+	unsigned int stream_id = *stream_queue.pop();
+	cout << "stream_ID " << stream_id << endl ;
+	gpu_matcher.runKernel( dev_fibs[prefix_id], dev_results[prefix_id], size_of_prefixes[prefix_id], no_packets, stream_id) ; 
+	stream_queue.push(&stream_array[stream_id]) ;
 }
 
 int main_GPU::init(vector<int> & size_of_prefixes_){//int argc, char *argv[]) 
@@ -156,6 +161,15 @@ int main_GPU::init(vector<int> & size_of_prefixes_){//int argc, char *argv[])
 	for(unsigned int i=0; i<size_of_prefixes.size(); i++){
 		host_fibs[i]=new int[size_of_prefixes[i] * 6] ;
 	}
+	for(unsigned int i=0; i< STREAMS; i++){
+		stream_array[i] = i ;
+		stream_queue.push(&stream_array[i]) ;
+	}
+//	for(int i=0; i< STREAMS; i++){
+//		cout << i << " " << *stream_queue.pop()<< endl ;
+//	}
+//	cout << " " << *stream_queue.pop()<< endl ;
+	
 	cout<<"init done" << endl;	
 	return 0;
 ////	vector<filter> filters = read_table() ;
