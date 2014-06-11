@@ -11,8 +11,8 @@
 
 
 
-#define WITH_INFO_OUTPUT 0
-#define TIME_DISTRUBUTION 1
+#define WITH_INFO_OUTPUT 1
+#define TIME_DISTRUBUTION 0
 #define TEST_ON 0
 
 
@@ -208,108 +208,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Updates Generated=" << tot_out << std::endl;
 #endif
 
-#if TIME_DISTRUBUTION 
-
-/*   
-    for (unsigned int i=0; i < update_count-1; i++) {
-        for (unsigned int j= i+1; j < update_count; j++){ 
-            if (time_array[i] < time_array[j]) {
-                unsigned long tmp = time_array[j];
-                time_array[j] = time_array[i];
-                time_array[i] = tmp;
-            }
-        }
-    }
-
-    unsigned long avg = total_time.count() / update_count;
-    unsigned long median = time_array[50*update_count/100];
-
-    std::cout << std::endl;
-    std::cout << "********** wkld " << wkld_name << " M **********" << std::endl;      
-
-    std::cout << "Average " << wkld_name << " " <<  avg << std::endl;
-    std::cout << "Median " <<  wkld_name << " " <<  median << std::endl;
-
-    double dev = 0.0;
-    unsigned int b =0;
-    unsigned int e =0;
-    double sum = 0.0;
-
-    //standard deviation (-5 percentile)
-    b = 5*update_count/100;
-    e = 95*update_count/100;
-
-    for(unsigned int i = b; i< e; i++){
-        sum+= pow(time_array[i]-avg,2.0);
-    }
-
-    dev = sqrt(sum / (b-e));
-
-    std::cout << "dev_5 " << wkld_name << " " << dev << std::endl;
-    
-    //standard deviation (-10 percentile)
-    sum=0.0;
-    dev=0.0;
-    b = 10*update_count/100;
-    e = 90*update_count/100;
-
-    for(unsigned int i = b; i< e; i++){
-        sum+= pow(time_array[i]-avg,2.0);
-    }
-
-    dev = sqrt(sum / (b-e));
-
-    std::cout << "dev_10 " << wkld_name << " " << dev << std::endl;
-
-
-    //standard deviation (-15 percentile)
-    sum=0.0;
-    dev=0.0;
-    b = 15*update_count/100;
-    e = 85*update_count/100;
-
-    for(unsigned int i = b; i< e; i++){
-        sum+= pow(time_array[i]-avg,2.0);
-    }
-
-    dev = sqrt(sum / (b-e));
-
-    std::cout << "dev_15 " << wkld_name << " " << dev << std::endl;
-
-
-    //standard deviation (-20 percentile)
-    sum=0.0;
-    dev=0.0;
-    b = 20*update_count/100;
-    e = 80*update_count/100;
-
-    for(unsigned int i = b; i< e; i++){
-        sum+= pow(time_array[i]-avg,2.0);
-    }
-
-    dev = sqrt(sum / (b-e));
-
-    std::cout << "dev_20 " << wkld_name << " " << dev << std::endl;
-
-    
-
-    //standard deviation (-25 percentile)
-    sum=0.0;
-    dev=0.0;
-    b = 25*update_count/100;
-    e = 75*update_count/100;
-
-    for(unsigned int i = b; i< e; i++){
-        sum+= pow(time_array[i]-avg,2.0);
-    }
-
-    dev = sqrt(sum / (b-e));
-
-    std::cout << "dev_25 " << wkld_name << " " << dev << std::endl;
-
-    std::cout << "********** wkld " << wkld_name << " M **********" << std::endl;
-    */
-    
+#if TIME_DISTRUBUTION        
     for (unsigned int i =0; i<time_array.size(); i++){
         std::cout << time_array[i] << std::endl;
     }

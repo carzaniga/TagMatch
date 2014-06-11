@@ -14,19 +14,12 @@ using namespace std;
 
 class synch_filter_vector {
 public:
-    //mutex mtx;
     volatile int lock;
     std::vector<filter_t> filters;
     
     synch_filter_vector(): lock(0) {};
-    //synch_filter_vector() {};
 
 	void add (const filter_t & x){
-        //old code
-        //mtx.lock();
-        //filters.push_back(x);
-        //mtx.unlock();
-
 
         //__sync_lock_test_and_set returns the initial value of the variable 
         //that &lock points to. I can get the lock only if 
@@ -80,7 +73,6 @@ private:
     map<interface_t,vector<filter_t>> supersets;
     synch_filter_vector & to_remove;
     filter_t::pos_t interface;
-    //mutex mtx;
     volatile int lock;
 };
 
@@ -105,7 +97,6 @@ private:
     //input interface from where we received the update
     interface_t i;
     map<interface_t,unsigned int> subsets;
-    //mutex mtx;
     volatile int lock;
 };
 
@@ -119,18 +110,11 @@ private:
     interface_t i;
     set<interface_t> ifxs;
     volatile int lock;
-    //mutex mtx;
 };
 
 
 class predicate_delta {
 public:
-#if 0
-    interface_t ifx;
-    tree_t tree;
-
-    predicate_delta(interface_t i, tree_t t): ifx(i), tree(t) {};
-#endif
     list<filter_t> additions;
     list<filter_t> removals;
 
@@ -148,18 +132,15 @@ public:
 
 class synch_ifx_delta_map {
 public:
-    //mutex mtx;
     volatile int lock;
     std::map<interface_t,predicate_delta> & output;
 
     synch_ifx_delta_map(std::map<interface_t,predicate_delta> & o) : lock(0), output(o) {};
     
     void add (interface_t i, const predicate_delta & d){
-        //mtx.lock();
         while(__sync_lock_test_and_set(&lock,1));
         output[i].merge(d);
         __sync_lock_release(&lock);
-        //mtx.unlock();
     }
 };
 
@@ -185,10 +166,8 @@ private:
     predicate P;
     map<tree_t,vector<interface_t>> interfaces;
 
-    //vector<map<filter_t,vector<tree_interface_pair>>> to_insert;
-    //vector<filter_t::pos_t> index;
 
-    static const unsigned int THREAD_COUNT = 10;
+    static const unsigned int THREAD_COUNT = 8;
     static const unsigned int JOB_QUEUE_SIZE = 1024;
     r_params * job_queue[JOB_QUEUE_SIZE];
 
@@ -201,42 +180,6 @@ private:
 
     thread * thread_pool[THREAD_COUNT];
 
-
-#define CAS 0
-#if CAS
-void job_enqueue(r_params * p) {
-	size_t tail_plus_one;
-
- try_enqueue:
-	tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
-
-	if (tail_plus_one == job_queue_head) // full queue 
-		goto try_enqueue;				 // busy loop
-
-	job_queue[job_queue_tail] = p;
-	job_queue_tail = tail_plus_one;
-}
-
-r_params * job_dequeue() {
-	size_t my_head, head_plus_one;
-
- try_dequeue:
-	my_head = job_queue_head;
-
-	if (my_head == job_queue_tail) // empty queue 
-		goto try_dequeue;		   // busy loop
-
-	head_plus_one = (my_head + 1) % JOB_QUEUE_SIZE;
-
-	r_params * result = job_queue[my_head];
-
-	if (!__sync_bool_compare_and_swap(&job_queue_head, my_head, head_plus_one))
-		goto try_dequeue;
-
-	return result;
-}
-
-#else
 
 std::mutex job_queue_mtx;
 std::condition_variable job_queue_producer_cv;
@@ -274,7 +217,6 @@ r_params * job_dequeue() {
 	return p;
 }
 
-#endif
 
 void inc_synch_queue(){
     unsigned int old_s, new_s;
@@ -285,7 +227,6 @@ void inc_synch_queue(){
     }while(!__sync_bool_compare_and_swap(&synch_queue, old_s, new_s));
 }
 
-#define CV_H 1
 
 void dec_synch_queue(){
    unsigned int old_s, new_s;
@@ -294,14 +235,12 @@ void dec_synch_queue(){
         old_s = synch_queue;
         new_s = old_s - 1;
     }while(!__sync_bool_compare_and_swap(&synch_queue, old_s, new_s));
-    
-#if CV_H    
+     
     //synch_queue can go to 0 only once!
     if(synch_queue==0){
         std::unique_lock<std::mutex> lock(synch_queue_lock);
         synch_queue_done.notify_one();
     }
-#endif
 }
 
 void thread_loop(unsigned int id) {
@@ -314,43 +253,16 @@ void thread_loop(unsigned int id) {
         }
         dec_synch_queue();
     }
-     //std::cout << "EXIT " << id << endl;
 }
 
     
-    
- 
-
-//TODO compute the boostrap update
-    //filter_t::pos_t compute_index (const filter_t & x){
-    //    filter_t::pos_t hw = x.popcount()-1;
-    //    return (index[hw-1] + x.hash(P.roots[hw].size));
-    //}    
-              
+                  
 public:
     //nf is the number of expected filters
     router(unsigned int nf): P(nf) {
         job_queue_head=0;
         job_queue_tail=0;
         synch_queue=0;
-        /*unsigned int size =0;
-        filter_t::pos_t pos = 0;
-
-        for (unsigned int i=0; i< filter_t::WIDTH; ++i){
-            size+=P.roots[i].size;
-        
-            index.push_back(pos);
-             if(P.roots[i].size<= 1)
-                pos++;
-            else
-                pos+=P.roots[i].size;
-
-        }
-        size+=filter_t::WIDTH;
-        for(unsigned int i=0; i< size; ++i){
-            map<filter_t,vector<tree_interface_pair>> to_add_map;
-            to_insert.push_back(to_add_map);
-        }*/
     };
     ~router() {}
 
@@ -358,11 +270,6 @@ public:
     /** adds a new filter to predicate P without checking the existence of a subset
     the filter x. It does not remove any superset of x from P. **/
     void add_filter_without_check (const filter_t & x, tree_t t, interface_t i);
-    //void add_filter_pre_process (const filter_t & x, tree_t t, interface_t i);
-    //void insertion ();
-    //unsigned int get_unique_filters();
-
-    //void computes_bootstrap_update(vector<map<filter_t,vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
    
     /** removes a filter from P without any check **/
     void remove_filter_without_check (const filter_t & x, tree_t t, interface_t i);
@@ -381,8 +288,6 @@ public:
 
     void start_threads();
     void stop_threads();
-
-    //void match(const filter_t & x, tree_t t, interface_t i);
 
 
 };

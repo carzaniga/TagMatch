@@ -10,7 +10,6 @@
 #endif
 
 
-#include "params.h"
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
@@ -19,8 +18,6 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
-#include <boost/lockfree/queue.hpp>
-
 
 
 #ifdef NODE_USES_MALLOC
@@ -43,18 +40,6 @@ typedef uint16_t interface_t;
 /** tree identifier */ 
 typedef uint16_t tree_t;
 
-/** set of special tags that can be used in the matching algorithm */
-typedef struct tags{
-    filter_t yt;
-    filter_t tw;
-    filter_t blog;
-    filter_t del;
-    filter_t bt;
-    
-    tags(std::string const& y, std::string const& t, std::string const& bl,
-         std::string const& d, std::string const& b): yt(y), tw(t), blog(bl), del(d), bt(b) {}
-
-} tags_t;
 
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -106,9 +91,8 @@ class synch_counter{
 private:
     volatile unsigned int c;
 
-
 public:
-    
+
     synch_counter(): c(0) {};
 
     void inc(){
@@ -130,9 +114,7 @@ public:
     }
 
     bool done(){
-        if(c==0)
-            return true;
-        return false;
+        return (c==0);
     }
 };
 
@@ -140,7 +122,7 @@ public:
 
 class predicate {      
 public:
-    predicate(unsigned int nf): filter_count(0) , N_FILTERS(nf), t(YOUTUBE_TAG,TWITTER_TAG,BLOG_TAG,DEL_TAG,BTORRENT_TAG) {
+    predicate(unsigned int nf): filter_count(0) , N_FILTERS(nf) {
 
 		static const unsigned int TOT_FILTERS = 63651601;
 		//static const unsigned int N_FILTERS = 37400000;
@@ -158,13 +140,11 @@ public:
 		//
 		static const unsigned int Hamming_Weight_Dist[filter_t::WIDTH] = {
 			0,  0,  0,  0,  0,  0,  0,  1,  1,  1,      //0   --  9
-			//1,  3, 18, 39,  1,  1,  1,  1,  1,  1,      //10  --  19  //1M filters per trie
-        		//2,  6, 36, 78,  2,  1,  1,  1,  1,  1,      //10  --  19  //0.5M filters per trie
-			//1,  2, 9, 20,  1,  1,  1,  1,  1,  1,      //10  --  19  //2M filters per trie
-			//1,  1, 5, 10,  1,  1,  1,  1,  1,  1,      //10  --  19  //4M filters per trie
+			//1,  3, 18, 39,  1,  1,  1,  1,  1,  1,    //10  --  19  //1M filters per trie
+			//1,  2, 9, 20,  1,  1,  1,  1,  1,  1,     //10  --  19  //2M filters per trie
+			//1,  1, 5, 10,  1,  1,  1,  1,  1,  1,     //10  --  19  //4M filters per trie
 			//1,  1, 3, 7,  1,  1,  1,  1,  1,  1,      //10  --  19  //6M filters per trie
-			1,  1, 2, 5,  1,  1,  1,  1,  1,  1,      //10  --  19  //8M filters per trie
-			//1,  1, 1, 3,  1,  1,  1,  1,  1,  1,      //10  --  19  //16M filters per trie
+			1,  1, 2, 5,  1,  1,  1,  1,  1,  1,        //10  --  19  //8M filters per trie (this seems to be the best option)
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //20  --  29
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //30  --  39
 			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //40  --  49
@@ -221,10 +201,6 @@ public:
 	node * add(const filter_t & x, tree_t t, interface_t i);
     void add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x);
 
-    //void computes_bootstrap_update(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, interface_t i);
-    //void computes_bootstrap_update_on_a_trie(std::vector<std::map<filter_t,std::vector<tree_interface_pair>>> & output, tree_t t, 
-                                                   // interface_t i, filter_t::pos_t index, node & root);
-     
 
 	/** modular matching function (subset search)
 	 */
@@ -269,10 +245,6 @@ public:
 	 */
 	void find_subsets_of(const filter_t & x, node & root, filter_const_handler & h) const;
 	void find_supersets_of(const filter_t & x, node & root, filter_const_handler & h) const;
-    //void find_subsets_of(const filter_t & x, tree_t t, filter_const_handler & h) const;
-    //void find_subsets_of(const filter_t & x, const * node root, filter_const_handler & h ) const;
-	//void find_subsets_of(const filter_t & x, filter_handler & h);
-	//void find_supersets_of(const filter_t & x, filter_handler & h);
 
 	void remove(const filter_t & x,tree_t t, interface_t i);
 	void clear();
@@ -293,10 +265,6 @@ public:
 
 		node * left;
 		node * right;
-        
-//	public:
-		
-        unsigned char tree_mask;
         
 	private:
 		const filter_t::pos_t pos;
@@ -346,31 +314,19 @@ public:
 			return ti_begin() + pairs_count;
 		}
 
-        void add_tree_to_mask(tree_t t){
-             tree_mask |= 1 << t;
-        }
-
-        void init_tree_mask(node * n){
-            tree_mask |= n->tree_mask;
-        }
-        
-        bool match_tree(tree_t t){
-            return tree_mask & (1 << t);
-        }
-        
 
 	private:
 		// create a stand-alone NULL node, this constructor is used
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: key(), left(this), right(this), tree_mask(0), pos(filter_t::NULL_POSITION), 
+			: key(), left(this), right(this), pos(filter_t::NULL_POSITION), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node
 		//
 		node(filter_t::pos_t p, const filter_t & k, node * next) 
-			: key(k), tree_mask(0), pos(p), pairs_count(0) {
+			: key(k), pos(p), pairs_count(0) {
 			if (k[p]) {
 				left = next;
 				right = this;
@@ -428,17 +384,15 @@ public:
     p_node roots[filter_t::WIDTH];    
 	unsigned long filter_count;
     unsigned int N_FILTERS;
-    tags_t t;  
 
     void destroy();
 
     
 
     private:
-         static const unsigned int THREAD_COUNT = 40;
-    static const unsigned int JOB_QUEUE_SIZE = 1024;
-    p_params * job_queue[JOB_QUEUE_SIZE];
-    boost::lockfree::queue<p_params *, boost::lockfree::capacity<JOB_QUEUE_SIZE>> q;
+        static const unsigned int THREAD_COUNT = 16;
+        static const unsigned int JOB_QUEUE_SIZE = 1024;
+        p_params * job_queue[JOB_QUEUE_SIZE];
 
 
     volatile unsigned int job_queue_head;		// position of the first element in the queue
@@ -452,8 +406,6 @@ public:
 
     public:
 
-#define MTX 1
-#if MTX
     void job_enqueue(p_params * p) {
 	    size_t tail_plus_one;
 	    std::unique_lock<std::mutex> lock(job_queue_mtx);
@@ -486,31 +438,15 @@ public:
         
 	    return p;
     }
-#else
 
-    void job_enqueue(p_params * p) {
-        while (!q.push(p))
-            asm volatile("rep; nop" ::: "memory");
-    }
-
-    p_params * job_dequeue() {
-        p_params * p;
-        while (!q.pop(p))
-            asm volatile("rep; nop" ::: "memory");
-        return p;
-    }
-
-#endif
     void thread_loop(unsigned int id);
            
     void start_threads(){
-        //std::cout << "START" << std::endl;
         for(unsigned int i = 0; i < THREAD_COUNT; ++i)
 	        thread_pool[i] = new std::thread(&predicate::thread_loop, this, i);
     }
 
     void stop_threads(){
-        //std::cout << "STOP" << std::endl;
         for(unsigned int i = 0; i < THREAD_COUNT; ++i)
             job_enqueue(0);
         for(unsigned int i = 0; i < THREAD_COUNT; ++i)
