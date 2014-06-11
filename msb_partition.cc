@@ -247,6 +247,8 @@ public:
 		//and use the other one for the prefiltering
 		
 		// I should copy queries to GPU here. pop a stream_id and move it there. 
+		// poping stream_id is now done in the mgpu.match(). I may need to move it here.
+
 		mgpu.match(prefix_id, MAX_SIZE) ;
 #ifdef WITH_BUILTIN_CAS
 		tail = 0;
