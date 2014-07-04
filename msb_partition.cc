@@ -78,7 +78,12 @@ static const int BLOCK_SIZE = 64;
 static const block_t BLOCK_ONE = 0x1;
 main_GPU mgpu;
 
+// size_of_prefixes is a vector that, for each prefix that identifies
+// a partition, stores the size of that partition, that is, the number
+// of filters in the partition.  
+//
 vector<unsigned int> size_of_prefixes;
+
 //
 // leftmost 1-bit position 
 //
@@ -190,23 +195,42 @@ public:
 };
 
 typedef prefix<192> prefix_filter_t;
+
+// TODO: consider defining a Packet class that includes the filter and
+// the tree and interface that the packet comes from, this would allow
+// us to maintain a single vector of "query" packets.
+// 
 static vector<prefix_filter_t> queries;	// we store all the queries here
-static vector<main_GPU::GPU_filter> GPU_queries;	// we store all the queries here
 static vector<tree_interface_pair> queries_tiff; 
+
+// TODO: we need to use only the input packets, so this vector of
+// copies of the query packets should go away
+// 
+static vector<main_GPU::GPU_filter> GPU_queries;	// we store all the queries here
 
 
 /*******************************************************************************/
 /*************************** OUPUT MANAGEMENT **********************************/
 /*******************************************************************************/
 
-class msg_output{
-    volatile unsigned int counter; //counts the number of queues where the msg is
-    bool done; // if true, we already enqueue the messge in all the possible batches
+// msg_output is a wrapper/descriptor for each input "query" packet.
+//
+class msg_output {
+	// we count the number of queues (each associated with a
+	// partition) where we insert the message.  We use this counter to
+	// determine when we are done with the matching in all the
+	// partitions.
+    volatile unsigned int counter; 
+
+    // done is true when we are done with the prefix matching, that is
+    // when we enqueued the messge in all the possible partitions.
+    bool done; 
+
     unsigned char iff[INTERFACES]; //array of 0/1. when a cell is set we have a match
-                                    //on the corresponding interface. We could use
-                                    //a bit vector but this should be faster
+	//on the corresponding interface. We could use
+	//a bit vector but this should be faster
     
-    void reset_iff(){
+    void reset_iff() {
         for(int i=0; i<INTERFACES; ++i)
             iff[i]=0;
     }
@@ -216,7 +240,7 @@ public:
     //here we miss a vector of something to return the set of mathing interfaces 
     msg_output (): counter(0), done(0) { reset_iff(); };
 
-    void inc_counter(){
+    void inc_counter() {
 
         unsigned int old_c;
         unsigned int new_c;
@@ -230,7 +254,7 @@ public:
             goto try_inc;
     }
 
-    void dec_counter(){
+    void dec_counter() {
 
         unsigned int old_c;
         unsigned int new_c;
@@ -244,47 +268,51 @@ public:
             goto try_dec;
     }
 
-    void reset(){
+    void reset() {
         counter = 0;
         done = false;
     }    
 
-    unsigned int get_counter(){
+    unsigned int get_counter() {
         return counter;
     }
     
-    void set_done(){
+    void set_done() {
         done=true;
     }
 
-    bool get_done(){
+    bool get_done() {
         return done;
     }
 
-    void set_iff(unsigned int i){
+    void set_iff(unsigned int i) {
         iff[i]=1;
     }
 
-    bool get_iff(unsigned int i){
+    bool get_iff(unsigned int i) {
         if(iff[i]==1)
             return 1;
         return 0;
     } 
 };
 
+// we use a circular buffer to store the message/packet wrappers while
+// they are processed by the GPU back-end.  Right now we do not check
+// that the matching is "done" before overwriting the wrapper.
+// Therefore it is crucial that the buffer is large enough NOT to
+// cause us to overwrite a message/packet whose matching isn't done.
+// 
+// TODO: figure out the size parameter
+// 
 const static unsigned int OUTPUT_SIZE = 500000;
 static msg_output output[OUTPUT_SIZE];
-
-/*******************************************************************************/
-/*******************************************************************************/
-
 
 /*******************************************************************************/
 /******************************** QUEUE ****************************************/
 /*******************************************************************************/
 
 class queue {
-    static const unsigned int MAX_SIZE = PACKETS;
+    static const unsigned int MAX_SIZE = PACKETS_BATCH_SIZE;
     static const unsigned int MULTI_QUEUE = 4; //this is the number of queues that we can use
              
 	unsigned int prefix_id ;
@@ -375,7 +403,7 @@ class queue {
 		mgpu.gpu_matcher.async_fillTiff(mgpu.host_query_tiff[stream_id], mgpu.dev_query_tiff[stream_id], size , stream_id) ;
 
 		// this can be moved to after matching part. (only if we initially set all of itto zero) 
-		mgpu.gpu_matcher.async_setZeroes(mgpu.dev_results[stream_id], PACKETS*INTERFACES, stream_id) ; 
+		mgpu.gpu_matcher.async_setZeroes(mgpu.dev_results[stream_id], PACKETS_BATCH_SIZE*INTERFACES, stream_id) ; 
 
 		mgpu.match(prefix_id, size, stream_id) ;
 
@@ -653,25 +681,6 @@ void fib_match(const unsigned int query_id){ //prefix_filter_t * q) {
     output[out_index].set_done();
 }
 
-static unsigned long total_matches() {
-    unsigned long c = 0;
-    for(int j = 0; j< 64; j++){
-        for(vector<queue64>::const_iterator i = pp1[j].p64.begin(); i != pp1[j].p64.end(); ++i)
-            c+=i->q->get_tail();
-        for(vector<queue128>::const_iterator i = pp1[j].p128.begin(); i != pp1[j].p128.end(); ++i) 
-            c+=i->q->get_tail();
-        for(vector<queue192>::const_iterator i = pp1[j].p192.begin(); i != pp1[j].p192.end(); ++i) 
-            c+=i->q->get_tail();
-        for(vector<queue64>::const_iterator i = pp2[j].p64.begin(); i != pp2[j].p64.end(); ++i) 
-            c+=i->q->get_tail();
-        for(vector<queue128>::const_iterator i = pp2[j].p128.begin(); i != pp2[j].p128.end(); ++i) 
-            c+=i->q->get_tail();
-        for(vector<queue64>::const_iterator i = pp3[j].p64.begin(); i != pp3[j].p64.end(); ++i) 
-            c+=i->q->get_tail();
-    }
-    return c;
-}
-
 static void destroy_fib() {
     for(int j = 0; j< 64; j++){
         for(vector<queue64>::const_iterator i = pp1[j].p64.begin(); i != pp1[j].p64.end(); ++i)
@@ -882,7 +891,7 @@ void thread_loop(flush_timer * ft) {
 static std::vector<tree_interface_pair> ti_pairs;
 //static std::vector<
 
-void read_prefixes_vector(vector<unsigned int> & size_of_prefixes, string fname){
+void read_prefixes_vector(string fname){
 	ifstream is (fname) ;
 	string line;
 	if (is.is_open()) {
@@ -1034,7 +1043,7 @@ int main(int argc, const char * argv[]) {
 	}
 
 	// its better to pass the pointer to each vector for the following methods:
-	read_prefixes_vector(size_of_prefixes, prefixes_fname);
+	read_prefixes_vector(prefixes_fname);
 	
 	std::vector<main_GPU::filter_descr> * filters;
 	
@@ -1085,12 +1094,10 @@ int main(int argc, const char * argv[]) {
     thread_flush->join();
 
     nanoseconds ns = duration_cast<nanoseconds>(stop - start);
-    cout << "Average matching time: " << ns.count()/queries.size()/N
-		 << "ns" << endl
-		 << "queries: " << queries.size() << endl
-		 << "total prefix matches: " << total_matches() << endl;
+    cout << "queries: " << queries.size() << endl
+		 << "Average matching time: " << ns.count()/queries.size()/N << "ns" << endl;
 
-#define PRINT_OUTPUT 0
+#define PRINT_OUTPUT 1
 #if PRINT_OUTPUT
     for (unsigned int i=0; i<OUTPUT_SIZE; ++i){
         //cout << i << " " << (output[i].get_done()==1) << " "  <<  (output[i].get_counter()==0) << endl; 

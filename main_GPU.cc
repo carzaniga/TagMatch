@@ -123,8 +123,8 @@ unsigned int main_GPU::init(vector<unsigned int> & size_of_prefixes_, unsigned i
 	host_fibs = new unsigned int *[size_of_prefixes.size()] ;
 	dev_fibs = new unsigned int *[size_of_prefixes.size()] ;
 
-	host_results = new unsigned int *[STREAMS] ;
-	dev_results = new unsigned int *[STREAMS] ;
+	host_results = new GPU_matching::iff_result_t *[STREAMS] ;
+	dev_results = new GPU_matching::iff_result_t *[STREAMS] ;
 	
 	host_tiff_index = new unsigned int *[size_of_prefixes.size()] ;
 	dev_tiff_index = new unsigned int *[size_of_prefixes.size()] ;
@@ -142,13 +142,13 @@ unsigned int main_GPU::init(vector<unsigned int> & size_of_prefixes_, unsigned i
 	host_tiff = new uint16_t [ti_counter] ;
 
 	for(unsigned int stream_id=0; stream_id< STREAMS; stream_id++){
-		host_query_tiff[stream_id] = new uint16_t[PACKETS] ;
-		host_queries[stream_id] = new unsigned int[PACKETS*6] ;
+		host_query_tiff[stream_id] = new uint16_t[PACKETS_BATCH_SIZE] ;
+		host_queries[stream_id] = new unsigned int[PACKETS_BATCH_SIZE*6] ;
 
-		dev_query_tiff[stream_id] = gpu_matcher.sync_alloc_tiff(PACKETS) ;
+		dev_query_tiff[stream_id] = gpu_matcher.sync_alloc_tiff(PACKETS_BATCH_SIZE) ;
 
-		host_results[stream_id] = new unsigned int[PACKETS*INTERFACES] ;
-		dev_results[stream_id] = gpu_matcher.allocZeroes(PACKETS*INTERFACES) ;
+		host_results[stream_id] = new GPU_matching::iff_result_t[PACKETS_BATCH_SIZE*INTERFACES] ;
+		dev_results[stream_id] = gpu_matcher.allocZeroes(PACKETS_BATCH_SIZE*INTERFACES) ;
 			
 		stream_array[stream_id] = stream_id ;
 		stream_queue.push(&stream_array[stream_id]) ;

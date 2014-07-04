@@ -1,5 +1,3 @@
-//#include <stdlib.h>
-//#include <cstdlib>
 #include "GPU_matching.h"
 #define test 0
 
@@ -18,13 +16,13 @@
 
 cudaError_t err ; 
 cudaStream_t stream [STREAMS] ;
-__align__(32) __constant__ unsigned int dev_message [STREAMS][PACKETS*6]; //[194];
+__align__(32) __constant__ unsigned int dev_message [STREAMS][PACKETS_BATCH_SIZE*6]; //[194];
 
-#define not_subset_of(a, b) (((a) & ~(b)) != 0)
+#define set_diff(a, b) (((a) & ~(b)))
 
-__global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, unsigned int * prefix_tiff_index,  uint16_t * query_tiff , unsigned int * result, unsigned int n, unsigned int packets, unsigned int stream_id)
+__global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, unsigned int * prefix_tiff_index,  uint16_t * query_tiff ,  GPU_matching::iff_result_t * result, unsigned int n, unsigned int packets, unsigned int stream_id)
 {
-	//here I use packets, instead of PACKETS, because a matching queue can be sent to GPU even
+	//here I use packets, instead of PACKETS_BATCH_SIZE, because a matching queue can be sent to GPU even
 	//when it is not full. (i.e if a timeout occures) 
 	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
 	if(id>=n)
@@ -36,19 +34,14 @@ __global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, uns
 // i can replace it with packets.... 
 	int msg_id=-1 ;
 
-	for(unsigned int j=0; j<packets*6/*PACKETS*/ ; j+=6){
+	for(unsigned int j=0; j<packets*6/*PACKETS_BATCH_SIZE*/ ; j+=6){
 		msg_id++ ;
-		if(not_subset_of(d[0], dev_message[stream_id][j]))
-			continue;
-		if(not_subset_of(d[1], dev_message[stream_id][j+1]))
-			continue;
-		if(not_subset_of(d[2], dev_message[stream_id][j+2]))
-			continue;
-		if(not_subset_of(d[3], dev_message[stream_id][j+3]))
-			continue;
-		if(not_subset_of(d[4], dev_message[stream_id][j+4]))
-			continue;
-		if(not_subset_of(d[5], dev_message[stream_id][j+5]))
+		if(set_diff(d[0], dev_message[stream_id][j])
+		   | set_diff(d[1], dev_message[stream_id][j+1])
+		   | set_diff(d[2], dev_message[stream_id][j+2])
+		   | set_diff(d[3], dev_message[stream_id][j+3])
+		   | set_diff(d[4], dev_message[stream_id][j+4])
+		   | set_diff(d[5], dev_message[stream_id][j+5]))
 			continue;
 
 //		if(d[0] & ~dev_message[stream_id][j]!=0)
@@ -80,17 +73,24 @@ __global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, uns
 	}
 }
 
-#define not_subset_of_complement(a,b) (((a) | (b)) != ~(0U))
+#define a_complement_not_subset_of_b(a,b) (~((a) | (b)))
 
-__global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsigned int * prefix_tiff_index,  uint16_t * query_tiff , unsigned int * result, unsigned int n, unsigned int packets, unsigned int stream_id)
+__global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsigned int * prefix_tiff_index,  uint16_t * query_tiff , GPU_matching::iff_result_t * result, unsigned int n, unsigned int packets, unsigned int stream_id)
 {
 	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
 	//int id = blockDim.x * blockIdx.x+ threadIdx.x;
 
 	if(id>=n)
 		return;
-	unsigned int f_id = id>>5;//(id / 32) ; // or id>>5
-	f_id = (f_id*32*6)+ (id % 32) ; //32 warp size
+
+#if 1
+	unsigned int f_id = ((id / WARP_SIZE) * WARP_SIZE * 6) + (id % WARP_SIZE);
+#else
+#if (WARP_SIZE != 16) && (WARP_SIZE != 32)
+#error "WARP_SIZE must be either 16U or 32U"
+#endif
+	unsigned int f_id = (id & ~(WARP_SIZE-1))*6 + (id & (WARP_SIZE-1));
+#endif
 		
 	unsigned int d[6];
 	d[0]=data[f_id];
@@ -100,48 +100,39 @@ __global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsign
 	d[4]=data[f_id+128];
 	d[5]=data[f_id+160];
 
-	int msg_id=-1 ;
-#if 1 
-	for(unsigned int j=0; j<packets*6 ; j+=6){
-		msg_id++ ;
-		if (not_subset_of_complement(d[0], dev_message[stream_id][j]))
-			continue;
-		if (not_subset_of_complement(d[1], dev_message[stream_id][j+1]))
-			continue;
-		if (not_subset_of_complement(d[2], dev_message[stream_id][j+2]))
-			continue;
-		if (not_subset_of_complement(d[3], dev_message[stream_id][j+3]))
-			continue;
-		if (not_subset_of_complement(d[4], dev_message[stream_id][j+4]))
-			continue;
-		if (not_subset_of_complement(d[5], dev_message[stream_id][j+5]))
-			continue;
-#else 
+	int msg_id=0;
+	for(unsigned int j=0; j<packets*6 ; j+=6,++msg_id) {
 
-		if((d[0] | dev_message[stream_id][j])!= ~0)//0xFFFFFFFF)
-		    continue;
-		if((d[1] | dev_message[stream_id][j+1])!= ~0)//0xFFFFFFFF)
-		    continue;
-		if((d[2] | dev_message[stream_id][j+2])!= ~0)//0xFFFFFFFF)
-		    continue;
-		if((d[3] | dev_message[stream_id][j+3])!= ~0)//0xFFFFFFFF)
-		    continue;
-		if((d[4] | dev_message[stream_id][j+4])!= ~0)//0xFFFFFFFF)
-		    continue;
-		if((d[5] | dev_message[stream_id][j+5])!= ~0)//0xFFFFFFFF)
+#if 1
+		if (a_complement_not_subset_of_b(d[0], dev_message[stream_id][j])
+		    | a_complement_not_subset_of_b(d[1], dev_message[stream_id][j+1])
+		    | a_complement_not_subset_of_b(d[2], dev_message[stream_id][j+2])
+		    | a_complement_not_subset_of_b(d[3], dev_message[stream_id][j+3])
+		    | a_complement_not_subset_of_b(d[4], dev_message[stream_id][j+4])
+		    | a_complement_not_subset_of_b(d[5], dev_message[stream_id][j+5]))
 			continue;
-#endif		
-//		result[msg_id * INTERFACES ] = 1 ;
-		uint16_t xor_temp;
-		unsigned int tiff_index= prefix_tiff_index[id] ;
-		unsigned int tiff_size = global_tiff[ tiff_index ] ;
-//		uint16_t tiff_size= query_tiff[msg_id] ;
-//		0x2000 = 2^13 
-		for(unsigned int i=1; i <= tiff_size; i++){
+#else
+		if (a_complement_not_subset_of_b(d[0], dev_message[stream_id][j]))
+		    continue;
+		if (a_complement_not_subset_of_b(d[1], dev_message[stream_id][j+1]))
+		    continue;
+		if (a_complement_not_subset_of_b(d[2], dev_message[stream_id][j+2]))
+		    continue;
+		if (a_complement_not_subset_of_b(d[3], dev_message[stream_id][j+3]))
+		    continue;
+		if (a_complement_not_subset_of_b(d[4], dev_message[stream_id][j+4]))
+		    continue;
+		if (a_complement_not_subset_of_b(d[5], dev_message[stream_id][j+5]))
+		    continue;
+#endif
+
+		unsigned int tiff_index = prefix_tiff_index[id] ;
+		unsigned int tiff_index_end = tiff_index + global_tiff[tiff_index] ;
+		while(++tiff_index <= tiff_index_end) {
 			// may be this can be done with fewer operations.
-			xor_temp= query_tiff[msg_id] ^ global_tiff[tiff_index+i] ;
+		        uint16_t xor_temp= query_tiff[msg_id] ^ global_tiff[tiff_index] ;
 			if((xor_temp<=0x1FFF) && (xor_temp!=0)){
-				unsigned int temp = ((global_tiff[tiff_index+i]) & 0x1FFF) ; 
+				unsigned int temp = ((global_tiff[tiff_index]) & 0x1FFF) ; 
 				result[(msg_id * INTERFACES) + temp] = 1 ;
 			}
 		}
@@ -172,7 +163,7 @@ void GPU_matching::memInfo(){
 }
 bool GPU_matching::async_copyMSG(unsigned int * host_message, unsigned int packets , unsigned int stream_id){
 	// err =cudaMemcpyToSymbol(&dev_message[stream_id][0], host_message, size_t(6*packets)*sizeof(unsigned int));
-	err = cudaMemcpyToSymbolAsync(dev_message, host_message, 6*packets*sizeof(unsigned int), stream_id*PACKETS*6*sizeof(unsigned int), cudaMemcpyHostToDevice, stream[stream_id]);
+	err = cudaMemcpyToSymbolAsync(dev_message, host_message, 6*packets*sizeof(unsigned int), stream_id*PACKETS_BATCH_SIZE*6*sizeof(unsigned int), cudaMemcpyHostToDevice, stream[stream_id]);
 	if (err != cudaSuccess){
 		cudaCheckErrors("constant memory failed....\n");
 		return false;
@@ -235,12 +226,12 @@ uint16_t * GPU_matching::sync_alloc_tiff( unsigned int size){
 	return dev_array; 
 }
 
-unsigned int * GPU_matching::allocZeroes(unsigned int size){ // this is useful for setting dev_res (interfaces) to 0 before calling the kernel
-	unsigned int *dev_array = 0;
-	err=cudaMalloc((void**)&dev_array, size * sizeof(unsigned int)); 
+GPU_matching::iff_result_t * GPU_matching::allocZeroes(unsigned int size){ // this is useful for setting dev_res (interfaces) to 0 before calling the kernel
+	GPU_matching::iff_result_t *dev_array = 0;
+	err=cudaMalloc((void**)&dev_array, size * sizeof(iff_result_t)); 
 	if(err!=cudaSuccess)
 		return NULL;
-	err=cudaMemset(dev_array, 0, size * sizeof(unsigned int));   
+	err=cudaMemset(dev_array, 0, size * sizeof(iff_result_t));   
 
 	if(err!=cudaSuccess){
 		cudaCheckErrors("allocation of zeroes failed");
@@ -249,8 +240,8 @@ unsigned int * GPU_matching::allocZeroes(unsigned int size){ // this is useful f
 	return dev_array; 
 }
 
-void GPU_matching::async_setZeroes(unsigned int * dev_array, unsigned int size, unsigned int stream_id){ // this is useful for setting dev_res (interfaces) to 0 before calling the kernel
-	err= cudaMemsetAsync(dev_array, 0, size * sizeof(unsigned int), stream[stream_id]);   
+void GPU_matching::async_setZeroes(GPU_matching::iff_result_t * dev_array, unsigned int size, unsigned int stream_id){ // this is useful for setting dev_res (interfaces) to 0 before calling the kernel
+	err= cudaMemsetAsync(dev_array, 0, size * sizeof(iff_result_t), stream[stream_id]);   
 
 	if(err!=cudaSuccess){
 		cudaCheckErrors("setMem fail");
@@ -258,9 +249,9 @@ void GPU_matching::async_setZeroes(unsigned int * dev_array, unsigned int size, 
 }
 
 
-void GPU_matching::async_getResults(unsigned int * host_result, unsigned int * dev_result, unsigned int size, unsigned int stream_id){
+void GPU_matching::async_getResults(GPU_matching::iff_result_t * host_result, GPU_matching::iff_result_t * dev_result, unsigned int size, unsigned int stream_id){
 	
-	err=cudaMemcpyAsync(host_result, dev_result, size * sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[stream_id]);
+	err=cudaMemcpyAsync(host_result, dev_result, size * sizeof(GPU_matching::iff_result_t), cudaMemcpyDeviceToHost, stream[stream_id]);
 	if(err!=cudaSuccess){
 		cudaCheckErrors("getResults failed");
 	}
@@ -288,7 +279,7 @@ void GPU_matching::init_streams(){
 
 }
 
-bool GPU_matching::runKernel(unsigned int * dev_array, uint16_t * dev_global_tiff, unsigned int * prefix_tiff_index, uint16_t * dev_query_tiff, unsigned int * dev_result, unsigned int size, unsigned int packets, unsigned int stream_id){
+bool GPU_matching::runKernel(unsigned int * dev_array, uint16_t * dev_global_tiff, unsigned int * prefix_tiff_index, uint16_t * dev_query_tiff, GPU_matching::iff_result_t * dev_result, unsigned int size, unsigned int packets, unsigned int stream_id){
 //	int gridsize = 1;
 //	// Work out how many blocks of size 1024 are required to perform all of nCombinations
 //	for(unsigned int nsize = gridsize * BLOCK_SIZE; nsize < size;//nCombinations;
@@ -305,9 +296,9 @@ bool GPU_matching::runKernel(unsigned int * dev_array, uint16_t * dev_global_tif
 	grid = dim3(gridsize);
 #if GPU_FAST
 	//myKernel_fast<<<gridsize, block,0 , stream[stream_id] >>> ((int*)dev_array, (int*)dev_result, size, packets, stream_id);
-	myKernel_fast<<<gridsize, block,0 , stream[stream_id] >>> ((unsigned int*)dev_array, dev_global_tiff, prefix_tiff_index, dev_query_tiff, (unsigned int*)dev_result, size, packets, stream_id);
+	myKernel_fast<<<gridsize, block,0 , stream[stream_id] >>> ((unsigned int*)dev_array, dev_global_tiff, prefix_tiff_index, dev_query_tiff, dev_result, size, packets, stream_id);
 #else
-	myKernel_minimal<<<gridsize, block,0 , stream[stream_id] >>> ((unsigned int*)dev_array, dev_global_tiff, prefix_tiff_index, dev_query_tiff, (unsigned int*)dev_result, size, packets, stream_id);
+	myKernel_minimal<<<gridsize, block,0 , stream[stream_id] >>> ((unsigned int*)dev_array, dev_global_tiff, prefix_tiff_index, dev_query_tiff, dev_result, size, packets, stream_id);
 //	printf(" alg: simple\n");
 	//myKernel_minimal<<<gridsize, block, 0, stream[stream_id] >>> ((int*)dev_array, (int*)dev_result, size, packets, stream_id);
 #endif

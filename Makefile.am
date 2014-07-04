@@ -30,7 +30,7 @@ msb_partition_CXXFLAGS = -pthread #-Wl,--no-as-needed
 msb_partition_LDADD = GPU_matching.$(OBJEXT)
 msb_partition_LDFLAGS = -L/usr/local/cuda/lib -lcudart
 
-CUDA_FLAGS=--ptxas-options="-v" -arch sm_21
+CUDA_FLAGS=--ptxas-options="-v" -arch sm_21 -O2
 
 .cu.$(OBJEXT):
 	$(NVCC) $(CUDA_FLAGS) -c $< -o $@

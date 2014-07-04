@@ -90,10 +90,10 @@ class main_GPU{
 		uint16_t ** host_query_tiff ;// for each stream, we store tiff of each query in the batch here. 
 		uint16_t ** dev_query_tiff ;
 
-		unsigned int ** host_results ; // stream x [tiff x interfaces] 
-		unsigned int ** dev_results ; // stream x [tiff x interfaces] 
-//		int dev_results [STREAMS][PACKETS][INTERFACES] ; // stream x [msg x interfaces] 
-//		int host_results [STREAMS][PACKETS][INTERFACES] ; // stream x [msg x interfaces] 
+		GPU_matching::iff_result_t ** host_results ; // stream x [tiff x interfaces] 
+		GPU_matching::iff_result_t ** dev_results ; // stream x [tiff x interfaces] 
+//		int dev_results [STREAMS][PACKETS_BATCH_SIZE][INTERFACES] ; // stream x [msg x interfaces] 
+//		int host_results [STREAMS][PACKETS_BATCH_SIZE][INTERFACES] ; // stream x [msg x interfaces] 
 
 		unsigned int no_prefixes ; 
 
