@@ -28,13 +28,13 @@ AC_OPT_TIMERS
 #
 # Boost unit testing framework
 #
-AX_BOOST_BASE([1.40], [
-  AX_BOOST_UNIT_TEST_FRAMEWORK
-  if test "x$ax_cv_boost_unit_test_framework" = "xyes"; then
-      USE_BOOST_UTF=yes
-  else
-      USE_BOOST_UTF=no
-  fi],  [USE_BOOST_UTF=no])
+dnl AX_BOOST_BASE([1.40], [
+dnl   AX_BOOST_UNIT_TEST_FRAMEWORK
+dnl   if test "x$ax_cv_boost_unit_test_framework" = "xyes"; then
+dnl       USE_BOOST_UTF=yes
+dnl   else
+dnl       USE_BOOST_UTF=no
+dnl   fi],  [USE_BOOST_UTF=no])
 if test "x$USE_BOOST_UTF" != "xyes"; then
    AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
 fi
@@ -47,6 +47,8 @@ AC_CHECK_BUILTIN_POPCOUNT
 AC_OPT_WITH_BUILTIN_CAS
 AC_OPT_MUTEX_THREADPOOL
 AC_WITH_THREAD_COUNT
+#
+dnl AC_CHECK_PROG(NVCC,nvcc)
 #
 AC_CONFIG_FILES([Makefile 
 		 test/Makefile])

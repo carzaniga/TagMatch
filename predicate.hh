@@ -54,6 +54,9 @@ public:
 	bool equals(tree_t t, interface_t ifx) const {
 		return (tree == t && interface == ifx) ;
 	}
+	uint16_t get(){
+		return tree<<13 | interface ;
+	}
 };
 
 // 

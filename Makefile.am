@@ -6,7 +6,7 @@ AM_CFLAGS = $(CFLAGS_prof)
 AM_CXXFLAGS = $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
 
-NVCC=/usr/local/cuda/bin/nvcc
+NVCC=nvcc
 
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
@@ -30,8 +30,13 @@ msb_partition_CXXFLAGS = -pthread #-Wl,--no-as-needed
 msb_partition_LDADD = GPU_matching.$(OBJEXT)
 msb_partition_LDFLAGS = -L/usr/local/cuda/lib -lcudart
 
-GPU_matching.$(OBJEXT): GPU_matching.cu GPU_matching.h
-	$(NVCC) --ptxas-options="-v" -arch sm_30 -c GPU_matching.cu -o $@
+CUDA_FLAGS=--ptxas-options="-v" -arch sm_21
+
+.cu.$(OBJEXT):
+	$(NVCC) $(CUDA_FLAGS) -c $< -o $@
+
+# GPU_matching.$(OBJEXT): GPU_matching.cu GPU_matching.h
+# 	$(NVCC) --ptxas-options="-v" $(CUDA_FLAGS) -c GPU_matching.cu -o $@
 
 #libgpumatching_la_SOURCES = GPU_matching.cc GPU_matching.h
 #libgpumatching_la_CXX = $(NVCC)
