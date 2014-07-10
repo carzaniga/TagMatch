@@ -5,11 +5,11 @@ using namespace std;
 #define BLOCK_DIM_X 32
 #define BLOCK_DIM_Y 32
 #define GPU_BLOCK_SIZE BLOCK_DIM_X * BLOCK_DIM_Y // Statc block size of 32*32 (1024)0
-#define STREAMS 4 
+#define STREAMS 5 
 #define PACKETS_BATCH_SIZE 500
-#define GPU_FAST 0
+#define GPU_FAST 1
 #define INTERFACES 200
-
+#define PINNED 1 
 // number of parallel threads in a warp, that is, the GPU runs its
 // code in groups of WARP_SIZE SIMD-parallel threads.
 // 
@@ -43,5 +43,12 @@ public:
 	void releaseMem(unsigned int * p);
 	struct stream_packets ;
 	void init_streams() ;
+#if PINNED
+	void * genericRequestHostPinnedMem(unsigned int size, size_t obj_size);
+	template<typename T>
+	T * requestHostPinnedMem(unsigned int size) {
+		return (T*)genericRequestHostPinnedMem(size, sizeof(T));
+	}
+#endif
 
 };

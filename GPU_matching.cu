@@ -32,16 +32,20 @@ __global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, uns
 	for(unsigned int i=0;i<6; i++)
 		d[i]=data[f_id+i];
 // i can replace it with packets.... 
-	int msg_id=-1 ;
+	//int msg_id=-1 ;
+	int msg_id=0 ;
+//	if(n==9893)
+//		printf("n = %d , f_id = %d , d[0] =%d , d[1] =%d \n", n,  f_id, d[0], d[1]) ;
 
-	for(unsigned int j=0; j<packets*6/*PACKETS_BATCH_SIZE*/ ; j+=6){
-		msg_id++ ;
+//	for(unsigned int j=0; j<packets*6/*PACKETS_BATCH_SIZE*/ ; j+=6){
+	for(unsigned int j=0; j<packets*6; j+=6,++msg_id){
+//		msg_id++ ;
 		if(set_diff(d[0], dev_message[stream_id][j])
-		   | set_diff(d[1], dev_message[stream_id][j+1])
-		   | set_diff(d[2], dev_message[stream_id][j+2])
-		   | set_diff(d[3], dev_message[stream_id][j+3])
-		   | set_diff(d[4], dev_message[stream_id][j+4])
-		   | set_diff(d[5], dev_message[stream_id][j+5]))
+		   || set_diff(d[1], dev_message[stream_id][j+1])
+		   || set_diff(d[2], dev_message[stream_id][j+2])
+		   || set_diff(d[3], dev_message[stream_id][j+3])
+		   || set_diff(d[4], dev_message[stream_id][j+4])
+		   || set_diff(d[5], dev_message[stream_id][j+5]))
 			continue;
 
 //		if(d[0] & ~dev_message[stream_id][j]!=0)
@@ -77,20 +81,24 @@ __global__ void myKernel_minimal(unsigned int* data, uint16_t * global_tiff, uns
 
 __global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsigned int * prefix_tiff_index,  uint16_t * query_tiff , GPU_matching::iff_result_t * result, unsigned int n, unsigned int packets, unsigned int stream_id)
 {
-	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
-	//int id = blockDim.x * blockIdx.x+ threadIdx.x;
+
+	unsigned int t1 = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) ;
+	unsigned int id = t1 + threadIdx.x;
+//	unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
+	//unsigned int id = blockDim.x * blockIdx.x+ threadIdx.x;
 
 	if(id>=n)
 		return;
 
-#if 1
-	unsigned int f_id = ((id / WARP_SIZE) * WARP_SIZE * 6) + (id % WARP_SIZE);
-#else
-#if (WARP_SIZE != 16) && (WARP_SIZE != 32)
-#error "WARP_SIZE must be either 16U or 32U"
-#endif
-	unsigned int f_id = (id & ~(WARP_SIZE-1))*6 + (id & (WARP_SIZE-1));
-#endif
+	unsigned int f_id = 6*(t1) + threadIdx.x;
+//#if 1
+//	unsigned int f_id = ((id / WARP_SIZE) * WARP_SIZE * 6) + (id % WARP_SIZE);
+//#else
+//#if (WARP_SIZE != 16) && (WARP_SIZE != 32)
+//#error "WARP_SIZE must be either 16U or 32U"
+//#endif
+//	unsigned int f_id = (id & ~(WARP_SIZE-1))*6 + (id & (WARP_SIZE-1));
+//#endif
 		
 	unsigned int d[6];
 	d[0]=data[f_id];
@@ -99,11 +107,13 @@ __global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsign
 	d[3]=data[f_id+96];
 	d[4]=data[f_id+128];
 	d[5]=data[f_id+160];
+//	if(n==192)
+//		printf("n = %d , f_id = %d , d[0] = %d, d[5]=%d msg[0]=%d \n", n,  f_id, d[0], d[5], dev_message[stream_id][0]) ;
 
 	int msg_id=0;
 	for(unsigned int j=0; j<packets*6 ; j+=6,++msg_id) {
 
-#if 1
+#if 0
 		if (a_complement_not_subset_of_b(d[0], dev_message[stream_id][j])
 		    | a_complement_not_subset_of_b(d[1], dev_message[stream_id][j+1])
 		    | a_complement_not_subset_of_b(d[2], dev_message[stream_id][j+2])
@@ -125,15 +135,16 @@ __global__ void myKernel_fast(unsigned int* data, uint16_t * global_tiff, unsign
 		if (a_complement_not_subset_of_b(d[5], dev_message[stream_id][j+5]))
 		    continue;
 #endif
-
 		unsigned int tiff_index = prefix_tiff_index[id] ;
 		unsigned int tiff_index_end = tiff_index + global_tiff[tiff_index] ;
+//		result[(msg_id * INTERFACES) + 1] = 1 ; 
 		while(++tiff_index <= tiff_index_end) {
 			// may be this can be done with fewer operations.
-		        uint16_t xor_temp= query_tiff[msg_id] ^ global_tiff[tiff_index] ;
+			uint16_t xor_temp= query_tiff[msg_id] ^ global_tiff[tiff_index] ;
 			if((xor_temp<=0x1FFF) && (xor_temp!=0)){
 				unsigned int temp = ((global_tiff[tiff_index]) & 0x1FFF) ; 
 				result[(msg_id * INTERFACES) + temp] = 1 ;
+//				result[(msg_id * INTERFACES) + ((global_tiff[tiff_index]) & 0x1FFF)] = 1 ;
 			}
 		}
 	}
@@ -265,6 +276,32 @@ void GPU_matching::syncStream(unsigned int stream_id, int k){
 		exit(0) ;
 	}
 }
+
+#if PINNED
+void * GPU_matching::genericRequestHostPinnedMem(unsigned int size, size_t obj_size) {	
+	void * host_array_pinned=0 ;
+	err = cudaMallocHost((void**)&host_array_pinned, size * obj_size);
+	if (err != cudaSuccess)
+		  cudaCheckErrors("Error allocating pinned host memoryn");
+	return host_array_pinned ;
+}
+#endif
+
+//unsigned int * GPU_matching::requestHostPinnedMem32(unsigned int size) {	
+//	unsigned int * host_array_pinned=0 ;
+//	err = cudaMallocHost((void**)&host_array_pinned, size * sizeof(unsigned int));
+//	if (err != cudaSuccess)
+//		  cudaCheckError("Error allocating pinned host memoryn");
+//	return host_array_pinned ;
+//}
+//
+//unsigned uint16_t * GPU_matching::requestHostPinnedMem16(unsigned int size) {	
+//	uint16_t * host_array_pinned=0 ;
+//	err = cudaMallocHost((void**)&host_array_pinned, size * sizeof(uint16_t));
+//	if (err != cudaSuccess)
+//		  cudaCheckError("Error allocating pinned host memoryn");
+//	return host_array_pinned ;
+//}
 
 void GPU_matching::init_streams(){
 	unsigned int n= STREAMS;

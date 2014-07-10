@@ -1,6 +1,8 @@
 #include "main_GPU.h"
 
 main_GPU::GPU_filter main_GPU::assign(const string & s) {
+// different bit representation of the filter. 
+#if 0
 	main_GPU::GPU_filter f;
 	std::string::const_iterator si = s.begin();
 	for(unsigned int i = GPU_matching::B_COUNT-1; i >= 0; --i) {
@@ -14,6 +16,21 @@ main_GPU::GPU_filter main_GPU::assign(const string & s) {
 			}
 		}
 	}
+#else 
+	main_GPU::GPU_filter f;
+	std::string::const_iterator si = s.begin();
+	for(unsigned int i = 0 ; i< GPU_matching::B_COUNT;  ++i) {
+		for(GPU_matching::GPU_block_t mask = (1U << 31); mask != 0; mask >>= 1) {
+			if (si != s.end()) {
+				if (*si == '1')
+					f.b[i] |= mask;
+				++si;
+			} else {
+				return f;
+			}
+		}
+	}
+#endif
 	return f;
 }
 
@@ -31,6 +48,9 @@ void main_GPU::read_tables(vector<filter_descr> * filters_descr, vector<tree_int
 
 			filter_string = fsc.filter; 			
 			f=assign(filter_string);
+//			if(prefix_id==538){
+//				cout<< f.b[0] << " " << f.b[5] << endl;
+//			}
 #if GPU_FAST
 			f.flip() ;
 #endif
@@ -135,21 +155,30 @@ unsigned int main_GPU::init(vector<unsigned int> & size_of_prefixes_, unsigned i
 	host_queries = new unsigned int *[STREAMS] ;
 		
 	for(unsigned int prefix_id=0; prefix_id < size_of_prefixes.size(); prefix_id++){
+#if PINNED
+		host_fibs[prefix_id] = gpu_matcher.requestHostPinnedMem<unsigned int>((size_of_prefixes[prefix_id]) * 6) ;
+		host_tiff_index[prefix_id] = gpu_matcher.requestHostPinnedMem<unsigned int>(size_of_prefixes[prefix_id]) ;
+#else
 		host_fibs[prefix_id] = new unsigned int[(size_of_prefixes[prefix_id]) * 6] ;
 		host_tiff_index[prefix_id] = new unsigned int[size_of_prefixes[prefix_id]] ;
+#endif
 	}
 	cout <<"#ti_pairs = "<< ti_counter << endl; 
 	host_tiff = new uint16_t [ti_counter] ;
 
 	for(unsigned int stream_id=0; stream_id< STREAMS; stream_id++){
+#if PINNED
+		host_query_tiff[stream_id] = gpu_matcher.requestHostPinnedMem<uint16_t>(PACKETS_BATCH_SIZE) ;
+		host_queries[stream_id] = gpu_matcher.requestHostPinnedMem<unsigned int>(PACKETS_BATCH_SIZE*6) ;
+		host_results[stream_id] =  gpu_matcher.requestHostPinnedMem<GPU_matching::iff_result_t>(PACKETS_BATCH_SIZE*INTERFACES) ;
+#else
 		host_query_tiff[stream_id] = new uint16_t[PACKETS_BATCH_SIZE] ;
 		host_queries[stream_id] = new unsigned int[PACKETS_BATCH_SIZE*6] ;
-
-		dev_query_tiff[stream_id] = gpu_matcher.sync_alloc_tiff(PACKETS_BATCH_SIZE) ;
-
 		host_results[stream_id] = new GPU_matching::iff_result_t[PACKETS_BATCH_SIZE*INTERFACES] ;
+#endif
+		dev_query_tiff[stream_id] = gpu_matcher.sync_alloc_tiff(PACKETS_BATCH_SIZE) ;
 		dev_results[stream_id] = gpu_matcher.allocZeroes(PACKETS_BATCH_SIZE*INTERFACES) ;
-			
+
 		stream_array[stream_id] = stream_id ;
 		stream_queue.push(&stream_array[stream_id]) ;
 	}

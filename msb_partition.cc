@@ -912,7 +912,7 @@ void read_prefixes_vector(string fname){
 			unsigned int n = prefix_string.size();
 			fib_add_prefix(f,n,new queue(prefix_id));
 			//p_size++ ;
-			size_of_prefixes.push_back(prefix_size) ;
+			size_of_prefixes.push_back(prefix_size);
 		}
 	}
 	else 

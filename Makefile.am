@@ -11,7 +11,8 @@ NVCC=nvcc
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
-bin_PROGRAMS = predicate predicate_old gen gen2 msb_partition split_prefixes
+bin_PROGRAMS = predicate predicate_old gen gen2 msb_partition split_prefixes \
+		cpu_gpu_matcher
 
 gen_SOURCES = gen.cc params.h
 
@@ -35,12 +36,12 @@ CUDA_FLAGS=--ptxas-options="-v" -arch sm_21 -O2
 .cu.$(OBJEXT):
 	$(NVCC) $(CUDA_FLAGS) -c $< -o $@
 
-# GPU_matching.$(OBJEXT): GPU_matching.cu GPU_matching.h
-# 	$(NVCC) --ptxas-options="-v" $(CUDA_FLAGS) -c GPU_matching.cu -o $@
-
-#libgpumatching_la_SOURCES = GPU_matching.cc GPU_matching.h
-#libgpumatching_la_CXX = $(NVCC)
-#libgpumatching_la_CXXFLAGS = --ptxas-options="-v" -arch sm_30
+cpu_gpu_matcher_SOURCES = packet.hh parameters.hh free_list.hh \
+			cpu_gpu_matcher.cc \
+			front_end.cc front_end.hh back_end.cc back_end.hh 
+cpu_gpu_matcher_CXXFLAGS = -pthread #-Wl,--no-as-needed
+cpu_gpu_matcher_LDADD = GPU_matching.$(OBJEXT)
+cpu_gpu_matcher_LDFLAGS = -L/usr/local/cuda/lib -lcudart
 
 split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
 
