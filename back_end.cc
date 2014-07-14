@@ -13,6 +13,10 @@
 #include "gpu.hh"
 #include "back_end.hh"
 
+using std::vector;
+using std::map;
+using std::atomic;
+
 // GENERAL DESIGN:
 //
 // The back-end consists of a dictionary structure, built once and
@@ -30,7 +34,7 @@
 
 // TEMPORARY FIB
 // 
-typedef std::vector<tree_interface_pair> ti_vector;
+typedef vector<tree_interface_pair> ti_vector;
 
 struct filter_descr {
 	filter_t filter;
@@ -42,8 +46,8 @@ struct filter_descr {
 		: filter(f), ti_pairs(begin, end) {};
 };
 
-typedef std::vector<filter_descr> f_descr_vector;
-typedef std::map<unsigned int, f_descr_vector > tmp_fib_map;
+typedef vector<filter_descr> f_descr_vector;
+typedef map<unsigned int, f_descr_vector > tmp_fib_map;
 
 static tmp_fib_map tmp_fib;
 
@@ -173,14 +177,13 @@ static const unsigned int STREAM_HANDLES_NULL = ~(0U);
 
 static stream_handle stream_handles[GPU_STREAMS];
 
-static std::atomic<unsigned int> free_stream_handles;
+static atomic<unsigned int> free_stream_handles;
 
 static stream_handle * allocate_stream() {
-	unsigned int sp;
+	unsigned int sp = free_stream_handles;
 	do {
-		sp = free_stream_handles;
-		if (sp == STREAM_HANDLES_NULL) 
-			continue;
+		while (sp == STREAM_HANDLES_NULL) 
+			sp = free_stream_handles;
 	} while (!atomic_compare_exchange_weak(&free_stream_handles, &sp, stream_handles[sp].next));
 
 	return stream_handles + sp;
@@ -188,8 +191,8 @@ static stream_handle * allocate_stream() {
 
 static void release_stream(stream_handle * h) {
 	unsigned int sp = h - stream_handles;
+	h->next = free_stream_handles;
 	do {
-		h->next = free_stream_handles;
 	} while(!atomic_compare_exchange_weak(&free_stream_handles, &(h->next), sp));
 }
 
@@ -207,10 +210,7 @@ static void compile_host_fib() {
 	unsigned int max_part_size = 0;
 
 	for(tmp_fib_map::const_iterator pi = tmp_fib.begin(); pi != tmp_fib.end(); ++pi) {
-		unsigned int part = pi->first;
-		const f_descr_vector & filters = pi->second;
-		unsigned int part_size = filters.size();
-
+		unsigned int part_size = pi->second.size();
 #if GPU_FAST
 		if ((part_size % 32))
 			part_size = part_size + 32 - (part_size % 32);
@@ -218,9 +218,10 @@ static void compile_host_fib() {
 		if(part_size > max_part_size)
 			max_part_size = part_size;
 
-		dev_partitions[part].size = part_size;
 		host_ti_table_size += part_size + 1;
 	}
+
+	dev_partitions = new part_descr[max_part_size];
 
 	uint16_t * host_ti_table = new uint16_t[host_ti_table_size];
 
@@ -240,7 +241,7 @@ static void compile_host_fib() {
 	for(tmp_fib_map::const_iterator pi = tmp_fib.begin(); pi != tmp_fib.end(); ++pi) {
 		unsigned int part = pi->first;
 		const f_descr_vector & filters = pi->second;
-		unsigned int part_size = dev_partitions[part].size;
+		unsigned int part_size = dev_partitions[part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_index;
@@ -355,3 +356,16 @@ void back_end::start() {
 	compile_host_fib();
 }
 
+void back_end::stop() {
+}
+
+void back_end::clear() {
+	if (dev_partitions) {
+		delete(dev_partitions);
+		dev_partitions = 0;
+	}
+	if (dev_ti_table) {
+		delete(dev_ti_table);
+		dev_ti_table = 0;
+	}
+}

@@ -5,17 +5,24 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 #include <chrono>
-
 #include <string>
 
 #include "front_end.hh"
 #include "back_end.hh"
 
+using std::vector;
 using std::ifstream;
 using std::string;
 using std::istringstream;
-using namespace std::chrono;
+using std::getline;
+using std::cout;
+using std::cerr;
+using std::endl;
+using std::chrono::high_resolution_clock;
+using std::chrono::nanoseconds;
+using std::chrono::duration_cast;
 
 int read_prefixes(const char * fname) {
 	ifstream is(fname);
@@ -23,7 +30,7 @@ int read_prefixes(const char * fname) {
 	if (!is)
 		return 1;
 
-	while(std::getline(is, line)) {
+	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
 		line_s >> command;
@@ -31,7 +38,7 @@ int read_prefixes(const char * fname) {
 			continue;
 
 		unsigned int prefix_id, prefix_size;
-		std::string prefix_string;
+		string prefix_string;
 
 		line_s >> prefix_id >> prefix_string >> prefix_size;
 
@@ -51,7 +58,7 @@ int read_filters(string fname) {
 	if (!is)
 		return 1;
 
-	while(std::getline(is, line)) {
+	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
 		line_s >> command;
@@ -61,13 +68,13 @@ int read_filters(string fname) {
 		unsigned int partition_id;
 		interface_t iface;
 		tree_t tree;
-		std::string filter_string;
+		string filter_string;
 
 		line_s >> partition_id >> filter_string;
 
 		filter_t f(filter_string);
 
-		std::vector<tree_interface_pair> ti_pairs;
+		vector<tree_interface_pair> ti_pairs;
 
 		while (line_s >> tree >> iface) 
 			ti_pairs.push_back(tree_interface_pair(tree, iface));
@@ -77,14 +84,14 @@ int read_filters(string fname) {
 	return 0;
 }
 
-int read_queries(std::vector<packet> & packets, string fname) {
+int read_queries(vector<packet> & packets, string fname) {
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
 		return 1;
 
-	while(std::getline(is, line)) {
+	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
 		line_s >> command;
@@ -93,7 +100,7 @@ int read_queries(std::vector<packet> & packets, string fname) {
 
 		tree_t tree;
 		interface_t iface;
-		std::string filter_string;
+		string filter_string;
 
 		line_s >> tree >> iface >> filter_string;
 
@@ -102,6 +109,11 @@ int read_queries(std::vector<packet> & packets, string fname) {
 	return 0;
 }
 
+void print_usage(const char * progname) {
+	cout << "usage: " << progname 
+		 << " [-q] p=prefix_file_name f=filters_file_name q=queries_file_name"
+		 << endl;
+}
 int main(int argc, const char * argv[]) {
 	bool print_output = true;
 	const char * prefixes_fname = 0;
@@ -127,27 +139,30 @@ int main(int argc, const char * argv[]) {
 		}
 
 		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
-			std::cout << "usage: " << argv[0] 
-					  << " p=prefix_file_name f=filters_file_name q=queries_file_name"
-					  << std::endl;
+			print_usage(argv[0]);
 			return 1;
 		}
 	}
 
-	if (!read_prefixes(prefixes_fname)) {
-		std::cerr << "couldn't read prefix file: " << prefixes_fname << std::endl;
+	if (!prefixes_fname || !filters_fname || !queries_fname) {
+		print_usage(argv[0]);
+		return 1;
+	}		
+
+	if (read_prefixes(prefixes_fname) != 0) {
+		cerr << "couldn't read prefix file: " << prefixes_fname << endl;
 		return 1;
 	};
 	
-	if (!read_filters(filters_fname)) {
-		std::cerr << "couldn't read filters file: " << filters_fname << std::endl;
+	if (read_filters(filters_fname) != 0) {
+		cerr << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
 	
-	std::vector<packet> packets;
+	vector<packet> packets;
 	
-	if (!read_queries(packets, queries_fname)) {
-		std::cerr << "couldn't read queries file: " << queries_fname << std::endl;
+	if (read_queries(packets, queries_fname) != 0) {
+		cerr << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
 
@@ -156,25 +171,28 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	for(std::vector<packet>::iterator p = packets.begin(); p != packets.end(); ++p)
+	for(vector<packet>::iterator p = packets.begin(); p != packets.end(); ++p)
 		front_end::match(&(*p));
 
-	front_end::shutdown();
+	front_end::stop();
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
+	back_end::clear();
+	front_end::clear();
+
     nanoseconds ns = duration_cast<nanoseconds>(stop - start);
-	std::cout << "Packets: " << packets.size() << std::endl
-			  << "Average matching time: " << ns.count()/packets.size() << "ns" << std::endl;
+	cout << "Packets: " << packets.size() << endl
+			  << "Average matching time: " << ns.count()/packets.size() << "ns" << endl;
 
 	if (print_output) {
-		for(std::vector<packet>::iterator p = packets.begin(); p != packets.end(); ++p) {
+		for(vector<packet>::iterator p = packets.begin(); p != packets.end(); ++p) {
 			if (p->is_matching_complete()) {
 				for(unsigned i = 0; i < INTERFACES; ++i) 
-					std::cout << ' ' << ((p->output[i]) ? '1' : '0');
-				std::cout << std::endl;
+					cout << ' ' << ((p->output[i]) ? '1' : '0');
+				cout << endl;
 			} else {
-				std::cout << "incomplete" << std::endl;
+				cout << "incomplete" << endl;
             }
         }
     }

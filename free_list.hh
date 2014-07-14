@@ -42,7 +42,7 @@ public:
 			obj = head;
 			if (!obj) 
 				return new T();
-		} while (!atomic_compare_exchange_strong(&head, &obj, obj->next));
+		} while (!atomic_compare_exchange_weak(&head, &obj, obj->next));
 
 		return obj;
 	}
@@ -50,7 +50,7 @@ public:
 	void recycle(T * obj) {
 		do {
 			obj->next = head;
-		} while(!atomic_compare_exchange_strong(&head, &(obj->next), obj));
+		} while(!atomic_compare_exchange_weak(&head, &(obj->next), obj));
 	}
 };
 
@@ -79,7 +79,7 @@ public:
 			obj = head;
 			if (!obj) 
 				continue;
-		} while (!atomic_compare_exchange_strong(&head, &obj, obj->next));
+		} while (!atomic_compare_exchange_weak(&head, &obj, obj->next));
 
 		return obj;
 	}
@@ -87,7 +87,7 @@ public:
 	void recycle(T * obj) {
 		do {
 			obj->next = head;
-		} while(!atomic_compare_exchange_strong(&head, &(obj->next), obj));
+		} while(!atomic_compare_exchange_weak(&head, &(obj->next), obj));
 	}
 };
 

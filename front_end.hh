@@ -12,10 +12,10 @@
 class front_end {
 public:
 	static void add_prefix(unsigned int id, const prefix<192> & f, unsigned int n);
-	static void match(packet * p);
-	static void clear();
 	static void start(unsigned int n);
-	static void shutdown();
+	static void match(packet * p);
+	static void stop();
+	static void clear();
 };
 
 #endif // FRONT_END_HH_INCLUDED

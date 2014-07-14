@@ -173,6 +173,8 @@ public:
 		}
     }
 
+	prefix() {};
+
     prefix(const block_t * p) {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = p[i];
@@ -181,6 +183,11 @@ public:
     prefix(const prefix & p) {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = p.b[i];
+    }
+
+    void assign(const block_t * p) {
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = p[i];
     }
 };
 
