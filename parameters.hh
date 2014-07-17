@@ -4,12 +4,12 @@
 // number of packets in the batches of packets passed from the CPU
 // front-end to the GPU back-end
 //
-#define PACKETS_BATCH_SIZE		200U
+#define PACKETS_BATCH_SIZE		500U
 #define WITH_GPU_FAST_KERNEL	0
 #define INTERFACES				256U
 
 #define WITH_PINNED_HOST_MEMORY	1
 
-#define THREAD_COUNT			4U
+#define THREAD_COUNT			3U
 
 #endif /* PARAMETERS_HH_INCLUDED */

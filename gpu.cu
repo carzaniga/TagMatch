@@ -122,6 +122,7 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 		return;
 
 	fib += (id * GPU_FILTER_WORDS);
+
 	uint32_t f[GPU_FILTER_WORDS];
 
 	for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i) 

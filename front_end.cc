@@ -4,10 +4,6 @@
 #define HAVE_BUILTIN_CTZL
 #endif
 
-#ifndef NDEBUG
-#define NDEBUG
-#endif
-
 #include <cassert>
 #include <cstring>
 #include <vector>
