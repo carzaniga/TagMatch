@@ -5,6 +5,7 @@
 #include "config.h"
 #endif
 
+#include <cstdlib>
 #include <vector>
 
 #include "packet.hh"
@@ -20,6 +21,8 @@ public:
 	static void process_batch(unsigned int part, packet ** batch, unsigned int batch_size);
 	static void stop();
 	static void clear();
+
+	static size_t bytesize();
 };
 
 #endif // BACK_END_HH_INCLUDED

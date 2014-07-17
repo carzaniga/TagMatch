@@ -25,29 +25,47 @@ class tree_interface_pair {
 // 
 // ASSUMPTIONS: 
 //   1. the router has at most 2^13 = 8192 interfaces
-//   2. the are at most 2^3 = 8 interfaces
+//   2. the are at most 2^3 = 8 trees
 //
+	uint16_t value;
+
 public:
+	static const unsigned int TREE_OFFSET = 13;
+	static const uint16_t IFX_MASK = (0xFFFF >> (16 - TREE_OFFSET));
+
 	tree_interface_pair(tree_t t, interface_t ifx)
-		: tree(t), interface(ifx) {};
+		: value((t << TREE_OFFSET) | (ifx & IFX_MASK)) {};
 	
 	tree_interface_pair(const tree_interface_pair & p)
-		: tree(p.tree), interface(p.interface) {};
+		: value(p.value) {};
 	
-	tree_t tree : 3;
-	interface_t interface : 13;
-
 	bool operator < (const tree_interface_pair &x) const {
-		return (tree < x.tree || (tree == x.tree && interface < x.interface));
+		return value < x.value;
 	}
 	bool operator == (const tree_interface_pair & rhs) const {
-		return (tree == rhs.tree && interface == rhs.interface);
+		return value == rhs.value;
 	}
 	bool equals(tree_t t, interface_t ifx) const {
-		return (tree == t && interface == ifx) ;
+		return (value == ((t << TREE_OFFSET) | (ifx & IFX_MASK)));
 	}
 	uint16_t get_uint16_value() const {
-		return tree<<13 | interface ;
+		return value;
+	}
+
+	uint16_t tree() const {
+		return value >> TREE_OFFSET;;
+	}
+
+	uint16_t interface() const {
+		return value & IFX_MASK;
+	}
+
+	static uint16_t tree(uint16_t value) {
+		return value >> TREE_OFFSET;;
+	}
+
+	static uint16_t interface(uint16_t value) {
+		return value & IFX_MASK;
 	}
 };
 
@@ -132,12 +150,12 @@ public:
 	}
 
 	const uint32_t uint32_value(unsigned int i) const {
-		return (i % 2) ? (b[i/2] >> 32) : (b[i/2] && 0xffffffff);
+		return (i % 2 == 1) ? (b[i/2] >> 32) : (b[i/2] & 0xffffffffULL);
 	}
 
 	const void copy_into_uint32_array(uint32_t * x) const {
 		for(int i = 0; i < BLOCK_SIZE; ++i) {
-			*x++ = b[i] && 0xffffffff;
+			*x++ = b[i] & 0xffffffff;
 			*x++ = b[i] >> 32;
 		}
 	}
@@ -188,6 +206,11 @@ public:
     void assign(const block_t * p) {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = p[i];
+    }
+
+    prefix & operator = (const prefix & p) {
+		assign(p.b);
+		return *this;
     }
 };
 
@@ -242,24 +265,28 @@ private:
 	//
 	std::atomic<unsigned int> pending_partitions;
 
-public:
 	// Array of flags (0/1) when a flag is set then we have a match on
 	// the corresponding interface.  We could use a bit vector but
 	// this should be faster
 	// 
-    bool output[INTERFACES]; 
+	std::atomic<unsigned char> output[INTERFACES]; 
     
+public:
 	packet(const filter_t f, uint16_t t, uint16_t i)
-		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {};
+		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
+	};
 
 	packet(const std::string & f, uint16_t t, uint16_t i)
-		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {};
+		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
+	};
 
 	packet(const block_t * f, uint16_t t, uint16_t i)
-		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {};
+		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
+	};
 
 	packet(const packet & p) 
-		: network_packet(p), state(FrontEnd), pending_partitions(0) {};
+		: network_packet(p), state(FrontEnd), pending_partitions(0) {
+	};
 
     void add_partition() {
 		++pending_partitions;
@@ -272,16 +299,33 @@ public:
     void reset() {
         state = FrontEnd;
 		pending_partitions = 0;
-		memset(output, 0, sizeof(output));
+		reset_output();
+    }
+
+    void reset_output() {
+		for(unsigned int i = 0; i < INTERFACES; ++i)
+			output[i].store(0);
     }
 
     void frontend_done() {
         state = BackEnd;
     }
 
-    bool is_matching_complete() {
+    bool is_matching_complete() const {
         return (state != FrontEnd) && (pending_partitions == 0);
     }
+
+	bool get_output(unsigned int ifx) const {
+		return (output[ifx].load() == 1);
+	}
+
+	void set_output(unsigned int ifx) {
+		output[ifx].store(1);
+	}
+
+	void reset_output(unsigned int ifx) {
+		output[ifx].store(0);
+	}
 };
 
 #endif // PACKET_HH_INCLUDED

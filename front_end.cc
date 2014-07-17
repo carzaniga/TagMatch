@@ -27,8 +27,6 @@ using std::atomic;
 using std::mutex;
 using std::unique_lock;
 using std::condition_variable;
-using std::atomic_compare_exchange_weak;
-using std::atomic_load;
 
 // ***DESIGN OF THE FORWARDING TABLE***
 //
@@ -165,7 +163,7 @@ public:
 		do {
 			if (!b) 
 				return allocate_one();
-		} while (!atomic_compare_exchange_weak(&head, &b, b->next));
+		} while (!head.compare_exchange_weak(b, b->next));
 
 		return b;
 	}
@@ -173,7 +171,7 @@ public:
 	static void put(batch * b) {
 		b->next = head;
 		do {
-		} while(!atomic_compare_exchange_weak(&head, &(b->next), b));
+		} while(!head.compare_exchange_weak(b->next, b));
 	}
 };
 
@@ -211,14 +209,21 @@ void partition_queue::enqueue(packet * p) {
 	do {
 		while (t == PACKETS_BATCH_SIZE)
 			t = tail;
-	} while(!atomic_compare_exchange_weak(&tail, &t, PACKETS_BATCH_SIZE));
+	} while(!tail.compare_exchange_weak(t, PACKETS_BATCH_SIZE));
 
 	b->packets[t] = p;
+#if 0
+	if (t == 0)
+		update_time_stamp();
+#endif
 	++t;
 
 	if (t == PACKETS_BATCH_SIZE) {
 		batch * bx = b;
 		b = batch_pool::get();
+#if 0
+		reset_time_stamp();
+#endif
 		tail = 0;
 		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
 		batch_pool::put(bx);
@@ -235,7 +240,7 @@ void partition_queue::flush() {
 
 		if (bx_size == 0)
 			return;
-	} while(!atomic_compare_exchange_weak(&tail, &bx_size, PACKETS_BATCH_SIZE));
+	} while(!tail.compare_exchange_weak(bx_size, PACKETS_BATCH_SIZE));
 
 	batch * bx = b;
 	b = batch_pool::get();
@@ -439,7 +444,9 @@ enum front_end_state {
 	FE_INITIAL = 0,
 	FE_MATCHING = 1,
 	FE_FINALIZE_MATCHING = 2,
-	FE_FLUSHING = 3
+	FE_FLUSHING = 3,
+	FE_FINALIZE_FLUSHING = 4,
+	FE_FINAL = 5,
 };
 
 static atomic<front_end_state> processing_state(FE_INITIAL);
@@ -472,6 +479,8 @@ static unsigned int matching_job_queue_tail = 0;		// one-past position of the la
 static atomic<unsigned int> flushing_job_queue_head(0);	// position of the first element 
 static unsigned int flushing_job_queue_tail = 0;		// one-past position of the last element
 
+static unsigned int matching_threads;
+
 // 
 // This is used to enqueue a matching job.  It suspends in a spin loop
 // as long as the queue is full.  
@@ -482,7 +491,7 @@ void front_end::match(packet * pkt) {
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
-	while (tail_plus_one == matching_job_queue_head.load()) {
+	while (tail_plus_one == matching_job_queue_head) {
 		;		// full queue => spin
 	}
 	job_queue[matching_job_queue_tail].p = pkt;
@@ -494,25 +503,29 @@ static void match_loop() {
 	packet * p;
 
 	for(;;) {
-		head = matching_job_queue_head.load();
+		head = matching_job_queue_head;
 		do {
 			while (head == matching_job_queue_tail) {  
 				// empty queue => spin
-				if (processing_state.load() == FE_MATCHING) {
+				if (processing_state == FE_MATCHING) {
 					// if we are still matching, then we loop
-					head = matching_job_queue_head.load();
+					head = matching_job_queue_head;
 					continue;		  
 				} else {
 					// if we are stopped, then we switch to flushing
 					unique_lock<mutex> lock(processing_mtx);
-					processing_state = FE_FLUSHING;
-					processing_cv.notify_all();
+					if (processing_state == FE_FINALIZE_MATCHING) {
+						if (--matching_threads == 0) {
+							processing_state = FE_FLUSHING;
+							processing_cv.notify_all();
+						}
+					}
 					return;
 				}
 			}
 			p = job_queue[head].p;
 			head_plus_one = (head + 1) % JOB_QUEUE_SIZE;
-		} while (!atomic_compare_exchange_weak(&matching_job_queue_head, &head, head_plus_one));
+		} while (!matching_job_queue_head.compare_exchange_weak(head, head_plus_one));
 		match(p);
 	}
 }
@@ -522,13 +535,27 @@ static void flush_loop() {
 	partition_queue * q;
 
 	for(;;) {
-		head = flushing_job_queue_head.load();
+		head = flushing_job_queue_head;
 		do {
-			if (head == flushing_job_queue_tail)
-				return;
+			while (head == flushing_job_queue_tail) {
+				// empty queue => spin
+				if (processing_state == FE_FLUSHING) {
+					// if we are still flushing, then we loop
+					head = flushing_job_queue_head;
+					continue;		  
+				} else {
+					// if we are done, then we terminate
+					unique_lock<mutex> lock(processing_mtx);
+					if (processing_state == FE_FINALIZE_FLUSHING) {
+						processing_state = FE_FINAL;
+						processing_cv.notify_all();
+					}
+					return;
+				}
+			}
 			q = job_queue[head].q;
 			head_plus_one = (head + 1) % JOB_QUEUE_SIZE;
-		} while (!atomic_compare_exchange_weak(&flushing_job_queue_head, &head, head_plus_one));
+		} while (!flushing_job_queue_head.compare_exchange_weak(head, head_plus_one));
 		q->flush();
 	}
 }
@@ -540,12 +567,13 @@ static void flush_loop() {
 static void enqueue_flush_job(partition_queue * q) {
 	unsigned int tail_plus_one = (flushing_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
-	while (tail_plus_one == flushing_job_queue_head.load()) {
+	while (tail_plus_one == flushing_job_queue_head) {
 		// full queue => spin
 		;
 	}
 	job_queue[flushing_job_queue_tail].q = q;
 	flushing_job_queue_tail = tail_plus_one;
+	
 }
 
 static void processing_thread() {
@@ -558,6 +586,7 @@ static vector<thread *> thread_pool;
 void front_end::start(unsigned int threads) {
 	if (processing_state == FE_INITIAL && threads > 0) {
 		processing_state = FE_MATCHING;
+		matching_threads = threads;
 		do {
 			thread_pool.push_back(new thread(processing_thread));
 		} while(--threads > 0);
@@ -591,6 +620,13 @@ void front_end::stop() {
 		for(vector<queue64>::iterator i = pp3[j].p64.begin(); i != pp3[j].p64.end(); ++i) 
 			enqueue_flush_job(&(*i));
 	}
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		processing_state = FE_FINALIZE_FLUSHING;
+		while(processing_state != FE_FINAL)
+			processing_cv.wait(lock);
+	} while(0);
+
 	for(vector<thread *>::iterator i = thread_pool.begin(); i != thread_pool.end(); ++i)
 		(*i)->join();
 

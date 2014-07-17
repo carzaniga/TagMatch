@@ -2,10 +2,11 @@
 #define GPU_HH_INCLUDED
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #define GPU_BLOCK_DIM_X 32
 #define GPU_BLOCK_DIM_Y 32
-#define GPU_BLOCK_SIZE GPU_BLOCK_DIM_X * GPU_BLOCK_DIM_Y // Statc block size of 32*32 (1024)0
+#define GPU_BLOCK_SIZE (GPU_BLOCK_DIM_X*GPU_BLOCK_DIM_Y) // Statc block size of 32*32 (1024)0
 #define GPU_STREAMS 5 
 
 // we use 32-bit words on the GPU
@@ -16,10 +17,15 @@
 
 typedef unsigned char ifx_result_t;
 
+struct gpu_mem_info {
+	size_t free;
+	size_t total;
+};
+
 class gpu {
 public:
 	static void initialize();
-	static void mem_info();
+	static void mem_info(gpu_mem_info *);
 
 	template<typename T>
 	static T * allocate(unsigned int size) {
@@ -42,12 +48,16 @@ public:
 #endif
 
 	static void release_memory(void * p);
+	static void release_pinned_memory(void * p);
 
 	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream);
 	static void async_copy(void * host_src, void * dev_dst, unsigned int size, unsigned int stream);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
 	static void async_get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 								  unsigned int size, unsigned int stream);
+
+	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
+							unsigned int size);
 
 	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
 						   uint16_t * dev_ti_table, unsigned int * ti_table_indexes, 
@@ -56,6 +66,7 @@ public:
 						   unsigned int stream);
 
 	static void synchronize_stream(unsigned int stream);
+	static void synchronize_device();
 	static void shutdown();
 };
 
