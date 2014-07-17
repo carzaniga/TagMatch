@@ -8,7 +8,6 @@
 #include <vector>
 #include <map>
 #include <atomic>
-#include <mutex>
 
 #include "parameters.hh"
 #include "gpu.hh"
@@ -17,7 +16,6 @@
 using std::vector;
 using std::map;
 using std::atomic;
-using std::mutex;
 
 // GENERAL DESIGN:
 //
@@ -182,7 +180,7 @@ static stream_handle stream_handles[GPU_STREAMS];
 
 static atomic<unsigned int> free_stream_handles;
 
-static stream_handle * allocate_stream() {
+static stream_handle * allocate_stream_handle() {
 	unsigned int sp = free_stream_handles;
 	do {
 		while (sp == STREAM_HANDLES_NULL) 
@@ -192,7 +190,7 @@ static stream_handle * allocate_stream() {
 	return stream_handles + sp;
 }
 
-static void release_stream(stream_handle * h) {
+static void release_stream_handle(stream_handle * h) {
 	unsigned int sp = h - stream_handles;
 	h->next = free_stream_handles;
 	do {
@@ -215,31 +213,37 @@ static void destroy_stream_handlers() {
 }
 
 static void compile_fibs() {
-
+	// we first compute the total number of partitions
+	// (dev_partitions_size), the size of the global ti_table
+	// (total_filters), and the necessary number of entries in the
+	// table of tree-interface pairs (host_ti_table_size).  We use
+	// these to initialize the buffers and global data structures.
+	// 
+	// Since we put partitions in a direct-access table, that is, an
+	// array whose index is the partition id, then the size of the
+	// array is the largest partition id plus one.
+	// 
+	dev_partitions_size = 0;
 	unsigned int host_ti_table_size = 0;
-	unsigned int max_part_size = 0;
+	unsigned int total_filters = 0;
 
 	for(tmp_fib_map::const_iterator pi = tmp_fib.begin(); pi != tmp_fib.end(); ++pi) {
-		unsigned int part_size = pi->second.size();
-#if WITH_GPU_FAST_KERNEL
-		if ((part_size % 32))
-			part_size = part_size + 32 - (part_size % 32);
-#endif
-		if(part_size > max_part_size)
-			max_part_size = part_size;
+		unsigned int part_id_plus_one = pi->first + 1;
 
+		if(part_id_plus_one > dev_partitions_size)
+			dev_partitions_size = part_id_plus_one;
+
+		total_filters += pi->second.size();
 		for(f_descr_vector::const_iterator fi = pi->second.begin(); fi != pi->second.end(); ++fi)
 			host_ti_table_size += fi->ti_pairs.size() + 1;
 	}
-
-	dev_partitions = new part_descr[max_part_size];
-	dev_partitions_size = max_part_size;
+	dev_partitions = new part_descr[dev_partitions_size];
 
 	// local buffers to hold the temporary host-side of the fibs
 	// 
 	uint16_t * host_ti_table = new uint16_t[host_ti_table_size];
-	uint32_t * host_rep = new uint32_t[max_part_size * GPU_FILTER_WORDS];
-	uint32_t * host_ti_table_indexes = new uint32_t[max_part_size];
+	uint32_t * host_rep = new uint32_t[total_filters * GPU_FILTER_WORDS];
+	uint32_t * host_ti_table_indexes = new uint32_t[total_filters];
 
 	unsigned int ti_table_curr_pos = 0;
 
@@ -253,19 +257,9 @@ static void compile_fibs() {
 		if ((dev_partitions[part].size % 32))
 			dev_partitions[part].size += 32 - (dev_partitions[part].size % 32);
 #endif
-
-#ifdef DEBUG
-		for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
-			std::cout << std::hex << (~(filters[0].filter.uint32_value(i))) << ' ';
-		std::cout << std::endl;
-#endif
-
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_indexes;
-
 		for(f_descr_vector::const_iterator fi = filters.begin(); fi != filters.end(); ++fi) {
-
-
 			// we now store the index in the global tiff table for this fib entry
 			// 
 			*ti_index++ = ti_table_curr_pos;
@@ -303,17 +297,10 @@ static void compile_fibs() {
 			++host_rep_f;
 		}
 #endif
-		dev_partitions[part].fib 
-			= gpu::allocate_and_copy<uint32_t>(host_rep, 
-											   dev_partitions[part].size*GPU_FILTER_WORDS);
+		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size*GPU_FILTER_WORDS);
 
-		dev_partitions[part].ti_indexes
-			= gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[part].size);
+		dev_partitions[part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[part].size);
 	}
-#ifdef DEBUG
-	std::cout << "ti_table size=" << std::dec << host_ti_table_size << std::endl;
-#endif
-
 	dev_ti_table = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
 
 	delete(host_rep);
@@ -323,15 +310,9 @@ static void compile_fibs() {
 	tmp_fib.clear();
 }
 
-static mutex output_mtx;
-
 void back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size) {
-	stream_handle * sh = allocate_stream();
 
-#if DEBUG
-	std::cout << "process_batch: part=" << part << " batch_size=" << batch_size 
-			  << " stream=" << sh->stream << std::endl;
-#endif
+	stream_handle * sh = allocate_stream_handle();
 
 	// We first copy every packet (filter plus tree-interface pair)
 	// over to the device.  To do that we first assemble the whole
@@ -344,14 +325,8 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	uint32_t * curr_p_buf = p_buf;
 
 	for(unsigned int i = 0; i < batch_size; ++i) {
-
-#ifdef WITH_UNSAFE_FILTER_COPY
-		memcpy(curr_p_buf, batch[i]->filter.begin(), GPU_FILTER_WORDS * GPU_WORD_SIZE);
-		curr_p_buf += GPU_FILTER_WORDS;
-#else
 		for(int j = 0; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-#endif
 		ti_buf[i] = batch[i]->ti_pair.get_uint16_value();
 	}
 
@@ -359,8 +334,8 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	gpu::async_copy(ti_buf, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
 	gpu::async_set_zero(sh->dev_results, batch_size*INTERFACES*sizeof(ifx_result_t), sh->stream);
 
-	const part_descr & p = dev_partitions[part];
-	gpu::run_kernel(p.fib, p.size, dev_ti_table, p.ti_indexes, 
+	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
+					dev_ti_table, dev_partitions[part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
 					sh->dev_results, 
 					sh->stream);
@@ -368,23 +343,13 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	gpu::async_get_results(sh->host_results, sh->dev_results, batch_size, sh->stream);
 	gpu::synchronize_stream(sh->stream);
 
-#if 0
 	ifx_result_t * result = sh->host_results;
-	for(unsigned int i = 0; i < batch_size; ++i) {
-		for(unsigned int j = 0; j < INTERFACES; ++j) {
-			if (*result == 1)
-				batch[i]->output[j] = 1;
-			++result;
-		}
-	}
-#else
 	for(unsigned int i = 0; i < batch_size; ++i) 
 		for(unsigned int j = 0; j < INTERFACES; ++j) 
-			if (sh->host_results[i*INTERFACES + j] == 1) {
+			if (*result++ == 1)
 				batch[i]->set_output(j);
-			}
-#endif
-	release_stream(sh);
+
+	release_stream_handle(sh);
 }
 
 static size_t back_end_memory = 0;
@@ -410,7 +375,6 @@ void back_end::stop() {
 }
 
 void back_end::clear() {
-	return;
 	if (dev_partitions) {
 		for(unsigned int i = 0; i < dev_partitions_size; ++i)
 			dev_partitions[i].clear();
@@ -422,6 +386,5 @@ void back_end::clear() {
 		gpu::release_memory(dev_ti_table);
 		dev_ti_table = 0;
 	}
-
 	destroy_stream_handlers();
 }
