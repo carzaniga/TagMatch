@@ -248,13 +248,13 @@ public:
 	// Flush the first pending queue.  Returns false when no pending
 	// queue is found.
 	// 
-	static bool flush_first_pending();
+	static partition_queue * first_pending();
 
 	// Flush the first pending queue whose current latency is greater
 	// than the given limit.  Returns false if no such pending queue
 	// is found.
 	// 
-	static bool flush_first_pending(milliseconds latency_limit);
+	static partition_queue * first_pending(milliseconds latency_limit);
 
 
 	unsigned int get_flush_count() const {
@@ -314,33 +314,35 @@ void partition_queue::remove_from_pending_pq_list() {
 	prev_pending->next_pending = next_pending;
 }
 
-bool partition_queue::flush_first_pending(milliseconds latency_limit) {
-	partition_queue * q;
-	do {
-		std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
-		q = pending_pq_list.next_pending;
-		if (q == &pending_pq_list)
-			return false;
-		milliseconds current_latency 
-			= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
+partition_queue * partition_queue::first_pending(milliseconds latency_limit) {
+	// we don't care about synchronizing this operation, since it is
+	// the flush operation on q that really matters, and that removes
+	// q from the pending list.
+	// 
+	// So, two threads might grab the same pending queue, but then
+	// only one will succeed, and the other one will simply waste some
+	// cycles.
+	// 
+	partition_queue * q = pending_pq_list.next_pending;
+	if (q == &pending_pq_list)
+		return 0;
 
-		if (current_latency < latency_limit)
-			return false;
-	} while(0);
-	q->flush();
-	return true;
+	milliseconds current_latency 
+		= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
+	if (current_latency < latency_limit)
+		return 0;
+
+	return q;
 }
 
-bool partition_queue::flush_first_pending() {
-	partition_queue * q;
-	do {
-		std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
-		q = pending_pq_list.next_pending;
-		if (q == &pending_pq_list)
-			return false;
-	} while(0);
-	q->flush();
-	return true;
+partition_queue * partition_queue::first_pending() {
+	// We don't care to synchronize this operation; see comment above.
+	// 
+	partition_queue * q = pending_pq_list.next_pending;
+	if (q == &pending_pq_list)
+		return 0;
+
+	return q;
 }
 
 void partition_queue::enqueue(packet * p) {
@@ -674,8 +676,9 @@ static void match_loop() {
 
 	for(;;) {
 		if (flush_limit > milliseconds(0)) {
-			while(partition_queue::flush_first_pending(flush_limit))
-			;
+			partition_queue * q;
+			while((q = partition_queue::first_pending(flush_limit)))
+				q->flush();
 		}
 		head = matching_job_queue_head;
 		do {
