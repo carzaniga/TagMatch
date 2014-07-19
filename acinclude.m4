@@ -58,6 +58,15 @@ AC_ARG_ENABLE(debugging,
 dnl
 dnl AC_OPT_ASSERTIONS
 dnl
+AC_DEFUN([AC_OPT_FRONTEND_STATS], [
+AC_ARG_ENABLE(frontend-statistics, 
+  AC_HELP_STRING([--enable-frontend-statistics],
+	[enable front-end statistics (default is NO)]), 
+  [ AC_DEFINE(WITH_FRONTEND_STATISTICS, 1, [Enable front-end statistics])])
+])
+dnl
+dnl AC_OPT_ASSERTIONS
+dnl
 AC_DEFUN([AC_OPT_ASSERTIONS], [
 AC_ARG_ENABLE(assertions, 
   AC_HELP_STRING([--enable-assertions],

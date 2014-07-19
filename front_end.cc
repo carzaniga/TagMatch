@@ -11,6 +11,11 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <chrono>
+
+#ifdef WITH_FRONTEND_STATISTICS
+#include <iostream>
+#endif
 
 #include "parameters.hh"
 #include "packet.hh"
@@ -23,6 +28,15 @@ using std::atomic;
 using std::mutex;
 using std::unique_lock;
 using std::condition_variable;
+
+#ifdef WITH_FRONTEND_STATISTICS
+using std::chrono::high_resolution_clock;
+using std::chrono::milliseconds;
+using std::chrono::duration_values;
+using std::chrono::duration;
+using std::chrono::duration_cast;
+using std::ostream;
+#endif
 
 // ***DESIGN OF THE FORWARDING TABLE***
 //
@@ -178,11 +192,26 @@ class partition_queue {
 	unsigned int partition_id;
 	atomic<unsigned int> tail; //one-past the last element
 	batch * b;
+#ifdef WITH_FRONTEND_STATISTICS
+	unsigned int flush_count;
+	unsigned int enqueue_count;
+	high_resolution_clock::time_point first_enqueue_time;
+    milliseconds max_latency;
+#endif
 
 public:
-	partition_queue() : partition_id(0), tail(0), b(0) {};
+	partition_queue() : partition_id(0), tail(0), b(0)
+#ifdef WITH_FRONTEND_STATISTICS
+		, flush_count(0), enqueue_count(0)
+#endif
+		{};
 	partition_queue(const partition_queue & pq) 
-		: partition_id(pq.partition_id), b(pq.b) {
+		: partition_id(pq.partition_id), b(pq.b)
+#ifdef WITH_FRONTEND_STATISTICS
+		, flush_count(pq.flush_count), enqueue_count(pq.enqueue_count), 
+		  max_latency(pq.max_latency)
+#endif
+		{
 		unsigned int tmp = pq.tail;
 		tail = tmp;
 	};
@@ -191,10 +220,50 @@ public:
 		partition_id = id; 
 		tail = 0;
 		b = batch_pool::get();
+#ifdef WITH_FRONTEND_STATISTICS
+		flush_count = 0;
+		enqueue_count = 0;
+		max_latency = std::chrono::milliseconds(0);
+#endif
 	}
 
 	void enqueue(packet * p);
 	void flush();
+
+#ifdef WITH_FRONTEND_STATISTICS
+	unsigned int get_flush_count() const {
+		return flush_count;
+	}
+
+	unsigned int get_enqueue_count() const {
+		return enqueue_count;
+	}
+
+	unsigned int get_partition_id() const {
+		return partition_id;
+	}
+
+	unsigned int get_max_latency_ms() const {
+		return max_latency.count();
+	}
+
+	ostream & print_statistics(ostream & os) const {
+		os << "part=" << partition_id
+		   << " enqueue_count=" << enqueue_count
+		   << " flush_count=" << flush_count
+		   << " max_latency=" << max_latency.count() << "ms"
+		   << std::endl;
+		return os;
+	}
+
+	void update_flush_statistics() {
+		flush_count += 1;
+		milliseconds latency 
+			= duration_cast<milliseconds>(high_resolution_clock::now() - first_enqueue_time);
+		if (latency > max_latency)
+			max_latency = latency;
+	}
+#endif
 };
 
 void partition_queue::enqueue(packet * p) {
@@ -207,18 +276,19 @@ void partition_queue::enqueue(packet * p) {
 			t = tail;
 	} while(!tail.compare_exchange_weak(t, PACKETS_BATCH_SIZE));
 
-	b->packets[t] = p;
-#if 0
+#ifdef WITH_FRONTEND_STATISTICS
+	enqueue_count += 1;
 	if (t == 0)
-		update_time_stamp();
+		first_enqueue_time = high_resolution_clock::now();
 #endif
+	b->packets[t] = p;
 	++t;
 
 	if (t == PACKETS_BATCH_SIZE) {
 		batch * bx = b;
 		b = batch_pool::get();
-#if 0
-		reset_time_stamp();
+#ifdef WITH_FRONTEND_STATISTICS
+		update_flush_statistics();
 #endif
 		tail = 0;
 		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
@@ -240,8 +310,10 @@ void partition_queue::flush() {
 
 	batch * bx = b;
 	b = batch_pool::get();
+#ifdef WITH_FRONTEND_STATISTICS
+	update_flush_statistics();
+#endif
 	tail = 0;
-
 	back_end::process_batch(partition_id, bx->packets, bx_size);
 	batch_pool::put(bx);
 }
@@ -285,6 +357,13 @@ public:
 	void clear() {
 		p64.clear();
 	}
+#ifdef WITH_FRONTEND_STATISTICS
+	ostream & print_statistics(ostream & os) {
+		for(vector<queue64>::const_iterator i = p64.begin(); i != p64.end(); ++i)
+			i->print_statistics(os);
+		return os;
+	}
+#endif
 };
 
 // 
@@ -308,6 +387,14 @@ public:
 		p128.clear();
 		p3_container::clear();
 	}
+
+#ifdef WITH_FRONTEND_STATISTICS
+	ostream & print_statistics(ostream & os) {
+		for(vector<queue128>::const_iterator i = p128.begin(); i != p128.end(); ++i)
+			i->print_statistics(os);
+		return p3_container::print_statistics(os);
+	}
+#endif
 };
 
 // 
@@ -330,6 +417,13 @@ public:
 		p192.clear();
 		p2_container::clear();
 	}
+#ifdef WITH_FRONTEND_STATISTICS
+	ostream & print_statistics(ostream & os) {
+		for(vector<queue192>::const_iterator i = p192.begin(); i != p192.end(); ++i)
+			i->print_statistics(os);
+		return p2_container::print_statistics(os);
+	}
+#endif
 };
 
 static p1_container pp1[64];
@@ -639,3 +733,14 @@ void front_end::clear() {
 	}
 	batch_pool::clear();
 }
+
+#ifdef WITH_FRONTEND_STATISTICS
+ostream & front_end::print_statistics(ostream & os) {
+	for(int i = 0; i < 64; ++i) {
+		pp1[i].print_statistics(os);
+		pp2[i].print_statistics(os);
+		pp3[i].print_statistics(os);
+	}
+	return os;
+}
+#endif

@@ -8,6 +8,7 @@
 #include <vector>
 #include <chrono>
 #include <string>
+#include <cstdlib>
 
 #include "front_end.hh"
 #include "back_end.hh"
@@ -24,7 +25,7 @@ using std::chrono::high_resolution_clock;
 using std::chrono::nanoseconds;
 using std::chrono::duration_cast;
 
-int read_prefixes(const char * fname) {
+static int read_prefixes(const char * fname) {
 	ifstream is(fname);
 	string line;
 	if (!is)
@@ -50,8 +51,7 @@ int read_prefixes(const char * fname) {
 	return 0;
 }
 
-
-int read_filters(string fname) {
+static int read_filters(string fname) {
 	ifstream is (fname) ;
 	string line;
 
@@ -84,7 +84,7 @@ int read_filters(string fname) {
 	return 0;
 }
 
-int read_queries(vector<packet> & packets, string fname) {
+static int read_queries(vector<packet> & packets, string fname) {
 	ifstream is (fname) ;
 	string line;
 
@@ -110,17 +110,31 @@ int read_queries(vector<packet> & packets, string fname) {
 	return 0;
 }
 
-void print_usage(const char * progname) {
+static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
-		 << " [-q|-M] p=prefix_file_name f=filters_file_name q=queries_file_name"
-		 << endl;
+		 << " [options] " 
+		"p=<prefix-file-name> f=<filters-file-name> q=<queries-file-name>"
+		 << endl
+		 << "options:" << endl
+		 << "\t-q\t: disable output of matching results" << endl
+		 << "\t-Q\t: disable output of progress steps" << endl
+		 << "\tt=<N>\t: runs front-end with N threads (default=" << DEFAULT_THREAD_COUNT << ")" << endl
+#ifdef WITH_FRONTEND_STATISTICS
+		 << "\t-s\t: enable output of front-end statistics" << endl
+#endif
+		;
 }
+
 int main(int argc, const char * argv[]) {
-	bool print_output = true;
-	bool print_output_only = false;
+#ifdef WITH_FRONTEND_STATISTICS
+	bool print_statistics = false;
+#endif
+	bool print_matching_results = true;
+	bool print_progress_steps = true;
 	const char * prefixes_fname = 0;
 	const char * filters_fname = 0;
 	const char * queries_fname = 0; 
+	unsigned int thread_count = DEFAULT_THREAD_COUNT;
 
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"p=",2)==0) {
@@ -136,11 +150,21 @@ int main(int argc, const char * argv[]) {
 			continue;
 		}
 		if (strncmp(argv[i],"-q",2)==0) {
-			print_output = false;
+			print_matching_results = false;
 			continue;
 		}
-		if (strncmp(argv[i],"-M",2)==0) {
-			print_output_only = true;
+		if (strncmp(argv[i],"-Q",2)==0) {
+			print_progress_steps = false;
+			continue;
+		}
+#ifdef WITH_FRONTEND_STATISTICS
+		if (strncmp(argv[i],"-s",2)==0) {
+			print_statistics = true;
+			continue;
+		}
+#endif
+		if (strncmp(argv[i],"t=",2)==0) {
+			thread_count = atoi(argv[i] + 2);
 			continue;
 		}
 
@@ -155,42 +179,46 @@ int main(int argc, const char * argv[]) {
 		return 1;
 	}		
 
-	if (!print_output_only)
+	if (print_progress_steps)
 		cout << "Reading prefixes..." << std::flush;
 	if (read_prefixes(prefixes_fname) != 0) {
 		cerr << endl << "couldn't read prefix file: " << prefixes_fname << endl;
 		return 1;
 	};
+	if (print_progress_steps)
+		cout << "done." << endl;
 	
-	if (!print_output_only)
-		cout << endl << "Reading filters..." << std::flush;
+	if (print_progress_steps)
+		cout << "Reading filters..." << std::flush;
 	if (read_filters(filters_fname) != 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
+	if (print_progress_steps)
+		cout << "done." << endl;
 	
 	vector<packet> packets;
 	
-	if (!print_output_only)
-		cout << endl << "Reading packets..." << std::flush;
+	if (print_progress_steps)
+		cout << "Reading packets..." << std::flush;
 	if (read_queries(packets, queries_fname) != 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
-	if (!print_output_only) {
-		cout << endl << "Packets: " << packets.size() << endl;
+	if (print_progress_steps) {
+		cout << "done." << endl << "Packets: " << packets.size() << endl;
 
 		cout << "Back-end FIB compilation..." << std::flush;
 	}
 	back_end::start();
+	if (print_progress_steps) {
+		cout << "done." << endl
+			 << "Back-end memory in use: " << back_end::bytesize()/(1024*1024) << "MB" << endl;
 
-	if (!print_output_only) {
-		cout << endl << "Back-end memory in use: " << back_end::bytesize()/(1024*1024) << "MB" << endl;
-
-		cout << "Front-end starts matching with " << THREAD_COUNT << " threads..." << std::flush;
+		cout << "Front-end starts matching with " << thread_count << " threads..." << std::flush;
 	}
 
-	front_end::start(THREAD_COUNT);
+	front_end::start(thread_count);
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
@@ -202,19 +230,29 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
-	if (!print_output_only)
-		cout << endl << "Clearing back-end." << endl;
+	if (print_progress_steps)
+		cout << "done." << endl;
+
+#ifdef WITH_FRONTEND_STATISTICS
+	if (print_statistics) {
+		cout << "Front-end Statistics:" << endl;
+		front_end::print_statistics(cout);
+	}
+#endif
+
+	if (print_progress_steps)
+		cout << "Clearing back-end." << endl;
 	back_end::clear();
 
-	if (!print_output_only)
+	if (print_progress_steps)
 		cout << "Clearing front-end." << endl;
 	front_end::clear();
 
     nanoseconds ns = duration_cast<nanoseconds>(stop - start);
-	if (!print_output_only)
+	if (print_progress_steps)
 		cout << "Average matching time: " << ns.count()/packets.size() << "ns" << endl;
 
-	if (print_output) {
+	if (print_matching_results) {
 		for(vector<packet>::const_iterator p = packets.begin(); p != packets.end(); ++p) {
 			if (p->is_matching_complete()) {
 				for(unsigned i = 0; i < INTERFACES; ++i) 

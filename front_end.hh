@@ -5,6 +5,10 @@
 #include "config.h"
 #endif
 
+#ifdef WITH_FRONTEND_STATISTICS
+#include <iostream>
+#endif
+
 #include "packet.hh"
 
 /// add a prefix f of length n to the front end FIB
@@ -16,6 +20,9 @@ public:
 	static void match(packet * p);
 	static void stop();
 	static void clear();
+#ifdef WITH_FRONTEND_STATISTICS
+	static std::ostream & print_statistics(std::ostream &);
+#endif
 };
 
 #endif // FRONT_END_HH_INCLUDED
