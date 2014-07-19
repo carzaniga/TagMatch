@@ -5,9 +5,7 @@
 #include "config.h"
 #endif
 
-#ifdef WITH_FRONTEND_STATISTICS
 #include <iostream>
-#endif
 
 #include "packet.hh"
 
@@ -20,9 +18,9 @@ public:
 	static void match(packet * p);
 	static void stop();
 	static void clear();
-#ifdef WITH_FRONTEND_STATISTICS
 	static std::ostream & print_statistics(std::ostream &);
-#endif
+	static unsigned int get_latency_limit_ms();
+	static void set_latency_limit_ms(unsigned int);
 };
 
 #endif // FRONT_END_HH_INCLUDED

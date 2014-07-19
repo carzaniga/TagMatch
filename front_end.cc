@@ -13,9 +13,7 @@
 #include <thread>
 #include <chrono>
 
-#ifdef WITH_FRONTEND_STATISTICS
 #include <iostream>
-#endif
 
 #include "parameters.hh"
 #include "packet.hh"
@@ -29,14 +27,12 @@ using std::mutex;
 using std::unique_lock;
 using std::condition_variable;
 
-#ifdef WITH_FRONTEND_STATISTICS
 using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 using std::chrono::duration_values;
 using std::chrono::duration;
 using std::chrono::duration_cast;
 using std::ostream;
-#endif
 
 // ***DESIGN OF THE FORWARDING TABLE***
 //
@@ -119,9 +115,11 @@ static inline int leftmost_bit(uint64_t x) {
 }
 #endif
 
-// We implement the queues asso using a floating batch of packets.  We
-// allocate and recycle these batches using a pool based on a free
-// list that we access using a lock-free algorithm.
+// We implement the partition queues using a floating batch of
+// packets.  The queues remain associated with their partition, but
+// the packet batches (buffers) are independent object that we
+// allocate and then recycle using a pool based on a free list that we
+// access using a lock-free algorithm.
 // 
 class batch_pool;
 
@@ -135,7 +133,7 @@ public:
 	packet * packets[PACKETS_BATCH_SIZE];
 };
 
-// This is a free-list allocator of batches. 
+// A free-list allocator of packet batches.
 // 
 class batch_pool {
 private:
@@ -188,30 +186,49 @@ public:
 vector<batch *> batch_pool::pool;
 atomic<batch *> batch_pool::head(0);
 
+// This class implements a central component of the front end, namely
+// the queue of messages associated with each partition and used to
+// buffer packets between the front end and the back end.
+// 
 class partition_queue {
+	// primary information:
+	// 
 	unsigned int partition_id;
-	atomic<unsigned int> tail; //one-past the last element
-	batch * b;
-#ifdef WITH_FRONTEND_STATISTICS
+	atomic<unsigned int> tail; // one-past the last element
+	batch * b;				   // packet buffer
+
+	// statistics and timing information
+	// 
 	unsigned int flush_count;
 	unsigned int enqueue_count;
 	high_resolution_clock::time_point first_enqueue_time;
     milliseconds max_latency;
-#endif
+
+	// We also maintain a (global) list of pending queues.  These are
+	// queues with at least one element, that therefore need to be
+	// flushed to the back-end.  We add each queue to the back of the
+	// list when we enqueue the first packet, and we remove the queue
+	// from the list whenever we flush the queue.  We use these two
+	// pointers, plus a static (global) "sentinel" to implement the
+	// list in the most efficient and simple way.
+	// 
+	partition_queue * prev_pending;
+	partition_queue * next_pending;
+
+	void add_to_pending_pq_list();
+	void remove_from_pending_pq_list();
 
 public:
-	partition_queue() : partition_id(0), tail(0), b(0)
-#ifdef WITH_FRONTEND_STATISTICS
-		, flush_count(0), enqueue_count(0)
-#endif
+	partition_queue() 
+		: partition_id(0), tail(0), b(0),
+		  flush_count(0), enqueue_count(0),
+		  prev_pending(this), next_pending(this)
 		{};
+
 	partition_queue(const partition_queue & pq) 
-		: partition_id(pq.partition_id), b(pq.b)
-#ifdef WITH_FRONTEND_STATISTICS
-		, flush_count(pq.flush_count), enqueue_count(pq.enqueue_count), 
-		  max_latency(pq.max_latency)
-#endif
-		{
+		: partition_id(pq.partition_id), b(pq.b),
+		  flush_count(pq.flush_count), enqueue_count(pq.enqueue_count), 
+		  max_latency(pq.max_latency) {
 		unsigned int tmp = pq.tail;
 		tail = tmp;
 	};
@@ -220,17 +237,26 @@ public:
 		partition_id = id; 
 		tail = 0;
 		b = batch_pool::get();
-#ifdef WITH_FRONTEND_STATISTICS
 		flush_count = 0;
 		enqueue_count = 0;
 		max_latency = std::chrono::milliseconds(0);
-#endif
 	}
 
 	void enqueue(packet * p);
 	void flush();
 
-#ifdef WITH_FRONTEND_STATISTICS
+	// Flush the first pending queue.  Returns false when no pending
+	// queue is found.
+	// 
+	static bool flush_first_pending();
+
+	// Flush the first pending queue whose current latency is greater
+	// than the given limit.  Returns false if no such pending queue
+	// is found.
+	// 
+	static bool flush_first_pending(milliseconds latency_limit);
+
+
 	unsigned int get_flush_count() const {
 		return flush_count;
 	}
@@ -256,6 +282,10 @@ public:
 		return os;
 	}
 
+	high_resolution_clock::time_point get_first_enqueue_time() {
+		return first_enqueue_time;
+	}
+
 	void update_flush_statistics() {
 		flush_count += 1;
 		milliseconds latency 
@@ -263,8 +293,55 @@ public:
 		if (latency > max_latency)
 			max_latency = latency;
 	}
-#endif
 };
+
+// This is the sentinel of the list of pending partition queues.
+// 
+static partition_queue pending_pq_list;
+static mutex pending_pq_list_mtx;
+
+void partition_queue::add_to_pending_pq_list() {
+    std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
+	next_pending = &pending_pq_list;
+	prev_pending = pending_pq_list.prev_pending;
+	pending_pq_list.prev_pending->next_pending = this;
+	pending_pq_list.prev_pending = this;
+}
+
+void partition_queue::remove_from_pending_pq_list() {
+    std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
+	next_pending->prev_pending = prev_pending;
+	prev_pending->next_pending = next_pending;
+}
+
+bool partition_queue::flush_first_pending(milliseconds latency_limit) {
+	partition_queue * q;
+	do {
+		std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
+		q = pending_pq_list.next_pending;
+		if (q == &pending_pq_list)
+			return false;
+		milliseconds current_latency 
+			= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
+
+		if (current_latency < latency_limit)
+			return false;
+	} while(0);
+	q->flush();
+	return true;
+}
+
+bool partition_queue::flush_first_pending() {
+	partition_queue * q;
+	do {
+		std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
+		q = pending_pq_list.next_pending;
+		if (q == &pending_pq_list)
+			return false;
+	} while(0);
+	q->flush();
+	return true;
+}
 
 void partition_queue::enqueue(packet * p) {
 	assert(tail <= PACKETS_BATCH_SIZE);
@@ -276,25 +353,23 @@ void partition_queue::enqueue(packet * p) {
 			t = tail;
 	} while(!tail.compare_exchange_weak(t, PACKETS_BATCH_SIZE));
 
-#ifdef WITH_FRONTEND_STATISTICS
 	enqueue_count += 1;
-	if (t == 0)
-		first_enqueue_time = high_resolution_clock::now();
-#endif
 	b->packets[t] = p;
 	++t;
-
 	if (t == PACKETS_BATCH_SIZE) {
 		batch * bx = b;
 		b = batch_pool::get();
-#ifdef WITH_FRONTEND_STATISTICS
 		update_flush_statistics();
-#endif
+		remove_from_pending_pq_list();
 		tail = 0;
 		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
 		batch_pool::put(bx);
-	} else {
+	} else  {
 		tail = t;
+		if (t == 1) {
+			first_enqueue_time = high_resolution_clock::now();
+			add_to_pending_pq_list();
+		}
 	}
 }
 
@@ -310,9 +385,8 @@ void partition_queue::flush() {
 
 	batch * bx = b;
 	b = batch_pool::get();
-#ifdef WITH_FRONTEND_STATISTICS
 	update_flush_statistics();
-#endif
+	remove_from_pending_pq_list();
 	tail = 0;
 	back_end::process_batch(partition_id, bx->packets, bx_size);
 	batch_pool::put(bx);
@@ -357,13 +431,12 @@ public:
 	void clear() {
 		p64.clear();
 	}
-#ifdef WITH_FRONTEND_STATISTICS
+
 	ostream & print_statistics(ostream & os) {
 		for(vector<queue64>::const_iterator i = p64.begin(); i != p64.end(); ++i)
 			i->print_statistics(os);
 		return os;
 	}
-#endif
 };
 
 // 
@@ -388,13 +461,11 @@ public:
 		p3_container::clear();
 	}
 
-#ifdef WITH_FRONTEND_STATISTICS
 	ostream & print_statistics(ostream & os) {
 		for(vector<queue128>::const_iterator i = p128.begin(); i != p128.end(); ++i)
 			i->print_statistics(os);
 		return p3_container::print_statistics(os);
 	}
-#endif
 };
 
 // 
@@ -417,13 +488,12 @@ public:
 		p192.clear();
 		p2_container::clear();
 	}
-#ifdef WITH_FRONTEND_STATISTICS
+
 	ostream & print_statistics(ostream & os) {
 		for(vector<queue192>::const_iterator i = p192.begin(); i != p192.end(); ++i)
 			i->print_statistics(os);
 		return p2_container::print_statistics(os);
 	}
-#endif
 };
 
 static p1_container pp1[64];
@@ -588,11 +658,25 @@ void front_end::match(packet * pkt) {
 	matching_job_queue_tail = tail_plus_one;
 }
 
+static milliseconds flush_limit(0);
+
+unsigned int front_end::get_latency_limit_ms() {
+	return flush_limit.count();
+}
+
+void front_end::set_latency_limit_ms(unsigned int l) {
+	flush_limit = milliseconds(l);
+}
+
 static void match_loop() {
 	unsigned int head, head_plus_one;
 	packet * p;
 
 	for(;;) {
+		if (flush_limit > milliseconds(0)) {
+			while(partition_queue::flush_first_pending(flush_limit))
+			;
+		}
 		head = matching_job_queue_head;
 		do {
 			while (head == matching_job_queue_tail) {  
@@ -734,7 +818,6 @@ void front_end::clear() {
 	batch_pool::clear();
 }
 
-#ifdef WITH_FRONTEND_STATISTICS
 ostream & front_end::print_statistics(ostream & os) {
 	for(int i = 0; i < 64; ++i) {
 		pp1[i].print_statistics(os);
@@ -743,4 +826,3 @@ ostream & front_end::print_statistics(ostream & os) {
 	}
 	return os;
 }
-#endif

@@ -118,17 +118,13 @@ static void print_usage(const char * progname) {
 		 << "options:" << endl
 		 << "\t-q\t: disable output of matching results" << endl
 		 << "\t-Q\t: disable output of progress steps" << endl
-		 << "\tt=<N>\t: runs front-end with N threads (default=" << DEFAULT_THREAD_COUNT << ")" << endl
-#ifdef WITH_FRONTEND_STATISTICS
 		 << "\t-s\t: enable output of front-end statistics" << endl
-#endif
-		;
+		 << "\tt=<N>\t: runs front-end with N threads (default=" << DEFAULT_THREAD_COUNT << ")" << endl
+		 << "\tl=<L>\t: runs front-end with a latency limit of L milliseconds (default=no limit)" << endl;
 }
 
 int main(int argc, const char * argv[]) {
-#ifdef WITH_FRONTEND_STATISTICS
 	bool print_statistics = false;
-#endif
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
 	const char * prefixes_fname = 0;
@@ -140,35 +136,36 @@ int main(int argc, const char * argv[]) {
 		if (strncmp(argv[i],"p=",2)==0) {
 			prefixes_fname = argv[i] + 2;
 			continue;
-		}
+		} else 
 		if (strncmp(argv[i],"f=",2)==0) {
 			filters_fname = argv[i] + 2;
 			continue;
-		}
+		} else
 		if (strncmp(argv[i],"q=",2)==0) {
 			queries_fname = argv[i] + 2;
 			continue;
-		}
+		} else
 		if (strncmp(argv[i],"-q",2)==0) {
 			print_matching_results = false;
 			continue;
-		}
+		} else
 		if (strncmp(argv[i],"-Q",2)==0) {
 			print_progress_steps = false;
 			continue;
-		}
-#ifdef WITH_FRONTEND_STATISTICS
+		} else
 		if (strncmp(argv[i],"-s",2)==0) {
 			print_statistics = true;
 			continue;
-		}
-#endif
+		} else
 		if (strncmp(argv[i],"t=",2)==0) {
 			thread_count = atoi(argv[i] + 2);
 			continue;
-		}
-
-		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
+		} else
+		if (strncmp(argv[i],"l=",2)==0) {
+			unsigned int latency_limit = atoi(argv[i] + 2);
+			front_end::set_latency_limit_ms(latency_limit);
+			continue;
+		} else {
 			print_usage(argv[0]);
 			return 1;
 		}
@@ -215,7 +212,7 @@ int main(int argc, const char * argv[]) {
 		cout << "done." << endl
 			 << "Back-end memory in use: " << back_end::bytesize()/(1024*1024) << "MB" << endl;
 
-		cout << "Front-end starts matching with " << thread_count << " threads..." << std::flush;
+		cout << "Matching packets with " << thread_count << " threads..." << std::flush;
 	}
 
 	front_end::start(thread_count);
@@ -233,12 +230,10 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "done." << endl;
 
-#ifdef WITH_FRONTEND_STATISTICS
 	if (print_statistics) {
 		cout << "Front-end Statistics:" << endl;
 		front_end::print_statistics(cout);
 	}
-#endif
 
 	if (print_progress_steps)
 		cout << "Clearing back-end." << endl;
