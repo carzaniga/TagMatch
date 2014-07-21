@@ -3,6 +3,7 @@
 #endif
 
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -29,8 +30,9 @@ static int read_prefixes(const char * fname) {
 	ifstream is(fname);
 	string line;
 	if (!is)
-		return 1;
+		return -1;
 
+	int res = 0;
 	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
@@ -46,9 +48,10 @@ static int read_prefixes(const char * fname) {
 		filter_t f(prefix_string);
 
 		front_end::add_prefix(prefix_id, f, prefix_string.size());
+		++res;
 	}
 	is.close();
-	return 0;
+	return res;
 }
 
 static int read_filters(string fname) {
@@ -56,8 +59,9 @@ static int read_filters(string fname) {
 	string line;
 
 	if (!is)
-		return 1;
+		return -1;
 
+	int res = 0;
 	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
@@ -80,17 +84,19 @@ static int read_filters(string fname) {
 			ti_pairs.push_back(tree_interface_pair(tree, iface));
 
 		back_end::add_filter(partition_id, f, ti_pairs.begin(), ti_pairs.end());
+		++res;
 	}
-	return 0;
+	return res;
 }
 
-static int read_queries(vector<packet> & packets, string fname) {
+static unsigned int read_queries(vector<packet> & packets, string fname) {
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
-		return 1;
+		return -1;
 
+	int res = 0;
 	while(getline(is, line)) {
 		istringstream line_s(line);
 		string command;
@@ -106,8 +112,9 @@ static int read_queries(vector<packet> & packets, string fname) {
 
 		packets.emplace_back(filter_string, tree, iface);
 		packets.back().reset_output();
+		++res;
 	}
-	return 0;
+	return res;
 }
 
 static void print_usage(const char * progname) {
@@ -176,41 +183,46 @@ int main(int argc, const char * argv[]) {
 		return 1;
 	}		
 
+	int res;
+
 	if (print_progress_steps)
 		cout << "Reading prefixes..." << std::flush;
-	if (read_prefixes(prefixes_fname) != 0) {
+	if ((res = read_prefixes(prefixes_fname)) < 0) {
 		cerr << endl << "couldn't read prefix file: " << prefixes_fname << endl;
 		return 1;
 	};
 	if (print_progress_steps)
-		cout << "done." << endl;
+		cout << "\t\t\t" << std::setw(12) << res << " prefixes." << endl;
 	
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
-	if (read_filters(filters_fname) != 0) {
+	if ((res = read_filters(filters_fname)) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
 	if (print_progress_steps)
-		cout << "done." << endl;
+		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 	
 	vector<packet> packets;
 	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
-	if (read_queries(packets, queries_fname) != 0) {
+	if (read_queries(packets, queries_fname) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
-	if (print_progress_steps) {
-		cout << "done." << endl << "Packets: " << packets.size() << endl;
+	if (print_progress_steps) 
+		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
 
+
+	if (print_progress_steps) 
 		cout << "Back-end FIB compilation..." << std::flush;
-	}
+
 	back_end::start();
+
 	if (print_progress_steps) {
-		cout << "done." << endl
-			 << "Back-end memory in use: " << back_end::bytesize()/(1024*1024) << "MB" << endl;
+		cout << "\t\t" << std::setw(10) 
+			 << back_end::bytesize()/(1024*1024) << "MB back-end FIB" << endl;
 
 		cout << "Matching packets with " << thread_count << " threads..." << std::flush;
 	}
@@ -227,25 +239,18 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
-	if (print_progress_steps)
-		cout << "done." << endl;
+	if (print_progress_steps) 
+		cout << "\t" << std::setw(10)
+			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
+			 << "ns average matching time." << endl;
 
 	if (print_statistics) {
 		cout << "Front-end Statistics:" << endl;
 		front_end::print_statistics(cout);
 	}
 
-	if (print_progress_steps)
-		cout << "Clearing back-end." << endl;
 	back_end::clear();
-
-	if (print_progress_steps)
-		cout << "Clearing front-end." << endl;
 	front_end::clear();
-
-    nanoseconds ns = duration_cast<nanoseconds>(stop - start);
-	if (print_progress_steps)
-		cout << "Average matching time: " << ns.count()/packets.size() << "ns" << endl;
 
 	if (print_matching_results) {
 		for(vector<packet>::const_iterator p = packets.begin(); p != packets.end(); ++p) {

@@ -9,6 +9,10 @@
 #define GPU_BLOCK_SIZE (GPU_BLOCK_DIM_X*GPU_BLOCK_DIM_Y) // Statc block size of 32*32 (1024)0
 #define GPU_STREAMS 5 
 
+#if GPU_STREAMS > 254
+#error "too many GPU streams."
+#endif
+
 // we use 32-bit words on the GPU
 #define GPU_WORD_SIZE 4
 

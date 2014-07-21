@@ -13,6 +13,7 @@
 #include <thread>
 #include <chrono>
 
+#include <iomanip>
 #include <iostream>
 
 #include "parameters.hh"
@@ -148,6 +149,8 @@ private:
 
 public:
 	static void preallocate(unsigned int n) {
+		// intended to execute atomically (run by a single thread)
+		// 
 		while(n-- > 0) {
 			batch * b = allocate_one();
 			b->next = head;
@@ -156,6 +159,8 @@ public:
 	}
 
 	static void clear() {
+		// intended to execute atomically (run by a single thread)
+		// 
 		for(vector<batch*>::iterator i = pool.begin(); i != pool.end(); ++i)
 			delete(*i);
 		pool.clear();
@@ -167,7 +172,7 @@ public:
 	}
 
 	static batch * get() {
-		batch * b = head;
+		batch * b = head.load(std::memory_order_acquire);
 		do {
 			if (!b) 
 				return allocate_one();
@@ -177,7 +182,7 @@ public:
 	}
 
 	static void put(batch * b) {
-		b->next = head;
+		b->next = head.load(std::memory_order_acquire);
 		do {
 		} while(!head.compare_exchange_weak(b->next, b));
 	}
@@ -274,11 +279,10 @@ public:
 	}
 
 	ostream & print_statistics(ostream & os) const {
-		os << "part=" << partition_id
-		   << " enqueue_count=" << enqueue_count
-		   << " flush_count=" << flush_count
-		   << " max_latency=" << max_latency.count() << "ms"
-		   << std::endl;
+		os << std::setw(9) << partition_id << "  "
+		   << std::setw(13) << enqueue_count << "  "
+		   << std::setw(11) << flush_count << "  "
+		   << std::setw(11) << max_latency.count() << std::endl;
 		return os;
 	}
 
@@ -348,11 +352,11 @@ partition_queue * partition_queue::first_pending() {
 void partition_queue::enqueue(packet * p) {
 	assert(tail <= PACKETS_BATCH_SIZE);
 
-	unsigned int t = tail;
+	unsigned int t = tail.load(std::memory_order_acquire);
 	
 	do {
 		while (t == PACKETS_BATCH_SIZE)
-			t = tail;
+			t = tail.load(std::memory_order_acquire);
 	} while(!tail.compare_exchange_weak(t, PACKETS_BATCH_SIZE));
 
 	enqueue_count += 1;
@@ -363,11 +367,11 @@ void partition_queue::enqueue(packet * p) {
 		b = batch_pool::get();
 		update_flush_statistics();
 		remove_from_pending_pq_list();
-		tail = 0;
+		tail.store(0, std::memory_order_release);
 		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
 		batch_pool::put(bx);
 	} else  {
-		tail = t;
+		tail.store(t, std::memory_order_release);
 		if (t == 1) {
 			first_enqueue_time = high_resolution_clock::now();
 			add_to_pending_pq_list();
@@ -376,10 +380,10 @@ void partition_queue::enqueue(packet * p) {
 }
 
 void partition_queue::flush() {
-	unsigned int bx_size = tail;
+	unsigned int bx_size = tail.load(std::memory_order_acquire);
 	do {
 		while (bx_size == PACKETS_BATCH_SIZE)
-			bx_size = tail;
+			bx_size = tail.load(std::memory_order_acquire);
 
 		if (bx_size == 0)
 			return;
@@ -389,7 +393,7 @@ void partition_queue::flush() {
 	b = batch_pool::get();
 	update_flush_statistics();
 	remove_from_pending_pq_list();
-	tail = 0;
+	tail.store(0, std::memory_order_release);
 	back_end::process_batch(partition_id, bx->packets, bx_size);
 	batch_pool::put(bx);
 }
@@ -653,9 +657,9 @@ void front_end::match(packet * pkt) {
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
-	while (tail_plus_one == matching_job_queue_head) {
+	while (tail_plus_one == matching_job_queue_head.load(std::memory_order_acquire))
 		;		// full queue => spin
-	}
+
 	job_queue[matching_job_queue_tail].p = pkt;
 	matching_job_queue_tail = tail_plus_one;
 }
@@ -680,16 +684,16 @@ static void match_loop() {
 			while((q = partition_queue::first_pending(flush_limit)))
 				q->flush();
 		}
-		head = matching_job_queue_head;
+		head = matching_job_queue_head.load(std::memory_order_acquire);
 		do {
 			while (head == matching_job_queue_tail) {  
-				// empty queue => spin
+				// empty queue
 				if (processing_state == FE_MATCHING) {
-					// if we are still matching, then we loop
-					head = matching_job_queue_head;
-					continue;		  
+					// if we are still matching, then we spin
+					head = matching_job_queue_head.load(std::memory_order_acquire);
+					continue;
 				} else {
-					// if we are stopped, then we switch to flushing
+					// otherwise, if we are stopped, then we switch to flushing
 					unique_lock<mutex> lock(processing_mtx);
 					if (processing_state == FE_FINALIZE_MATCHING) {
 						if (--matching_threads == 0) {
@@ -712,16 +716,16 @@ static void flush_loop() {
 	partition_queue * q;
 
 	for(;;) {
-		head = flushing_job_queue_head;
+		head = flushing_job_queue_head.load(std::memory_order_acquire);
 		do {
 			while (head == flushing_job_queue_tail) {
-				// empty queue => spin
+				// empty queue
 				if (processing_state == FE_FLUSHING) {
-					// if we are still flushing, then we loop
-					head = flushing_job_queue_head;
+					// if we are still flushing, then we spin
+					head = flushing_job_queue_head.load(std::memory_order_acquire);
 					continue;		  
 				} else {
-					// if we are done, then we terminate
+					// otherwise, if we are done, then we terminate
 					unique_lock<mutex> lock(processing_mtx);
 					if (processing_state == FE_FINALIZE_FLUSHING) {
 						processing_state = FE_FINAL;
@@ -744,10 +748,9 @@ static void flush_loop() {
 static void enqueue_flush_job(partition_queue * q) {
 	unsigned int tail_plus_one = (flushing_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
-	while (tail_plus_one == flushing_job_queue_head) {
-		// full queue => spin
-		;
-	}
+	while (tail_plus_one == flushing_job_queue_head.load(std::memory_order_acquire)) 
+		; // full queue => spin
+
 	job_queue[flushing_job_queue_tail].q = q;
 	flushing_job_queue_tail = tail_plus_one;
 	
@@ -822,6 +825,8 @@ void front_end::clear() {
 }
 
 ostream & front_end::print_statistics(ostream & os) {
+	os << "partition  enqueue count  flush count  max latency (ms)" << std::endl;
+
 	for(int i = 0; i < 64; ++i) {
 		pp1[i].print_statistics(os);
 		pp2[i].print_statistics(os);

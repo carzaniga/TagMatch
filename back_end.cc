@@ -116,7 +116,7 @@ struct stream_handle {
 	// next free handle.  More specifically, it is an index in the
 	// stream_handles array.
 	//
-	unsigned int next;
+	unsigned char next;
 	
 	// stream identifier shared with the GPU
 	//
@@ -174,30 +174,32 @@ struct stream_handle {
 // faster than on a pointer.  Not sure this is true, but the code
 // doesn't change much anyway.
 // 
-static const unsigned int STREAM_HANDLES_NULL = ~(0U);
+static const unsigned char STREAM_HANDLES_NULL = 0xff;
 
 static stream_handle stream_handles[GPU_STREAMS];
 
-static atomic<unsigned int> free_stream_handles;
+static atomic<unsigned char> free_stream_handles;
 
 static stream_handle * allocate_stream_handle() {
-	unsigned int sp = free_stream_handles;
+	unsigned char sp = free_stream_handles;
 	do {
 		while (sp == STREAM_HANDLES_NULL) 
-			sp = free_stream_handles;
+			sp = free_stream_handles.load(std::memory_order_acquire);
 	} while (!free_stream_handles.compare_exchange_weak(sp, stream_handles[sp].next));
 
 	return stream_handles + sp;
 }
 
 static void release_stream_handle(stream_handle * h) {
-	unsigned int sp = h - stream_handles;
-	h->next = free_stream_handles;
+	unsigned char sp = h - stream_handles;
+	h->next = free_stream_handles.load(std::memory_order_acquire);
 	do {
 	} while(!free_stream_handles.compare_exchange_weak(h->next, sp));
 }
 
 static void initialize_stream_handlers() {
+	// this is supposed to execute atomically
+	// 
 	free_stream_handles = STREAM_HANDLES_NULL;
 	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
 		stream_handles[i].initialize(i,free_stream_handles);
