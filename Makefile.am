@@ -14,6 +14,8 @@ AM_LDFLAGS = $(LDFLAGS_prof)
 #
 NVCC=nvcc
 CUDA_FLAGS=--ptxas-options="-v" -arch sm_21 -O2
+.cu.$(OBJEXT):
+	$(NVCC) $(CUDA_FLAGS) -c $< -o $@
 
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
@@ -34,14 +36,9 @@ predicate_old_SOURCES = predicate.hh predicate_old.cc \
 predicate_old_LDADD = $(LIBS_prof) 
 
 cpu_gpu_matcher_SOURCES = packet.hh parameters.hh free_list.hh gpu.hh \
-			cpu_gpu_matcher.cc \
+			cpu_gpu_matcher.cc gpu.cu \
 			front_end.cc front_end.hh back_end.cc back_end.hh 
-cpu_gpu_matcher_LDADD = gpu.$(OBJEXT)
 cpu_gpu_matcher_LDFLAGS = -lcudart
-
-gpu.$(OBJEXT): parameters.hh gpu.hh packet.hh
-gpu.$(OBJEXT): gpu.cu
-	$(NVCC) $(CUDA_FLAGS) -c $< -o $@
 
 test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh
 
