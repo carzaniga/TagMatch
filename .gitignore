@@ -4,3 +4,8 @@ autom4te.cache
 config.h.in
 config/*
 configure
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+ID
