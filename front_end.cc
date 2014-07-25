@@ -807,8 +807,10 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
-	for(vector<thread *>::iterator i = thread_pool.begin(); i != thread_pool.end(); ++i)
+	for(vector<thread *>::iterator i = thread_pool.begin(); i != thread_pool.end(); ++i) {
 		(*i)->join();
+		delete(*i);
+	}
 
 	thread_pool.clear();
 

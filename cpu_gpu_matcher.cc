@@ -207,12 +207,19 @@ int main(int argc, const char * argv[]) {
 	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
-	if (read_queries(packets, queries_fname) < 0) {
+	if ((res = read_queries(packets, queries_fname)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
 	if (print_progress_steps) 
 		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
+	if (res == 0) {
+		cerr << "No packets to process.  Bailing out." << endl;
+
+		front_end::clear();
+		back_end::clear();
+		return 0;
+	};
 
 
 	if (print_progress_steps) 

@@ -305,9 +305,9 @@ static void compile_fibs() {
 	}
 	dev_ti_table = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
 
-	delete(host_rep);
-	delete(host_ti_table_indexes);
-	delete(host_ti_table);
+	delete[](host_rep);
+	delete[](host_ti_table_indexes);
+	delete[](host_ti_table);
 
 	tmp_fib.clear();
 }
@@ -380,7 +380,7 @@ void back_end::clear() {
 	if (dev_partitions) {
 		for(unsigned int i = 0; i < dev_partitions_size; ++i)
 			dev_partitions[i].clear();
-		delete(dev_partitions);
+		delete[](dev_partitions);
 		dev_partitions = 0;
 		dev_partitions_size = 0;
 	}
@@ -389,4 +389,5 @@ void back_end::clear() {
 		dev_ti_table = 0;
 	}
 	destroy_stream_handlers();
+	gpu::shutdown();
 }
