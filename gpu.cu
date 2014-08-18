@@ -41,75 +41,6 @@ __device__ bool a_complement_not_subset_of_b(uint32_t a, uint32_t b) {
 	return ((a | b) != (~0U));
 }
 
-#if 0
-#define TI_TREE_OFFSET 13
-#define TI_INTERFACE_MASK (((uint16_t)1 << TI_TREE_OFFSET) - 1)
-#else
-static const unsigned int TI_TREE_OFFSET = 13;
-static const uint16_t TI_INTERFACE_MASK = (1 << TI_TREE_OFFSET) - 1;
-#endif
-
-__device__ uint16_t ti_tree(uint16_t ti_pair) {
-	return ti_pair >> TI_TREE_OFFSET;
-}
-
-__device__ uint16_t ti_interface(uint16_t ti_pair) {
-	return ti_pair & TI_INTERFACE_MASK;
-}
-
-#if WITH_GPU_FAST_KERNEL
-
-__global__ void fast_kernel(uint32_t * fib, unsigned int fib_size, 
-							uint16_t * ti_table, unsigned int * ti_indexes,  
-							uint16_t * query_ti_table ,  unsigned int batch_size, 
-							ifx_result_t * results,  
-							unsigned int stream_id)
-{
-	unsigned int t1 = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) ;
-	unsigned int id = t1 + threadIdx.x;
-
-	if(id >= fib_size)
-		return;
-
-	unsigned int f_id = GPU_FILTER_WORDS*(t1) + threadIdx.x;
-		
-	unsigned int f[GPU_FILTER_WORDS];
-	f[0]=fib[f_id];
-	f[1]=fib[f_id+32];
-	f[2]=fib[f_id+64];
-	f[3]=fib[f_id+96];
-	f[4]=fib[f_id+128];
-	f[5]=fib[f_id+160];
-
-	for(unsigned int j = 0; batch_size > 0; --batch_size, j += GPU_FILTER_WORDS, ++query_ti_table) {
-
-		if (a_complement_not_subset_of_b(f[5], packets[stream_id][j+6]))
-		    continue;
-		if (a_complement_not_subset_of_b(f[4], packets[stream_id][j+4]))
-		    continue;
-		if (a_complement_not_subset_of_b(f[3], packets[stream_id][j+3]))
-		    continue;
-		if (a_complement_not_subset_of_b(f[2], packets[stream_id][j+2]))
-		    continue;
-		if (a_complement_not_subset_of_b(f[1], packets[stream_id][j+1]))
-		    continue;
-		if (a_complement_not_subset_of_b(f[0], packets[stream_id][j]))
-		    continue;
-
-//		printf("matched!\n");
-
-		unsigned int ti_index = ti_indexes[id];
-		for(unsigned int i = ti_table[ti_index]; i > 0; --i) {
-			// TODO: document these cryptic operations.
-			uint16_t xor_tmp = *query_ti_table ^ ti_table[ti_index + i];
-			if ((xor_tmp <= tree_interface_pair::IFX_MASK) && (xor_tmp != 0))
-				results[(i * INTERFACES) + ((ti_table[ti_index + i]) & 0x1FFF)] = 1;
-		}
-	}
-}
-
-#else // no WITH_GPU_FAST_KERNEL
-
 __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size, 
 							   uint16_t * ti_table, unsigned int * ti_indexes,  
 							   uint16_t * query_ti_table ,  unsigned int batch_size, 
@@ -128,6 +59,7 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 	for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i) 
 		f[i] = fib[i];
 
+#if 0
 	uint32_t * p = packets[stream_id] + 5;
 	for(unsigned int pi = 0; pi < batch_size; ++pi) {
 		if (a_complement_not_subset_of_b(f[5], *p)) {
@@ -170,8 +102,32 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 			}
 		}
 	}
-}
+#else
+	for(unsigned int pi = 0; pi < batch_size; ++pi) {
+		if (a_complement_not_subset_of_b(f[5], packets[stream_id][pi*GPU_WORD_SIZE + 5]))
+			continue;
+		if (a_complement_not_subset_of_b(f[4], packets[stream_id][pi*GPU_WORD_SIZE + 4]))
+			continue;
+		if (a_complement_not_subset_of_b(f[3], packets[stream_id][pi*GPU_WORD_SIZE + 3]))
+			continue;
+		if (a_complement_not_subset_of_b(f[2], packets[stream_id][pi*GPU_WORD_SIZE + 2]))
+			continue;
+		if (a_complement_not_subset_of_b(f[1], packets[stream_id][pi*GPU_WORD_SIZE + 1]))
+			continue;
+		if (a_complement_not_subset_of_b(f[0], packets[stream_id][pi*GPU_WORD_SIZE + 0]))
+			continue;
+
+		unsigned int ti_index = ti_indexes[id];
+		for(unsigned int i = ti_table[ti_index]; i > 0; --i) {
+			// TODO: document these cryptic operations.
+			uint16_t ti_xor = query_ti_table[pi] ^ ti_table[ti_index + i];
+			if ((ti_xor <= 0x1FFF) && (ti_xor != 0)) {
+				results[pi*INTERFACES + ((ti_table[ti_index + i]) & 0x1FFF)] = 1;
+			}
+		}
+	}
 #endif
+}
 
 void gpu::initialize() {
 	ABORT_ON_ERROR(cudaSetDevice(0));
@@ -238,13 +194,11 @@ void gpu::synchronize_stream(unsigned int stream) {
 	ABORT_ON_ERROR(cudaStreamSynchronize(streams[stream]));
 }
 
-#if WITH_PINNED_HOST_MEMORY
 void * gpu::allocate_host_pinned_generic(unsigned int size) {
 	void * host_array_pinned;
 	ABORT_ON_ERROR(cudaMallocHost(&host_array_pinned, size));
 	return host_array_pinned;
 }
-#endif
 
 static const dim3 BLOCK_DIMS(GPU_BLOCK_DIM_X, GPU_BLOCK_DIM_Y);
 
@@ -258,16 +212,6 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 	if ((fib_size % GPU_BLOCK_SIZE) != 0)
 		++gridsize;
 
-#if WITH_GPU_FAST_KERNEL
-	fast_kernel<<< gridsize, BLOCK_DIMS, 0, streams[stream] >>> (fib, 
-																 fib_size,
-																 ti_table, 
-																 ti_indexes, 
-																 query_ti_table, 
-																 batch_size, 
-																 results, 
-																 stream);
-#else
 	minimal_kernel<<<gridsize, BLOCK_DIMS, 0, streams[stream] >>> (fib, 
 																   fib_size,
 																   ti_table, 
@@ -276,7 +220,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 																   batch_size,
 																   results,
 																   stream);
-#endif
+
 	cudaError_t status = cudaGetLastError();
 	if (status != cudaSuccess) {
 		fprintf(stderr, "Fatal error: run_kernel: %s\n(%s:%d)\nABORTING\n", 

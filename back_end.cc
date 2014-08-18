@@ -128,15 +128,9 @@ struct stream_handle {
     // pairs, one for each packet, in a separate buffer.  We then
     // store the results that come back from the GPU.
 	// 
-#if WITH_PINNED_HOST_MEMORY
 	uint32_t * host_queries;
 	uint16_t * host_query_ti_table;
 	ifx_result_t * host_results;
-#else
-	uint32_t host_queries[PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
-	uint16_t host_query_ti_table[PACKETS_BATCH_SIZE];
-	ifx_result_t host_results[PACKETS_BATCH_SIZE*INTERFACES];
-#endif
 
     // PACKETS_BATCH_SIZE * INTERFACES
 	uint16_t * dev_query_ti_table;
@@ -145,21 +139,19 @@ struct stream_handle {
 	void initialize(unsigned int s, unsigned int n) {
 		stream = s;
 		next = n;
-#if WITH_PINNED_HOST_MEMORY
+
 		host_query_ti_table = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
 		host_queries = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
 		host_results = gpu::allocate_host_pinned<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
-#endif
+
 		dev_query_ti_table = gpu::allocate<uint16_t>(PACKETS_BATCH_SIZE);
 		dev_results = gpu::allocate<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
 	}
 
 	void destroy() {
-#if WITH_PINNED_HOST_MEMORY
 		gpu::release_pinned_memory(host_query_ti_table);
 		gpu::release_pinned_memory(host_queries);
 		gpu::release_pinned_memory(host_results);
-#endif
 		gpu::release_memory(dev_query_ti_table);
 		gpu::release_memory(dev_results);
 	}
@@ -255,10 +247,6 @@ static void compile_fibs() {
 
 		dev_partitions[part].size = filters.size();
 
-#if WITH_GPU_FAST_KERNEL
-		if ((dev_partitions[part].size % 32))
-			dev_partitions[part].size += 32 - (dev_partitions[part].size % 32);
-#endif
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_indexes;
 		for(f_descr_vector::const_iterator fi = filters.begin(); fi != filters.end(); ++fi) {
@@ -280,25 +268,9 @@ static void compile_fibs() {
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			// 
-#if WITH_GPU_FAST_KERNEL
-			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i) 
-				host_rep_f[i*32] = ~(fi->filter.uint32_value(i));
-
-			++host_rep_f;
-			if ((host_rep_f - host_rep) % 32 == 0)
-				host_rep_f += 5*32;
-#else
 			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
 				*host_rep_f++ = ~(fi->filter.uint32_value(i));
-#endif
 		}
-#if WITH_GPU_FAST_KERNEL
-		while((host_rep_f - host_rep) % 32 == 0) {
-			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
-				host_rep_f[i*32] = ~0U;
-			++host_rep_f;
-		}
-#endif
 		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size*GPU_FILTER_WORDS);
 
 		dev_partitions[part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[part].size);

@@ -43,19 +43,17 @@ public:
 	}
 	static void * allocate_and_copy_generic(void * host_table, unsigned int size);
 
-#if WITH_PINNED_HOST_MEMORY
 	template<typename T>
 	static T * allocate_host_pinned(unsigned int size) {
 		return (T *)allocate_host_pinned_generic(size*sizeof(T));
 	}
 	static void * allocate_host_pinned_generic(unsigned int size);
-#endif
 
 	static void release_memory(void * p);
 	static void release_pinned_memory(void * p);
 
 	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream);
-	static void async_copy(void * host_src, void * dev_dst, unsigned int size, unsigned int stream);
+	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
 	static void async_get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 								  unsigned int size, unsigned int stream);
@@ -73,6 +71,5 @@ public:
 	static void synchronize_device();
 	static void shutdown();
 };
-
 
 #endif // GPU_HH_INCLUDED
