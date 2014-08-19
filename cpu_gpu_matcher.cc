@@ -134,9 +134,9 @@ int main(int argc, const char * argv[]) {
 	bool print_statistics = false;
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
-	const char * prefixes_fname = 0;
-	const char * filters_fname = 0;
-	const char * queries_fname = 0; 
+	const char * prefixes_fname = nullptr;
+	const char * filters_fname = nullptr;
+	const char * queries_fname = nullptr; 
 	unsigned int thread_count = DEFAULT_THREAD_COUNT;
 
 	for(int i = 1; i < argc; ++i) {

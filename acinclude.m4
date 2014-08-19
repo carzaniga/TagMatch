@@ -56,13 +56,22 @@ AC_ARG_ENABLE(debugging,
     CXXFLAGS=`echo "$CXXFLAGS" | sed "s/-O[^ ]*/-Og/g"`
   ]])])
 dnl
-dnl AC_OPT_ASSERTIONS
+dnl AC_OPT_FRONTEND_STATS
 dnl
 AC_DEFUN([AC_OPT_FRONTEND_STATS], [
 AC_ARG_ENABLE(frontend-statistics, 
   AC_HELP_STRING([--enable-frontend-statistics],
 	[enable front-end statistics (default is NO)]), 
   [ AC_DEFINE(WITH_FRONTEND_STATISTICS, 1, [Enable front-end statistics])])
+])
+dnl
+dnl AC_OPT_DISABLE_BACKEND
+dnl
+AC_DEFUN([AC_OPT_DISABLE_BACKEND], [
+AC_ARG_ENABLE(backend, 
+  AC_HELP_STRING([--disable-backend],
+	[disable back-end matching (default is ENABLED).  This is for testing purposes, to test the front-end in isolation]), 
+  [ AC_DEFINE(BACK_END_IS_VOID, 1, [Disable back-end matching])])
 ])
 dnl
 dnl AC_OPT_ASSERTIONS

@@ -56,7 +56,7 @@ void back_end::add_filter(unsigned int part, const filter_t & f,
 						  ti_vector::const_iterator end) {
 	// we simply add this filter to our temporary table
 	// 
-	tmp_fib[part].push_back(filter_descr(f, begin, end));
+	tmp_fib[part].emplace_back(f, begin, end);
 }
 
 // ACTUAL FIB
@@ -87,25 +87,26 @@ struct part_descr {
 
 		if (fib) {
 			gpu::release_memory(fib);
-			fib = 0;
+			fib = nullptr;
 		}
 
 		if (ti_indexes) {
 			gpu::release_memory(ti_indexes);
-			ti_indexes = 0;
+			ti_indexes = nullptr;
 		}
 	}
 };
 
+#ifndef BACK_END_IS_VOID
 // we have a descriptor for each partition
 // 
-static part_descr * dev_partitions = 0;
+static part_descr * dev_partitions = nullptr;
 static unsigned int dev_partitions_size = 0;
 
 // plus a global array of tree-interface pairs.  This is a single
 // array for all filters in all partitions.
 // 
-static uint16_t * dev_ti_table = 0; 
+static uint16_t * dev_ti_table = nullptr; 
 
 // The back end maintains a set of stream handles.  These are
 // primarily buffers we use to transfer data to and from the GPU for
@@ -283,9 +284,10 @@ static void compile_fibs() {
 
 	tmp_fib.clear();
 }
+#endif
 
 void back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size) {
-
+#ifndef BACK_END_IS_VOID
 	stream_handle * sh = allocate_stream_handle();
 
 	// We first copy every packet (filter plus tree-interface pair)
@@ -324,6 +326,7 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 				batch[i]->set_output(j);
 
 	release_stream_handle(sh);
+#endif
 }
 
 static size_t back_end_memory = 0;
@@ -333,6 +336,7 @@ size_t back_end::bytesize() {
 }
 
 void back_end::start() {
+#ifndef BACK_END_IS_VOID
 	gpu_mem_info mi;
 	gpu::initialize();
 	gpu::mem_info(&mi);
@@ -342,24 +346,29 @@ void back_end::start() {
 	gpu::synchronize_device();
 	gpu::mem_info(&mi);
 	back_end_memory -= mi.free;
+#endif
 }
 
 void back_end::stop() {
+#ifndef BACK_END_IS_VOID
 	gpu::synchronize_device();
+#endif
 }
 
 void back_end::clear() {
+#ifndef BACK_END_IS_VOID
 	if (dev_partitions) {
 		for(unsigned int i = 0; i < dev_partitions_size; ++i)
 			dev_partitions[i].clear();
 		delete[](dev_partitions);
-		dev_partitions = 0;
+		dev_partitions = nullptr;
 		dev_partitions_size = 0;
 	}
 	if (dev_ti_table) {
 		gpu::release_memory(dev_ti_table);
-		dev_ti_table = 0;
+		dev_ti_table = nullptr;
 	}
 	destroy_stream_handlers();
 	gpu::shutdown();
+#endif
 }
