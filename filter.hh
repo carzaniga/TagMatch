@@ -18,23 +18,23 @@ private:
 
 public:
     const_iterator begin() const {
-	return elements.begin();
+		return elements.begin();
     }
 
     iterator begin() {
-	return elements.begin();
+		return elements.begin();
     }
 
     const_iterator end() const {
-	return elements.end();
+		return elements.end();
     }
 
     iterator end() {
-	return elements.end();
+		return elements.end();
     }
 
     int count() const {
-	return elements.size();
+		return elements.size();
     }
 
     filter(): elements() { }

@@ -161,8 +161,8 @@ public:
 	static void clear() {
 		// intended to execute atomically (run by a single thread)
 		// 
-		for(vector<batch*>::iterator i = pool.begin(); i != pool.end(); ++i)
-			delete(*i);
+		for(batch * i : pool)
+			delete(i);
 		pool.clear();
 		head = nullptr;
 	}
@@ -582,57 +582,39 @@ static void compile_fib() {
 
 	for(unsigned int i = 0; i < 64; ++i) {
 		pp1[i].p64_begin = p64_table + p64_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p64.begin();
-			j != tmp_pp[i].p64.end(); ++j) {
-			p64_table[p64_i].initialize(j->id, j->filter.begin());
-			++p64_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+			p64_table[p64_i++].initialize(d.id, d.filter.begin());
 		pp1[i].p64_end = p64_table + p64_i;
 
 		pp1[i].p128_begin = p128_table + p128_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p128.begin();
-			j != tmp_pp[i].p128.end(); ++j) {
-			p128_table[p128_i].initialize(j->id, j->filter.begin());
-			++p128_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p128) 
+			p128_table[p128_i++].initialize(d.id, d.filter.begin());
 		pp1[i].p128_end = p128_table + p128_i;
 
 		pp1[i].p192_begin = p192_table + p192_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p192.begin();
-			j != tmp_pp[i].p192.end(); ++j) {
-			p192_table[p192_i].initialize(j->id, j->filter.begin());
-			++p192_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p192) 
+			p192_table[p192_i++].initialize(d.id, d.filter.begin());
 		pp1[i].p192_end = p192_table + p192_i;
 		tmp_pp[i].clear();
 	}
 
 	for(unsigned int i = 64; i < 128; ++i) {
 		pp2[i - 64].p64_begin = p64_table + p64_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p64.begin();
-			j != tmp_pp[i].p64.end(); ++j) {
-			p64_table[p64_i].initialize(j->id, j->filter.begin()+1);
-			++p64_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 1);
 		pp2[i - 64].p64_end = p64_table + p64_i;
 
 		pp2[i - 64].p128_begin = p128_table + p128_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p128.begin();
-			j != tmp_pp[i].p128.end(); ++j) {
-			p128_table[p128_i].initialize(j->id, j->filter.begin()+1);
-			++p128_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p128) 
+			p128_table[p128_i++].initialize(d.id, d.filter.begin() + 1);
 		pp2[i - 64].p128_end = p128_table + p128_i;
 		tmp_pp[i].clear();
 	}
 
 	for(unsigned int i = 128; i < 192; ++i) {
 		pp2[i - 128].p64_begin = p64_table + p64_i;
-		for(vector<tmp_prefix_descr>::const_iterator j = tmp_pp[i].p64.begin();
-			j != tmp_pp[i].p64.end(); ++j) {
-			p64_table[p64_i].initialize(j->id, j->filter.begin()+2);
-			++p64_i;
-		}
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
 		pp2[i - 128].p64_end = p64_table + p64_i;
 		tmp_pp[i].clear();
 	}
@@ -917,9 +899,9 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
-	for(vector<thread *>::iterator i = thread_pool.begin(); i != thread_pool.end(); ++i) {
-		(*i)->join();
-		delete(*i);
+	for(thread * t : thread_pool) {
+		t->join();
+		delete(t);
 	}
 
 	thread_pool.clear();

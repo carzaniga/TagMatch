@@ -222,15 +222,16 @@ static void compile_fibs() {
 	unsigned int host_ti_table_size = 0;
 	unsigned int total_filters = 0;
 
-	for(tmp_fib_map::const_iterator pi = tmp_fib.begin(); pi != tmp_fib.end(); ++pi) {
-		unsigned int part_id_plus_one = pi->first + 1;
+	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
+		unsigned int part_id_plus_one = pf.first + 1;
+		const f_descr_vector & filters = pf.second;
 
 		if(part_id_plus_one > dev_partitions_size)
 			dev_partitions_size = part_id_plus_one;
 
-		total_filters += pi->second.size();
-		for(f_descr_vector::const_iterator fi = pi->second.begin(); fi != pi->second.end(); ++fi)
-			host_ti_table_size += fi->ti_pairs.size() + 1;
+		total_filters += filters.size();
+		for(const filter_descr & fd : filters)
+			host_ti_table_size += fd.ti_pairs.size() + 1;
 	}
 	dev_partitions = new part_descr[dev_partitions_size];
 
@@ -242,15 +243,15 @@ static void compile_fibs() {
 
 	unsigned int ti_table_curr_pos = 0;
 
-	for(tmp_fib_map::const_iterator pi = tmp_fib.begin(); pi != tmp_fib.end(); ++pi) {
-		unsigned int part = pi->first;
-		const f_descr_vector & filters = pi->second;
+	for(auto const & pf : tmp_fib) {
+		unsigned int part = pf.first;
+		const f_descr_vector & filters = pf.second;
 
 		dev_partitions[part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_indexes;
-		for(f_descr_vector::const_iterator fi = filters.begin(); fi != filters.end(); ++fi) {
+		for(const filter_descr & fd : filters) {
 			// we now store the index in the global tiff table for this fib entry
 			// 
 			*ti_index++ = ti_table_curr_pos;
@@ -258,19 +259,18 @@ static void compile_fibs() {
 			// we then store the *size* of the tiff table for this fib
 			// entry in that position in the global table.
 			//
-			host_ti_table[ti_table_curr_pos++] = fi->ti_pairs.size();
+			host_ti_table[ti_table_curr_pos++] = fd.ti_pairs.size();
 			// and then we copy the table itself starting from the
 			// following position
 			// 
-			for(ti_vector::const_iterator ti = fi->ti_pairs.begin();
-				ti != fi->ti_pairs.end(); ++ti)
-				host_ti_table[ti_table_curr_pos++] = ti->get_uint16_value();
+			for(const tree_interface_pair & tip : fd.ti_pairs)
+				host_ti_table[ti_table_curr_pos++] = tip.get_uint16_value();
 
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			// 
 			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
-				*host_rep_f++ = ~(fi->filter.uint32_value(i));
+				*host_rep_f++ = ~(fd.filter.uint32_value(i));
 		}
 		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size*GPU_FILTER_WORDS);
 

@@ -238,8 +238,8 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	for(vector<packet>::iterator p = packets.begin(); p != packets.end(); ++p)
-		front_end::match(&(*p));
+	for(packet & p : packets)
+		front_end::match(&p);
 
 	front_end::stop();
 	back_end::stop();
@@ -260,10 +260,10 @@ int main(int argc, const char * argv[]) {
 	front_end::clear();
 
 	if (print_matching_results) {
-		for(vector<packet>::const_iterator p = packets.begin(); p != packets.end(); ++p) {
-			if (p->is_matching_complete()) {
+		for(const packet & p : packets) {
+			if (p.is_matching_complete()) {
 				for(unsigned i = 0; i < INTERFACES; ++i) 
-					cout << ' ' << ((p->get_output(i)) ? '1' : '0');
+					cout << ' ' << ((p.get_output(i)) ? '1' : '0');
 				cout << endl;
 			} else {
 				cout << "incomplete" << endl;
