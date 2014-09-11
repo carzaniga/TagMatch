@@ -15,7 +15,7 @@ class front_end {
 public:
 	static void add_prefix(unsigned int id, const prefix<192> & f, unsigned int n);
 	static void start(unsigned int n);
-	static void match(packet * p);
+	static void match(packet * p) noexcept;
 	static void stop();
 	static void clear();
 	static std::ostream & print_statistics(std::ostream &);

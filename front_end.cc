@@ -80,14 +80,14 @@ using std::ostream;
 // leftmost 1-bit position 
 //
 #ifdef HAVE_BUILTIN_CTZL
-static inline int leftmost_bit(const uint64_t x) {
+static inline int leftmost_bit(const uint64_t x) noexcept {
     // Since we represent the leftmost bit in the least-significant
     // position, the leftmost bit corresponds to the count of trailing
     // zeroes (see the layout specification above).
     return __builtin_ctzl(x);
 } 
 #else
-static inline int leftmost_bit(uint64_t x) {
+static inline int leftmost_bit(uint64_t x) noexcept {
     int n = 0;
 	if ((x & 0xFFFFFFFF) == 0) {
 		n += 32;
@@ -222,11 +222,11 @@ class partition_queue {
 	partition_queue * prev_pending;
 	partition_queue * next_pending;
 
-	void add_to_pending_pq_list();
-	void remove_from_pending_pq_list();
+	void add_to_pending_pq_list() noexcept;
+	void remove_from_pending_pq_list() noexcept;
 
 public:
-	partition_queue() 
+	partition_queue() noexcept
 		: partition_id(0), tail(0), b(nullptr),
 #ifdef WITH_FRONTEND_STATISTICS
 		  max_latency(std::chrono::milliseconds(0)),
@@ -235,7 +235,7 @@ public:
 		  prev_pending(this), next_pending(this)
 		{};
 
-    void initialize(unsigned int id) {
+    void initialize(unsigned int id) noexcept {
 		partition_id = id;
 		tail = 0;
 		if (!b)
@@ -247,8 +247,8 @@ public:
 #endif
 	}
 
-	void enqueue(packet * p);
-	void flush();
+	void enqueue(packet * p) noexcept;
+	void flush() noexcept;
 
 	// Flush the first pending queue.  Returns false when no pending
 	// queue is found.
@@ -259,22 +259,22 @@ public:
 	// than the given limit.  Returns false if no such pending queue
 	// is found.
 	// 
-	static partition_queue * first_pending(milliseconds latency_limit);
+	static partition_queue * first_pending(milliseconds latency_limit) noexcept;
 
 #ifdef WITH_FRONTEND_STATISTICS
-	unsigned int get_max_latency_ms() const {
+	unsigned int get_max_latency_ms() const noexcept {
 		return max_latency.count();
 	}
 
-	unsigned int get_flush_count() const {
+	unsigned int get_flush_count() const noexcept {
 		return flush_count;
 	}
 
-	unsigned int get_enqueue_count() const {
+	unsigned int get_enqueue_count() const noexcept {
 		return enqueue_count;
 	}
 #endif
-	unsigned int get_partition_id() const {
+	unsigned int get_partition_id() const noexcept {
 		return partition_id;
 	}
 
@@ -289,7 +289,7 @@ public:
 		return os;
 	}
 
-	high_resolution_clock::time_point get_first_enqueue_time() {
+	high_resolution_clock::time_point get_first_enqueue_time() noexcept {
 		return first_enqueue_time;
 	}
 
@@ -310,7 +310,7 @@ public:
 static partition_queue pending_pq_list;
 static mutex pending_pq_list_mtx;
 
-void partition_queue::add_to_pending_pq_list() {
+void partition_queue::add_to_pending_pq_list() noexcept {
     std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
 	next_pending = &pending_pq_list;
 	prev_pending = pending_pq_list.prev_pending;
@@ -318,13 +318,13 @@ void partition_queue::add_to_pending_pq_list() {
 	pending_pq_list.prev_pending = this;
 }
 
-void partition_queue::remove_from_pending_pq_list() {
+void partition_queue::remove_from_pending_pq_list() noexcept {
     std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
 	next_pending->prev_pending = prev_pending;
 	prev_pending->next_pending = next_pending;
 }
 
-partition_queue * partition_queue::first_pending(milliseconds latency_limit) {
+partition_queue * partition_queue::first_pending(milliseconds latency_limit) noexcept {
 	// we don't care about synchronizing this operation, since it is
 	// the flush operation on q that really matters, and that removes
 	// q from the pending list.
@@ -355,7 +355,7 @@ partition_queue * partition_queue::first_pending() {
 	return q;
 }
 
-void partition_queue::enqueue(packet * p) {
+void partition_queue::enqueue(packet * p) noexcept {
 	assert(tail <= PACKETS_BATCH_SIZE);
 
 	unsigned int t = tail.load(std::memory_order_acquire);
@@ -389,7 +389,7 @@ void partition_queue::enqueue(packet * p) {
 	}
 }
 
-void partition_queue::flush() {
+void partition_queue::flush() noexcept {
 	unsigned int bx_size = tail.load(std::memory_order_acquire);
 	do {
 		while (bx_size == PACKETS_BATCH_SIZE)
@@ -744,7 +744,7 @@ static unsigned int matching_threads;
 // 
 // ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. ** 
 // 
-void front_end::match(packet * pkt) {
+void front_end::match(packet * pkt) noexcept {
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 

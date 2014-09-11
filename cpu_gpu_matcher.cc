@@ -54,6 +54,7 @@ static int read_prefixes(const char * fname) {
 	return res;
 }
 
+#ifndef BACK_END_IS_VOID
 static int read_filters(string fname) {
 	ifstream is (fname) ;
 	string line;
@@ -88,7 +89,7 @@ static int read_filters(string fname) {
 	}
 	return res;
 }
-
+#endif
 static unsigned int read_queries(vector<packet> & packets, string fname) {
 	ifstream is (fname) ;
 	string line;
@@ -135,7 +136,9 @@ int main(int argc, const char * argv[]) {
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
 	const char * prefixes_fname = nullptr;
+#ifndef BACK_END_IS_VOID
 	const char * filters_fname = nullptr;
+#endif
 	const char * queries_fname = nullptr; 
 	unsigned int thread_count = DEFAULT_THREAD_COUNT;
 
@@ -145,7 +148,9 @@ int main(int argc, const char * argv[]) {
 			continue;
 		} else 
 		if (strncmp(argv[i],"f=",2)==0) {
+#ifndef BACK_END_IS_VOID
 			filters_fname = argv[i] + 2;
+#endif
 			continue;
 		} else
 		if (strncmp(argv[i],"q=",2)==0) {
@@ -178,7 +183,11 @@ int main(int argc, const char * argv[]) {
 		}
 	}
 
-	if (!prefixes_fname || !filters_fname || !queries_fname) {
+	if (!prefixes_fname 
+#ifndef BACK_END_IS_VOID
+		|| !filters_fname 
+#endif
+		|| !queries_fname) {
 		print_usage(argv[0]);
 		return 1;
 	}		
@@ -194,6 +203,7 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " prefixes." << endl;
 	
+#ifndef BACK_END_IS_VOID
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
 	if ((res = read_filters(filters_fname)) < 0) {
@@ -202,6 +212,7 @@ int main(int argc, const char * argv[]) {
 	};
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
+#endif
 	
 	vector<packet> packets;
 	
