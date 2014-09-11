@@ -295,19 +295,16 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
 	// 
-	uint32_t p_buf[PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
-	uint16_t ti_buf[PACKETS_BATCH_SIZE];
-
-	uint32_t * curr_p_buf = p_buf;
+	uint32_t * curr_p_buf = sh->host_queries;
 
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = 0; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-		ti_buf[i] = batch[i]->ti_pair.get_uint16_value();
+		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
 	}
 
-	gpu::async_copy_packets(p_buf, batch_size, sh->stream);
-	gpu::async_copy(ti_buf, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
+	gpu::async_copy_packets(sh->host_queries, batch_size, sh->stream);
+	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
 	gpu::async_set_zero(sh->dev_results, batch_size*INTERFACES*sizeof(ifx_result_t), sh->stream);
 
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
