@@ -7,10 +7,14 @@
 #include <cstdlib>
 #include <cassert>
 #include <cstring>
+#include <math.h>
 
 #include "predicate.hh"
 
 void predicate::node::add_pair(tree_t t, interface_t i) {
+    //here we don't check if the tree-interface pair already exists
+    //becuase we assume that triple filter,tree,interface is unique
+    //becuase of the compresion algorithm 
 	if (pairs_count < LOCAL_PAIRS_CAPACITY) {
 		// if the local table is not yet full, we simply add the new
 		// pair to the local table
@@ -85,35 +89,40 @@ void predicate::node::remove_last_pair() {
 }
 
 void predicate::destroy() {
-	if (root.pos <= root.left->pos)
-		return;
+    for(int i=0;i<192;i++){
+        for(int j=0; i< roots[i].size; j++){
+            node r = roots[i].tries[j];
+            if (r.pos <= r.left->pos)
+                return;
 
-	node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-	S[0] = root.left;
-
-	for (;;) {
-		node * n = S[head];
-		if (n->left) {
-			if (n->pos > n->left->pos) {
-				S[++head] = n->left;
-				n->left = 0;
-				continue;
-			} 
-			n->left = 0;
-		}
-		if (n->right) {
-			if (n->pos > n->right->pos) {
-				S[++head] = n->right;
-				n->right = 0;
-				continue;
-			}
-		}
-		delete(n);
-		if (head == 0)
-			return;
-		--head;
-	}
+            node * S[filter_t::WIDTH];
+            unsigned int head = 0;
+            S[0] = r.left;
+        
+            for (;;) {
+                node * n = S[head];
+                if (n->left) {
+                    if (n->pos > n->left->pos) {
+                        S[++head] = n->left;
+                        n->left = 0;
+                        continue;
+                    } 
+                    n->left = 0;
+                }
+                if (n->right) {
+                    if (n->pos > n->right->pos) {
+                        S[++head] = n->right;
+                        n->right = 0;
+                        continue;
+                    }
+                }
+                delete(n);
+                if (head == 0)
+                    return;
+                --head;
+            }
+        }
+    }
 };
 
 // this is the handler we use to perform the tree matching.  The
@@ -138,34 +147,227 @@ bool tree_matcher::handle_filter(const filter_t & filter, const predicate::node 
 	return false;
 }
 
-void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
-	//
-	// this is the modular matching function that uses the above match
-	// handler through the modular find_subset_of function
-	//
-	tree_matcher matcher(t,h);
-	find_subsets_of(x, matcher);
+// this is the handler we use to perform the tree and interface matching.  The
+// predicate subset search finds subsets of the given filter, and
+// this handler does the tree matching and the interface on the corresponding
+// tree_interface pairs.
+// 
+class tree_ifx_matcher : public filter_const_handler {
+public:
+	tree_ifx_matcher(tree_t t, interface_t i, match_handler & mh): tree(t), ifx(i), matcher(mh) {}
+	virtual bool handle_filter(const filter_t & filter, const predicate::node & n);
+private:
+	const tree_t tree;
+    const interface_t ifx;
+	match_handler & matcher;
+};
+
+bool tree_ifx_matcher::handle_filter(const filter_t & filter, const predicate::node & n) {
+	for(const tree_interface_pair * ti = n.ti_begin(); ti != n.ti_end(); ++ti)
+		if (ti->tree == tree && ti->interface == ifx)
+			if (matcher.match(filter, tree, ti->interface))
+				return true;
+	return false;
 }
 
-predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t i) {
-	node * n = add(x);
-	n->add_pair(t, i);
+
+class p_params{
+public:
+    bool subset; //true if we want run find_subsets_of
+                 //false if we want run find_supersets_of
+    const filter_t f;
+    predicate::node * r;
+    filter_const_handler * h;         
+    synch_counter * c;
+     
+    
+    p_params(bool subset_, const filter_t & f_, predicate::node * r_, filter_const_handler * h_, synch_counter * c_):
+        subset(subset_), f(f_), r(r_), h(h_), c(c_) {};
+};
+
+void predicate::thread_loop(unsigned int id) {
+    p_params * p;
+	while((p = job_dequeue())){
+        if(p->subset){
+            find_subsets_of(p->f, *p->r, *p->h);
+            p->c->dec();
+        }else {
+            find_supersets_of(p->f, *p->r, *p->h);
+            p->c->dec();
+        }
+    }
+}
+
+
+
+
+struct stack_t {
+	const predicate::node * n;
+	filter_t::pos_t branch;
+
+	void assign(const predicate::node * nx, filter_t::pos_t bx) {
+		n = nx;
+		branch = bx;
+	}
+};
+
+
+void predicate::find_supersets(const filter_t & x, tree_t t, match_handler & h){
+    tree_matcher matcher(t,h);
+    synch_counter c;
+    
+    for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(false,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+}
+
+
+void predicate::find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t ifx, match_handler & h) {
+    tree_ifx_matcher matcher(t,ifx,h);
+
+    synch_counter c;
+    
+    for(filter_t::pos_t hw = x.popcount(); hw < filter_t::WIDTH; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(false,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+}
+
+void predicate::exists_subset(const filter_t & x, tree_t t, interface_t ifx, match_handler & h){
+    tree_ifx_matcher matcher(t,ifx,h);
+
+    filter_t::pos_t stop = x.popcount() - 1;
+
+    synch_counter c;
+
+    for(filter_t::pos_t hw = 0; hw < stop; hw++) {
+        for(filter_t::pos_t i=0; i < roots[hw].size; ++i) {
+            c.inc();
+            job_enqueue(new p_params(true,x,&(roots[hw].tries[i]),&matcher,&c));
+        }
+    }
+    
+    //join
+    while(!c.done());
+    
+}
+
+bool predicate::exists_filter(const filter_t & x, tree_t t, interface_t ifx) const {
+    
+    filter_t::pos_t hw = x.popcount() - 1;
+
+    assert(roots[hw].size!=0);
+
+	node * n =find(x,roots[hw].trie_of(x));
+	if (n != 0) {
+		for(tree_interface_pair * ti = n->ti_begin(); ti != n->ti_end(); ++ti)
+			if (ti->equals(t,ifx))
+				return true;
+    }
+    return false;
+}
+
+void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h) {
+    tree_matcher matcher(t,h);
+    //first we look if the filter exist, because the filter is a subset of itself
+    //than we look at the subsets
+
+    //exact match
+    filter_t::pos_t hw = x.popcount() - 1;
+    assert(roots[hw].size!=0);
+
+	node * n = find(x, roots[hw].trie_of(x));
+	if (n != 0)
+		matcher.handle_filter(x,*n);
+ 
+    synch_counter c;
+
+    for(filter_t::pos_t j = 0; j < hw; ++j) {
+		for(filter_t::pos_t i = 0; i < roots[j].size; ++i){
+            c.inc();
+            job_enqueue(new p_params(true,x,&(roots[j].tries[i]),&matcher,&c));
+        }
+    }
+
+    //join
+    while(!c.done());
+
+}
+
+void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
+
+    return;
+ /*   tree_matcher matcher(t,h);
+    //first we look if the filter exist, because the filter is a subset of itself
+    //than we look at the subsets
+
+    //exact match
+    filter_t::pos_t hw = x.popcount() - 1;
+    assert(roots[hw].size!=0);
+
+	node * n = find(x, roots[hw].trie_of(x));
+	if (n != 0)
+		matcher.handle_filter(x,*n);
+ 
+    std::vector<std::thread> ts;
+
+    for(filter_t::pos_t j = 0; j < hw; ++j) {
+		for(filter_t::pos_t i = 0; i < roots[j].size; ++i)
+			ts.push_back(std::thread(&predicate::find_subsets_of, 
+									 this, x, std::ref(roots[j].tries[i]), std::ref(matcher)));
+    }
+    for(auto& t : ts)
+        t.join();*/
+}
+
+void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x){
+    filter_t::pos_t hw = x.begin()->first.popcount()-1;
+    assert(roots[hw].size != 0);
+    
+    for(std::map<filter_t,std::vector<tree_interface_pair>>::const_iterator it = x.begin(); it!=x.end(); ++it){
+        node * n = add(it->first,roots[hw].trie_of(it->first));
+        for(filter_t::pos_t i = 0; i < it->second.size(); i++)
+            n->add_pair(it->second[i].tree, it->second[i].interface);
+    }
+}
+
+
+
+predicate::node * predicate::add(const filter_t & x, tree_t t, interface_t ifx) {
+    filter_t::pos_t hw = x.popcount()-1;
+    assert(roots[hw].size != 0);
+
+    node * n = add(x,roots[hw].trie_of(x));
+	n->add_pair(t, ifx);
 	return n;
 }
 
-predicate::node * predicate::add(const filter_t & x) {
-	node * prev = &root;
+predicate::node * predicate::add(const filter_t & x, node & root) {
+  	node * prev = &root;
 	node * curr = root.left;
-
-	while(prev->pos > curr->pos) {
+    while(prev->pos > curr->pos) {
 		prev = curr;
 		curr = x[curr->pos] ? curr->right : curr->left;
 	}
 	if (x == curr->key)
 		return curr;
+    
 	filter_t::pos_t pos = filter_t::most_significant_diff_pos(curr->key, x);
 
-	prev = &root;
+	prev = &(root);
 	curr = root.left;
 	
 	while(prev->pos > curr->pos && curr->pos > pos) {
@@ -179,21 +381,21 @@ predicate::node * predicate::add(const filter_t & x) {
 		return prev->right = new node(pos, x, curr);
 	} else {
 		return prev->left = new node(pos, x, curr);
-	}
+	}     
 }
 
-predicate::node * predicate::find(const filter_t & x) const {
-	const node * prev = &root;
+predicate::node * predicate::find(const filter_t & x, node & root) const {
+    const node * prev = &root;
 	node * curr = root.left;
 
-	while(prev->pos > curr->pos) {
+   	while(prev->pos > curr->pos) {
 		prev = curr;
 		curr = x[curr->pos] ? curr->right : curr->left;
 	}
 	return (x == curr->key) ? curr : 0;
 }
 
-void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) const {
+void predicate::find_subsets_of(const filter_t & x, node & root, filter_const_handler & h) const {
 	//
 	// this is a non-recursive (i.e., iterative) exploration of the
 	// PATRICIA trie that looks for subsets.  The pattern is almost
@@ -201,177 +403,135 @@ void predicate::find_subsets_of(const filter_t & x, filter_const_handler & h) co
 	// to keep track of the visited nodes, and we visit new nodes
 	// along a subset (resp. superset) prefix.
 	// 
-	const node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-	
-	// if the trie is not empty we push the root node onto the stack.
-	// The true root is root.left, not root, which is a sentinel node.
-	//
-	if (root.pos > root.left->pos)
-		S[head++] = root.left;
-	//
-	// INVARIANT: root.left->pos is the position of the leftmost 1-bit
-	// in root.left.  Therefore root.left is always a subset of the
-	// input filter x up to position n->pos + 1 (i.e., excluding
-	// position n->pos itself)
-	// 
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-		const node * n = S[--head];		// for each visited node n...
-		//
-		// INVARIANT: n is a subset of x up to position n->pos + 1
-		// (i.e., excluding position n->pos itself)
-		// 
-		if (n->key.suffix_subset_of(x, n->pos)) 
-			if (h.handle_filter(n->key, *n))
-				return;
+        stack_t S[filter_t::WIDTH];
+        unsigned int head = 0;
+        
+        // if the trie is not empty we push the root node onto the stack.
+        // The true root is root.left, not root, which is a sentinel node.
+        //
+        if (root.pos > root.left->pos)
+           	S[head++].assign(root.left, ((x.popcount())-root.left->key.popcount())); 
 
-		// push n->left on the stack only when the bits of
-		// n->left->key in positions between n->pos and
-		// n->left->pos, excluding n->left->pos, are a subset of x
-		// 
-		if (n->left->pos == n->pos - 1 
-			|| (n->pos > n->left->pos
-				&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
-				S[head++] = n->left;
 
-		// push n->right on the stack only when x has a 1 in n->pos,
-		// and then when the bits of n->right->key in positions
-		// between n->pos and n->right->pos, excluding n->right->pos,
-		// are a subset of x
-		// 
-		if (x[n->pos]) {
-			if (n->right->pos == n->pos - 1
-				|| (n->pos > n->right->pos 
-					&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
-				S[head++] = n->right;
-		}
-	}
+        //
+        // INVARIANT: root.left->pos is the position of the leftmost 1-bit
+        // in root.left.  Therefore root.left is always a subset of the
+        // input filter x up to position n->pos + 1 (i.e., excluding
+        // position n->pos itself)
+        // 
+        while(head != 0) {
+            assert(head <= filter_t::WIDTH);
+            --head;
+            const node * n = S[head].n;
+            filter_t::pos_t branch = S[head].branch;
+            
+            //
+            // INVARIANT: n is a subset of x up to position n->pos + 1
+            // (i.e., excluding position n->pos itself)
+            // 
+            //if (n->key.suffix_subset_of(x, n->pos)) 
+            if(n->key.subset_of(x))
+                if (h.handle_filter(n->key, *n))
+                    return;          
+            // push n->left on the stack only when the bits of
+            // n->left->key in positions between n->pos and
+            // n->left->pos, excluding n->left->pos, are a subset of x
+            // 
+            if (n->left->pos == n->pos - 1 
+                || (n->pos > n->left->pos
+                && n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))){ 
+                    if (x[n->pos]) {
+					    if (branch > 0)
+						    S[head++].assign(n->left, branch - 1);
+				    } else {
+					    S[head++].assign(n->left, branch);
+				    }
+
+            }    
+            // push n->right on the stack only when x has a 1 in n->pos,
+            // and then when the bits of n->right->key in positions
+            // between n->pos and n->right->pos, excluding n->right->pos,
+            // are a subset of x
+            // 
+            if (x[n->pos]) {
+                if (n->right->pos == n->pos - 1
+                    || (n->pos > n->right->pos 
+                    && n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
+                        S[head++].assign(n->right, branch);
+            }
+        }
 }
 
-void predicate::find_subsets_of(const filter_t & x, filter_handler & h) {
-	//
-	// See the above "const" find_subsets_of for technical details.
-	// 
-	node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-
-	if (root.pos > root.left->pos)
-		S[head++] = root.left;
-
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-		node * n = S[--head];
-
-		if (n->key.suffix_subset_of(x, n->pos)) 
-			if (h.handle_filter(n->key, *n))
-				return;
-
-		if (n->left->pos == n->pos - 1 
-			|| (n->pos > n->left->pos
-				&& n->left->key.prefix_subset_of(x, n->pos, n->left->pos + 1))) 
-				S[head++] = n->left;
-
-		if (x[n->pos]) {
-			if (n->right->pos == n->pos - 1
-				|| (n->pos > n->right->pos 
-					&& n->right->key.prefix_subset_of(x, n->pos, n->right->pos + 1)))
-				S[head++] = n->right;
-		}
-	}
-}
-
-void predicate::find_supersets_of(const filter_t & x, filter_const_handler & h) const {
+void predicate::find_supersets_of(const filter_t & x, node & root, filter_const_handler & h) const {
 	//
 	// See also the above find_subsets_of for technical details.
-	// 
-	const node * S[filter_t::WIDTH];
-	unsigned int head = 0;
-
-	// if the trie is not empty we push the root node onto the stack.
-	// The true root is root.left, not root, which is a sentinel node.
 	//
-	if (root.pos > root.left->pos
-		//
-		// INVARIANT: root.left->pos is the position of the leftmost
-		// 1-bit in root.left.  Therefore root.left should be
-		// considered only if x's most significant bit it to the right
-		// (i.e., lower position) of root.left->pos.
-		// 
-		&& x.most_significant_one_pos() <= root.left->pos)
-		S[head++] = root.left;
 
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-		const node * n = S[--head];		// for each visited node n...
-		//
-		// INVARIANT: n is a superset of x up to position n->pos + 1
-		// (i.e., excluding position n->pos itself)
-		// 
-		if (x.suffix_subset_of(n->key, n->pos)) 
-			if (h.handle_filter(n->key, *n))
-				return;
+        stack_t S[filter_t::WIDTH];
+        unsigned int head = 0;
 
-		// push n->right on the stack only when the bits of
-		// n->right->key in positions between n->pos and
-		// n->right->pos, excluding n->right->pos, are a subset of x
-		// 
-		if (n->right->pos == n->pos - 1 
-			|| (n->pos > n->right->pos
-				&& x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) 
-				S[head++] = n->right;
+        // if the trie is not empty we push the root node onto the stack.
+        // The true root is root.left, not root, which is a sentinel node.
+        //
+        if (root.pos > root.left->pos
+            //
+            // INVARIANT: root.left->pos is the position of the leftmost
+            // 1-bit in root.left.  Therefore root.left should be
+            // considered only if x's most significant bit it to the right
+            // (i.e., lower position) of root.left->pos.
+            // 
+            && x.most_significant_one_pos() <= root.left->pos){
+			S[head++].assign(root.left, (root.left->key.popcount() - (x.popcount())));
+        }
+        while(head != 0) {
+            assert(head <= filter_t::WIDTH);
+            --head;
+            const node * n = S[head].n;
+            filter_t::pos_t branch = S[head].branch;
+            //
+            // INVARIANT: n is a superset of x up to position n->pos + 1
+            // (i.e., excluding position n->pos itself)
+            // 
+            if (x.suffix_subset_of(n->key, n->pos)) 
+                if (h.handle_filter(n->key, *n))
+                    return;
 
-		// push n->left on the stack only when x has a 0 in n->pos,
-		// and then when the bits of n->right->key in positions
-		// between n->pos and n->left->pos, excluding n->left->pos,
-		// are a superset of x
-		// 
-		if (!x[n->pos]) {
-			if (n->left->pos == n->pos - 1
-				|| (n->pos > n->left->pos 
-					&& x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)))
-				S[head++] = n->left;
-		}
-	}
+            // push n->right on the stack only when the bits of
+            // n->right->key in positions between n->pos and
+            // n->right->pos, excluding n->right->pos, are a subset of x
+            // 
+            if (n->right->pos == n->pos - 1 
+                || (n->pos > n->right->pos
+                    && x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) { 
+				if (!x[n->pos]) {
+					if (branch > 0)
+						S[head++].assign(n->right, branch - 1);
+				} else {
+					S[head++].assign(n->right, branch);
+				}
+            }
+            // push n->left on the stack only when x has a 0 in n->pos,
+            // and then when the bits of n->right->key in positions
+            // between n->pos and n->left->pos, excluding n->left->pos,
+            // are a superset of x
+            // 
+            if (!x[n->pos]) {
+                if (n->left->pos == n->pos - 1
+                    || (n->pos > n->left->pos 
+                        && x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1))){
+                    S[head++].assign(n->left, branch);
+                }
+            }
+        }
 }
 
-void predicate::find_supersets_of(const filter_t & x, filter_handler & h) {
-	//
-	// See the above "const" find_superset_of for technical details.
-	// 
-	node * S[filter_t::WIDTH];
-	unsigned int head = 0;
+void predicate::remove(const filter_t & x , tree_t t, interface_t ifx){
+    filter_t::pos_t hw = x.popcount()-1;
 
-	if (root.pos > root.left->pos
-		&& x.most_significant_one_pos() <= root.left->pos)
-		S[head++] = root.left;
+    assert(roots[hw].size!=0);
 
-	while(head != 0) {
-		assert(head <= filter_t::WIDTH);
-		node * n = S[--head];
-
-		if (x.suffix_subset_of(n->key, n->pos)) 
-			if (h.handle_filter(n->key, *n))
-				return;
-
-		if (n->right->pos == n->pos - 1 
-			|| (n->pos > n->right->pos
-				&& x.prefix_subset_of(n->right->key, n->pos, n->right->pos + 1))) 
-				S[head++] = n->right;
-
-		if (!x[n->pos]) {
-			if (n->left->pos == n->pos - 1
-				|| (n->pos > n->left->pos 
-					&& x.prefix_subset_of(n->left->key, n->pos, n->left->pos + 1)))
-				S[head++] = n->left;
-		}
-	}
-}
-
-void predicate::remove(const filter_t & x , tree_t t, interface_t i){
-	node * n = find(x);
-	if(n!=0){
-		n->remove_pair(t,i);
-	}
+	node * n = find(x,roots[hw].trie_of(x));
+	if(n!=0) 
+		n->remove_pair(t,ifx);
 }
 

@@ -9,9 +9,16 @@
 #define NODE_USES_MALLOC
 #endif
 
+
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
+#include <map>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
+
 
 #ifdef NODE_USES_MALLOC
 #include <new>
@@ -19,17 +26,20 @@
 
 #ifdef WITH_BV192
 #include "bv192.hh"
+
 typedef bv192 filter_t;
 #else
 #include "bv.hh"
 typedef bv<192> filter_t;
 #endif
 
+
 /** interface identifier */ 
 typedef uint16_t interface_t;
 
 /** tree identifier */ 
 typedef uint16_t tree_t;
+
 
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -75,22 +85,125 @@ public:
 class filter_handler;
 class filter_const_handler;
 class match_handler;
+class p_params;
 
-class predicate {
+class tree_matcher;
+class tree_ifx_matcher;
+
+class synch_counter{
+private:
+    volatile unsigned int c;
+
 public:
-    predicate(): root(), filter_count(0) {};
-    ~predicate() { destroy(); }
+
+    synch_counter(): c(0) {};
+
+    void inc(){
+        unsigned int old_s, new_s;
+    
+        do{
+            old_s = c;
+            new_s = old_s + 1;
+        }while(!__sync_bool_compare_and_swap(&c, old_s, new_s));
+    }   
+
+    void dec(){
+        unsigned int old_s, new_s;
+    
+        do{
+            old_s = c;
+            new_s = old_s - 1;
+        }while(!__sync_bool_compare_and_swap(&c, old_s, new_s));
+    }
+
+    bool done(){
+        return (c==0);
+    }
+};
+
+
+
+class predicate {      
+public:
+    predicate(unsigned int nf): filter_count(0) , N_FILTERS(nf) {
+
+		static const unsigned int TOT_FILTERS = 63651601;
+		//static const unsigned int N_FILTERS = 37400000;
+
+		// this is a static configuration parameter representing the
+		// distribution of hamming weights derived from the workload.  We
+		// assume that such a configuration parameter can be derived from
+		// a simple statistical analysis of the workload and, more
+		// importantly, that the distribution would be *stable*.
+		//
+		// These are the number of million filters for each hamming wight
+		// in a workload with 91092205 filters, corresponding to the
+		// (compressed) set of filters corresponding to a population of
+		// 500 million users.
+		//
+		static const unsigned int Hamming_Weight_Dist[filter_t::WIDTH] = {
+			0,  0,  0,  0,  0,  0,  0,  1,  1,  1,      //0   --  9
+			//1,  3, 18, 39,  1,  1,  1,  1,  1,  1,    //10  --  19  //1M filters per trie
+			//1,  2, 9, 20,  1,  1,  1,  1,  1,  1,     //10  --  19  //2M filters per trie
+			//1,  1, 5, 10,  1,  1,  1,  1,  1,  1,     //10  --  19  //4M filters per trie
+			//1,  1, 3, 7,  1,  1,  1,  1,  1,  1,      //10  --  19  //6M filters per trie
+			1,  1, 2, 5,  1,  1,  1,  1,  1,  1,        //10  --  19  //8M filters per trie (this seems to be the best option)
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //20  --  29
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //30  --  39
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //40  --  49
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //50  --  59    
+			1,  1,  1,  1,  1,  1,  1,  1,  1,  1,      //60  --  69
+			1,  1,  1,  1,  0,  0,  0,  0,  0,  0,      //70  --  79    
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //80  --  89      
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //90  --  99
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //100 --  109
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //110 --  119
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //120 --  129
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //130 --  139
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //140 --  149
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //150 --  159
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //160 --  169
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //170 --  179
+			0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      //180 --  189
+			0,  0                                       //190 --  191
+		};
+
+        for(filter_t::pos_t i =0; i< filter_t::WIDTH; i++) {
+			if (Hamming_Weight_Dist[i]) {
+				unsigned n = N_FILTERS*Hamming_Weight_Dist[i] / TOT_FILTERS;
+				if (n == 0)
+					n = 1;
+				roots[i].set_size(n);
+			}
+		}
+
+        job_queue_head=0;
+        job_queue_tail=0;
+        start_threads();
+    };
+
+    ~predicate() {
+        stop_threads();
+        destroy(); 
+    }
 
 	class node;
+    class p_node;
+
+    /** sets the tree mask for the filter x
+	 */ 
+	void set_mask(const filter_t & x, tree_t tree);
 
 	/** adds a filter, without adding anything to it
 	 */ 
-	node * add(const filter_t & x);
+	node * add(const filter_t & x, node & root);
 
 	/** adds a filter together with the association to a
 	 *  tree--interface pair
 	 */ 
 	node * add(const filter_t & x, tree_t t, interface_t i);
+    void add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x);
+
 
 	/** modular matching function (subset search)
 	 */
@@ -98,7 +211,33 @@ public:
 
 	/** exact-match filter search
 	 */
-	node * find(const filter_t & x) const;
+	node * find(const filter_t & x, node & root) const;
+
+    /** return if a subset of x is found on the interface i on the tree t. 
+    * uses matcher_exists defined in router.hh
+    */
+    void exists_subset(const filter_t & x, tree_t t, interface_t i, match_handler & h);
+
+    /** returns true if the filter exists on interface i and on tree t. 
+     */
+    bool exists_filter(const filter_t & x, tree_t t, interface_t i) const;
+
+    /** iteretes over the trie to find all the super set of x on the give tree and interface
+    * matcher_collect_supersets defines in router.hh collects all the found supersets
+    */
+    void find_supersets_on_ifx(const filter_t & x, tree_t t, interface_t i, match_handler & h);
+
+    /** iteretes over the trie to find all the super set of x on the given tree on all the interfaces
+    * matcher_collect_supersets defines in router.hh collects all the found supersets
+    *
+    *
+    */
+    void find_supersets(const filter_t & x, tree_t t, match_handler & h);
+
+    /** count all the subsets of x on a given trie and return them divided by interfaces
+    * matcher_count_subsets_by_ifx is defined in router.hh and stores the results in a map
+    */
+    void count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler & h);
 
 	/** processes the subsets of the given filter
 	 *
@@ -107,10 +246,8 @@ public:
 	 *  specifically, the predicate calls the handle_filter method of
 	 *  the handler, which may terminate the search by returning true.
 	 */
-	void find_subsets_of(const filter_t & x, filter_const_handler & h) const;
-	void find_supersets_of(const filter_t & x, filter_const_handler & h) const;
-	void find_subsets_of(const filter_t & x, filter_handler & h);
-	void find_supersets_of(const filter_t & x, filter_handler & h);
+	void find_subsets_of(const filter_t & x, node & root, filter_const_handler & h) const;
+	void find_supersets_of(const filter_t & x, node & root, filter_const_handler & h) const;
 
 	void remove(const filter_t & x,tree_t t, interface_t i);
 	void clear();
@@ -126,13 +263,12 @@ public:
 	 */
     class node {
 		friend class predicate;
+    public:
+        const filter_t key;
 
 		node * left;
 		node * right;
-
-	public:
-		const filter_t key;
-
+        
 	private:
 		const filter_t::pos_t pos;
 
@@ -181,12 +317,13 @@ public:
 			return ti_begin() + pairs_count;
 		}
 
+
 	private:
 		// create a stand-alone NULL node, this constructor is used
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: left(this), right(this), key(), pos(filter_t::NULL_POSITION), 
+			: key(), left(this), right(this), pos(filter_t::NULL_POSITION), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node
@@ -218,12 +355,110 @@ public:
 			free(p);
 		}
 #endif
+    }__attribute__ ((aligned(64)));
+
+    class p_node {
+        friend class predicate;
+        public: 
+        filter_t::pos_t size;
+        node * tries;
+		p_node(): size(0), tries(0) {};
+
+		// this is an initialization performed ONCE for each p_node
+		// 
+        void set_size(filter_t::pos_t n) {
+			size = n;
+            if (n>0) {
+                tries = new node [size];
+            } else
+                tries=NULL;
+        }
+
+		node & trie_of(const filter_t & x) const {
+			return tries[x.hash(size)];
+		}
+
+		~p_node() {
+            if (size > 0)
+                delete [] tries;
+        }
     };
 
-    node root;
+    p_node roots[filter_t::WIDTH];    
 	unsigned long filter_count;
+    unsigned int N_FILTERS;
 
     void destroy();
+
+    
+
+    private:
+        static const unsigned int THREAD_COUNT = 16;
+        static const unsigned int JOB_QUEUE_SIZE = 1024;
+        p_params * job_queue[JOB_QUEUE_SIZE];
+
+
+    volatile unsigned int job_queue_head;		// position of the first element in the queue
+    volatile unsigned int job_queue_tail;		// one-past position of the last element in the queue
+
+     std::mutex job_queue_mtx;
+    std::condition_variable job_queue_producer_cv;
+    std::condition_variable job_queue_consumers_cv;
+
+     std::thread * thread_pool[THREAD_COUNT];
+
+    public:
+
+    void job_enqueue(p_params * p) {
+	    size_t tail_plus_one;
+	    std::unique_lock<std::mutex> lock(job_queue_mtx);
+    try_enqueue:
+	    tail_plus_one = (job_queue_tail + 1) % JOB_QUEUE_SIZE;
+
+	    if (tail_plus_one == job_queue_head) { // full queue 
+		    job_queue_producer_cv.wait(lock);
+	    	goto try_enqueue;
+	    }
+	    job_queue[job_queue_tail] = p;
+	    job_queue_tail = tail_plus_one;
+
+	    job_queue_consumers_cv.notify_all();
+    }
+
+    p_params * job_dequeue() {
+	    std::unique_lock<std::mutex> lock(job_queue_mtx);
+
+    try_dequeue:
+	    if (job_queue_head == job_queue_tail) { // empty queue 
+		    job_queue_consumers_cv.wait(lock);
+		    goto try_dequeue;
+	    }
+
+        p_params * p = job_queue[job_queue_head];
+	    job_queue_head = (job_queue_head + 1) % JOB_QUEUE_SIZE;
+
+	    job_queue_producer_cv.notify_one();
+        
+	    return p;
+    }
+
+    void thread_loop(unsigned int id);
+           
+    void start_threads(){
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+	        thread_pool[i] = new std::thread(&predicate::thread_loop, this, i);
+    }
+
+    void stop_threads(){
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            job_enqueue(0);
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            thread_pool[i]->join();
+        for(unsigned int i = 0; i < THREAD_COUNT; ++i)
+            delete(thread_pool[i]);   
+    }
+
+    
 };
 
 class filter_handler {
@@ -257,5 +492,6 @@ public:
 	// 
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx) = 0;
 };
+
 
 #endif

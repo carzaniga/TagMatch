@@ -139,6 +139,16 @@ public:
 		return c;
 	}
 
+    pos_t hash (pos_t n) const{
+		if (n == 1)
+			return 0;
+
+        block_t s = 0;
+        for(int i = 0; i < BLOCK_COUNT; i++)
+            s+=b[i];
+        return s % n;
+    }
+
 	bool prefix_subset_of(const bv & x, pos_t pp, pos_t p) const {
 		//
 		// Check that *this is a subset of x only up to position pos,
@@ -286,9 +296,9 @@ public:
 
 	static pos_t popcount(uint64_t v) {
 #ifdef HAVE_BUILTIN_POPCOUNT
-		return __builtin_popcount(v);
+		return __builtin_popcountl(v);
 #else
-		// taken from http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+       	// taken from http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
 		v = v - ((v >> 1) & 0x5555555555555555);
 		v = (v & 0x3333333333333333) + ((v >> 2) & 0x3333333333333333);
 		v = (v + (v >> 4)) & 0x0f0f0f0f0f0f0f0f;

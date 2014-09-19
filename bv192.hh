@@ -9,12 +9,13 @@
 #include <string>
 #include <iostream>
 
+
 // Implementation of a 192-bit bitvector.
 //
 class bv192 {
 	typedef uint64_t block_t;
 	block_t bv[3];
-
+    
 public:
 	typedef uint8_t pos_t;
 	static const pos_t NULL_POSITION = 192;
@@ -100,6 +101,7 @@ public:
 		return popcount(bv[0]) + popcount(bv[1]) + popcount(bv[2]);
 	}
 
+   
 	bool prefix_subset_of(const bv192 & x, pos_t pp, pos_t p) const {
 		//
 		// Check that *this is a subset of x only up to position pos,
@@ -250,6 +252,25 @@ public:
 	}
 #endif
 
+
+	pos_t next_one(pos_t pos){
+        if(pos>=192)
+            return 255;
+        if (at(pos))
+            return pos;
+        else{
+            pos--;
+            return next_one(pos);
+        }
+    }
+
+    void set_range(pos_t start, pos_t end){
+        for(pos_t i=start;i>=end;i--){
+            std::cout<< (int) i << std::endl;
+            set(i); 
+        }
+    }
+        
 	void set(pos_t pos) {
 		bv[pos/64] |= (1UL << (pos % 64));
 	}
