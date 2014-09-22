@@ -926,7 +926,7 @@ void front_end::clear() {
 }
 
 ostream & front_end::print_statistics(ostream & os) {
-	os << "partition  enqueue count  flush count  max latency (ms)" << std::endl;
+	os << "partition  max latency (ms) enqueue count  flush count" << std::endl;
 
 	for(int i = 0; i < 64; ++i) {
 		pp1[i].print_statistics(os);
