@@ -76,6 +76,20 @@ void read_filters_vector(std::istream & is) {
 		std::sort(filters.begin(), filters.end(), compare_filters_decreasing);
 }
 
+static unsigned int MIN_K = 2;
+
+bool prefix_min_hamming_weight(const filter_t & f, filter_t::pos_t msd, filter_t::pos_t min_k) {
+	filter_t::pos_t c = 0;
+	for(filter_t::pos_t i = msd; i < filter_t::WIDTH; ++i) {
+		if (f[i]) {
+			++c;
+			if (c >= min_k)
+				return true;
+		}
+	}
+	return false;
+}
+
 void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostream * filters_os) {
 	std::ostringstream foss;
 	std::vector<filter_descr>::const_iterator f = filters.begin();
@@ -86,14 +100,17 @@ void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostre
 		filter_t::pos_t prefix_pos = 0;
 		std::vector<filter_descr>::const_iterator g = f + 1;
 		std::vector<filter_descr>::const_iterator next_f = g; 
+
+		filter_t::pos_t f_msb_pos = f->filter.most_significant_one_pos();
 		
 		while(g != filters.end() && (g - f) < max_size) {
 			filter_t::pos_t msd = filter_t::most_significant_diff_pos(f->filter, g->filter);
-			if (msd > max) {
-				filter_t::pos_t msb_pos = f->filter.most_significant_one_pos();
-				if (msb_pos <= msd) {
+
+			if (msd > max && prefix_min_hamming_weight(f->filter, msd, MIN_K)) {
+				if (f_msb_pos == msd) {
+					// NOTE: it can never be (f_msb_pos < msd)
 					next_f = g;
-					prefix_pos = msb_pos - 1;
+					prefix_pos = f_msb_pos - 1;
 					break;
 				}
 				prefix_pos = max;
@@ -135,6 +152,9 @@ int main(int argc, const char * argv[]) {
 
 	for(int i = 1; i < argc; ++i) {
 		if (sscanf(argv[i],"m=%u", &max_size) || sscanf(argv[i],"N=%u", &max_size))
+			continue;
+
+		if (sscanf(argv[i],"k=%u", &MIN_K) || sscanf(argv[i],"K=%u", &MIN_K))
 			continue;
 
 		if (strncmp(argv[i],"p=",2)==0) {
