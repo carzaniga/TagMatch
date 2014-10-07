@@ -78,16 +78,14 @@ void read_filters_vector(std::istream & is) {
 
 static unsigned int MIN_K = 2;
 
-bool prefix_min_hamming_weight(const filter_t & f, filter_t::pos_t msd, filter_t::pos_t min_k) {
-	filter_t::pos_t c = 0;
-	for(filter_t::pos_t i = msd; i < filter_t::WIDTH; ++i) {
-		if (f[i]) {
-			++c;
-			if (c >= min_k)
-				return true;
-		}
-	}
-	return false;
+filter_t::pos_t kth_most_significant_one_pos(const filter_t & f, unsigned int k) {
+	filter_t::pos_t i = filter_t::WIDTH;
+	do {
+		--i;
+		if (f[i]) 
+			--k;
+	} while (k > 0 && i > 0);
+	return i;
 }
 
 void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostream * filters_os) {
@@ -96,39 +94,36 @@ void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostre
 	unsigned int pid = 0;
 
 	while (f != filters.end()) {
-		filter_t::pos_t max = 0;
 		filter_t::pos_t prefix_pos = 0;
 		std::vector<filter_descr>::const_iterator g = f + 1;
 		std::vector<filter_descr>::const_iterator next_f = g; 
 
-		filter_t::pos_t f_msb_pos = f->filter.most_significant_one_pos();
+		filter_t::pos_t kth_msb_pos = kth_most_significant_one_pos(f->filter, MIN_K);
 		
 		while(g != filters.end() && (g - f) < max_size) {
 			filter_t::pos_t msd = filter_t::most_significant_diff_pos(f->filter, g->filter);
 
-			if (msd > max && prefix_min_hamming_weight(f->filter, msd, MIN_K)) {
-				if (f_msb_pos == msd) {
-					// NOTE: it can never be (f_msb_pos < msd)
+			if (msd > prefix_pos) {
+				if (kth_msb_pos <= msd) {
 					next_f = g;
-					prefix_pos = f_msb_pos - 1;
+					prefix_pos += 1;
 					break;
 				}
-				prefix_pos = max;
-				max = msd;
+				prefix_pos = msd;
 				next_f = g;
 			}
 			++g;
 		}
 		if (g == filters.end()) {
 			next_f = g;
-			prefix_pos = max;
+			prefix_pos += 1;
 		}
 
 		foss.str("");
 		foss << f->filter;
 		if (prefix_os) {
 			*prefix_os << "p " << pid 
-					   << ' ' << foss.str().substr(0, (filter_t::WIDTH - prefix_pos - 1))
+					   << ' ' << foss.str().substr(0, (filter_t::WIDTH - prefix_pos))
 					   << ' ' << (next_f - f) << std::endl;
 		}
 		if (filters_os) {
