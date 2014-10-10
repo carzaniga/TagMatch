@@ -212,6 +212,15 @@ public:
 		assign(p.b);
 		return *this;
     }
+
+	void clear() {
+		for(int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = 0;
+	}
+
+	void set_bit(unsigned int pos) {
+		b[pos/BLOCK_SIZE] |= (BLOCK_ONE << (pos % BLOCK_SIZE));
+	}
 };
 
 typedef prefix<192> filter_t;

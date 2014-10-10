@@ -118,12 +118,41 @@ static unsigned int read_queries(vector<packet> & packets, string fname) {
 	return res;
 }
 
+static int read_bit_permutation(const char * fname) {
+	ifstream is(fname);
+	string line;
+	if (!is)
+		return -1;
+
+	unsigned char new_bit_pos = 0;
+	while(getline(is, line) && new_bit_pos < 192) {
+		istringstream line_s(line);
+		string command;
+		line_s >> command;
+		if (command != "p")
+			continue;
+
+		unsigned char old_bit_pos;
+
+		line_s >> old_bit_pos;
+
+		front_end::set_bit_permutation_pos(old_bit_pos, new_bit_pos);
+		++new_bit_pos;
+	}
+	is.close();
+	for(;new_bit_pos < 192; ++new_bit_pos)
+		front_end::set_bit_permutation_pos(new_bit_pos, new_bit_pos);
+
+	return new_bit_pos;
+}
+
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
 		 << " [options] " 
 		"p=<prefix-file-name> f=<filters-file-name> q=<queries-file-name>"
 		 << endl
 		 << "options:" << endl
+		 << "\tmap=<permutation-file-name>" << endl
 		 << "\t-q\t: disable output of matching results" << endl
 		 << "\t-Q\t: disable output of progress steps" << endl
 		 << "\t-s\t: enable output of front-end statistics" << endl
@@ -140,6 +169,7 @@ int main(int argc, const char * argv[]) {
 	const char * filters_fname = nullptr;
 #endif
 	const char * queries_fname = nullptr; 
+	const char * permutation_fname = nullptr; 
 	unsigned int thread_count = DEFAULT_THREAD_COUNT;
 
 	for(int i = 1; i < argc; ++i) {
@@ -155,6 +185,10 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strncmp(argv[i],"q=",2)==0) {
 			queries_fname = argv[i] + 2;
+			continue;
+		} else
+		if (strncmp(argv[i],"map=",4)==0) {
+			permutation_fname = argv[i] + 4;
 			continue;
 		} else
 		if (strncmp(argv[i],"-q",2)==0) {
@@ -194,6 +228,17 @@ int main(int argc, const char * argv[]) {
 
 	int res;
 
+	if (permutation_fname) {
+		if (print_progress_steps)
+			cout << "Reading bit permutation..." << std::flush;
+		if ((res = read_bit_permutation(permutation_fname)) < 0) {
+			cerr << endl << "couldn't read prefix file: " << permutation_fname << endl;
+			return 1;
+		};
+		if (print_progress_steps)
+			cout << "\t\t\t" << std::setw(12) << res << " bits." << endl;
+	}
+	
 	if (print_progress_steps)
 		cout << "Reading prefixes..." << std::flush;
 	if ((res = read_prefixes(prefixes_fname)) < 0) {

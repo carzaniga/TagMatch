@@ -23,6 +23,8 @@ public:
 	static void clear();
 
 	static size_t bytesize();
+
+	static void analyze_fibs();
 };
 
 #endif // BACK_END_HH_INCLUDED

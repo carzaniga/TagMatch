@@ -620,9 +620,33 @@ static void compile_fib() {
 	}
 }
 
+unsigned char bit_permutation[192] = { 0 };
+
+void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new_pos) {
+	bit_permutation[old_pos] = new_pos;
+}
+
+static void apply_permutation(filter_t & f) {
+	filter_t f_tmp;
+	f_tmp.clear();
+	unsigned int offset = 0;			
+	for(const block_t * b = f.begin(); b != f.end(); ++b) {
+		block_t curr_block = *b;
+		while (curr_block != 0) {
+			int m = leftmost_bit(curr_block);
+			f_tmp.set_bit(bit_permutation[offset + m]);
+			curr_block ^= (BLOCK_ONE << m);
+		}
+		offset += 64;
+	}
+	f.assign(f_tmp.begin());
+}
+
 // This is the main matching function
 // 
 static void match(packet * pkt) {
+	apply_permutation(pkt->filter);
+
 	const block_t * b = pkt->filter.begin();
 
     if (*b) {
@@ -923,6 +947,8 @@ void front_end::clear() {
 		p192_table = nullptr;
 	}
 	batch_pool::clear();
+	for(int i = 0; i < 192; ++i) 
+		bit_permutation[i] = i;
 }
 
 ostream & front_end::print_statistics(ostream & os) {

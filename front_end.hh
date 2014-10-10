@@ -21,6 +21,7 @@ public:
 	static std::ostream & print_statistics(std::ostream &);
 	static unsigned int get_latency_limit_ms();
 	static void set_latency_limit_ms(unsigned int);
+	static void set_bit_permutation_pos(unsigned char, unsigned char);
 };
 
 #endif // FRONT_END_HH_INCLUDED

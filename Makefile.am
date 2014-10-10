@@ -21,7 +21,8 @@ noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
 bin_PROGRAMS = router gen gen2 split_prefixes \
-		cpu_gpu_matcher test_matcher
+		cpu_gpu_matcher test_matcher \
+		analyze_workload
 
 gen_SOURCES = gen.cc params.h
 
@@ -40,3 +41,4 @@ test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh
 
 split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
 
+analyze_workload_SOURCES = analyze_workload.cc
