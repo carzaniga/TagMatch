@@ -25,9 +25,6 @@ using std::getline;
 using std::cout;
 using std::cerr;
 using std::endl;
-using std::chrono::high_resolution_clock;
-using std::chrono::nanoseconds;
-using std::chrono::duration_cast;
 
 typedef vector<tree_interface_pair> ti_vector;
 
@@ -46,61 +43,7 @@ typedef map<unsigned int, f_descr_vector > tmp_fib_map;
 
 static tmp_fib_map tmp_fib;
 
-static void add_filter(unsigned int part, const filter_t & f, 
-					   ti_vector::const_iterator begin,
-					   ti_vector::const_iterator end) {
-	// we simply add this filter to our temporary table
-	// 
-	tmp_fib[part].emplace_back(f, begin, end);
-}
-
-//
-// leftmost 1-bit position 
-//
-#ifdef HAVE_BUILTIN_CTZL
-static inline int leftmost_bit(const uint64_t x) noexcept {
-    // Since we represent the leftmost bit in the least-significant
-    // position, the leftmost bit corresponds to the count of trailing
-    // zeroes (see the layout specification above).
-    return __builtin_ctzl(x);
-} 
-#else
-static inline int leftmost_bit(uint64_t x) noexcept {
-    int n = 0;
-	if ((x & 0xFFFFFFFF) == 0) {
-		n += 32;
-		x >>= 32;
-	}
-	if ((x & 0xFFFF) == 0) {
-		n += 16;
-		x >>= 16;
-	}
-	if ((x & 0xFF) == 0) {
-		n += 8;
-		x >>= 8;
-	}
-	if ((x & 0xF) == 0) {
-		n += 4;
-		x >>= 4;
-	}
-	if ((x & 0x3) == 0) {
-		n += 2;
-		x >>= 2;
-	}
-	if ((x & 0x1) == 0) {
-		n += 1;
-	}
-    return n;
-}
-#endif
-
-map<unsigned int, unsigned int> prefix_len;
-
-// This is how we compile the temporary FIB
-// 
-static void add_prefix(unsigned int id, unsigned int len) {
-	prefix_len[id] = len;
-}
+static map<unsigned int, unsigned int> prefix_len;
 
 static int read_filters(string fname) {
 	ifstream is (fname) ;
@@ -131,7 +74,7 @@ static int read_filters(string fname) {
 		while (line_s >> tree >> iface) 
 			ti_pairs.push_back(tree_interface_pair(tree, iface));
 
-		add_filter(partition_id, f, ti_pairs.begin(), ti_pairs.end());
+		tmp_fib[partition_id].emplace_back(f, ti_pairs.begin(), ti_pairs.end());
 		++res;
 	}
 	return res;
@@ -156,7 +99,7 @@ static int read_prefixes(const char * fname) {
 
 		line_s >> prefix_id >> prefix_string >> prefix_size;
 
-		add_prefix(prefix_id, prefix_string.size());
+		prefix_len[prefix_id] = prefix_string.size();
 		++res;
 	}
 	is.close();
@@ -167,7 +110,7 @@ static void analyze_fibs(unsigned int threshold) {
 	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
 		unsigned int part_id = pf.first;
 		const f_descr_vector & filters = pf.second;
-		std::array<unsigned int, 192> freq;
+		std::array<unsigned int, filter_t::WIDTH> freq;
 		unsigned int prefix_pos = prefix_len[part_id];
 
 		freq.fill(0);
@@ -223,13 +166,9 @@ static void apply_permutation(filter_t & f, const unsigned char * bit_permutatio
 }
 
 static std::ostream & operator << (std::ostream & os, filter_t & f) {
-	for(const block_t * b = f.begin(); b != f.end(); ++b) {
-		block_t mask = BLOCK_ONE;
-		for(int i = 0; i < BLOCK_SIZE; ++i) {
+	for(const block_t * b = f.begin(); b != f.end(); ++b) 
+		for(block_t mask = BLOCK_ONE; mask != 0; mask <<= 1)
 			os << ((*b & mask) ? '1' : '0');
-			mask <<= 1;
-		}
-	}
     return os;
 }
 
@@ -239,10 +178,10 @@ static int map_filters(const char * permutation_fname) {
 	if (!is)
 		return -1;
 
-	unsigned char permutation[192];
+	unsigned char permutation[filter_t::WIDTH];
 
 	unsigned int new_bit_pos = 0;
-	while(getline(is, line) && new_bit_pos < 192) {
+	while(getline(is, line) && new_bit_pos < filter_t::WIDTH) {
 		istringstream line_s(line);
 		string command;
 		line_s >> command;
@@ -285,6 +224,39 @@ static int map_filters(const char * permutation_fname) {
 	return 0;
 }
 
+static int compute_freqs() {
+	string line;
+	unsigned int freqs[filter_t::WIDTH] = { 0 };
+	unsigned int count = 0;
+	while(std::getline(std::cin, line)) {
+		std::istringstream line_s(line);
+		std::string command;
+
+		line_s >> command;
+
+		if (command != "+")
+			continue;
+
+		std::string iface, tree, filter;
+
+		line_s >> tree >> iface >> filter;
+
+		string::size_type p;
+		string::size_type start = 0;
+		while ((p = filter.find('1', start)) != std::string::npos) {
+			freqs[p] += 1;
+			start = p + 1;
+		}
+
+		count += 1;
+	}
+
+	for(unsigned int i = 0; i < filter_t::WIDTH; ++i)
+		cout << "p " << i << ' ' << freqs[i] << ' ' << (100.0 * freqs[i] / count) << endl;
+
+	return 0;
+}
+
 int main(int argc, const char * argv[]) {
 	unsigned int threshold = 0;
 	bool print_progress_steps = true;
@@ -294,6 +266,9 @@ int main(int argc, const char * argv[]) {
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"map=",4)==0) {
 			return map_filters(argv[i] + 4);
+		} else 
+		if (strncmp(argv[i],"freq",4)==0) {
+			return compute_freqs();
 		} else 
 		if (strncmp(argv[i],"p=",2)==0) {
 			prefixes_fname = argv[i] + 2;

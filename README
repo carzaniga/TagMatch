@@ -1,3 +1,21 @@
 This program is part of the Siena Content-Based Networking System.
 This program implements the forwarding table of a content-based router
 that uses a routing scheme built on mutiple spanning trees.
+
+This package contains the following programs:
+
+ - gen: workload generator with application-specific tags
+
+ - gen2: more versatile ad generic workload generator
+
+ - router: RIBs and corresponding update algorithms
+
+ - cpu_gpu_matcher: two-stage subset matcher
+
+ - test_matcher: simple, sequential matcher 
+
+ - split_prefixes: workload partitioning program
+
+ - analyze_workload: computes frequency table
+
+
