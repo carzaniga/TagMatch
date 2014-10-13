@@ -121,8 +121,8 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 		for(unsigned int i = ti_table[ti_index]; i > 0; --i) {
 			// TODO: document these cryptic operations.
 			uint16_t ti_xor = query_ti_table[pi] ^ ti_table[ti_index + i];
-			if ((ti_xor <= 0x1FFF) && (ti_xor != 0)) {
-				results[pi*INTERFACES + ((ti_table[ti_index + i]) & 0x1FFF)] = 1;
+			if ((ti_xor < (0x0001 << 13)) && (ti_xor != 0)) {
+				results[pi*INTERFACES + ((ti_table[ti_index + i]) & (0xFFFF >> 3))] = 1;
 			}
 		}
 	}

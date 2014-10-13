@@ -93,7 +93,6 @@ static const block_t BLOCK_ONE = 0x1;
 // Main representation of a prefix.  Essentially we will instantiate
 // this template with Size=64, Size=128, and Size=192.
 //
-
 template <unsigned int Size>
 class prefix {
 	static_assert(sizeof(uint64_t)*CHAR_BIT == 64, "uint64_t must be a 64-bit word");
@@ -103,6 +102,7 @@ class prefix {
 	static const block_t BLOCK_ONE = 0x1;
 
     static const int BLOCK_COUNT = Size / BLOCK_SIZE;
+
     // 
     // BIT LAYOUT: a prefix is represented with the bit pattern in
     // reverse order.  That is, the first bit is the least significant
@@ -119,6 +119,8 @@ class prefix {
     block_t b[BLOCK_COUNT];
     
 public:
+	static const unsigned int WIDTH = Size;
+
     const block_t * begin() const {
 		return b;
     }
@@ -224,6 +226,47 @@ public:
 };
 
 typedef prefix<192> filter_t;
+
+//
+// leftmost 1-bit position in a block
+//
+#ifdef HAVE_BUILTIN_CTZL
+inline int leftmost_bit(const uint64_t x) noexcept {
+    // Since we represent the leftmost bit in the least-significant
+    // position, the leftmost bit corresponds to the count of trailing
+    // zeroes (see the layout specification above).
+    return __builtin_ctzl(x);
+} 
+#else
+inline int leftmost_bit(uint64_t x) noexcept {
+    int n = 0;
+	if ((x & 0xFFFFFFFF) == 0) {
+		n += 32;
+		x >>= 32;
+	}
+	if ((x & 0xFFFF) == 0) {
+		n += 16;
+		x >>= 16;
+	}
+	if ((x & 0xFF) == 0) {
+		n += 8;
+		x >>= 8;
+	}
+	if ((x & 0xF) == 0) {
+		n += 4;
+		x >>= 4;
+	}
+	if ((x & 0x3) == 0) {
+		n += 2;
+		x >>= 2;
+	}
+	if ((x & 0x1) == 0) {
+		n += 1;
+	}
+    return n;
+}
+#endif
+
 
 // this class represents the raw data read from the network.
 // 

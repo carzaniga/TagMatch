@@ -89,8 +89,8 @@ void predicate::node::remove_last_pair() {
 }
 
 void predicate::destroy() {
-    for(int i=0;i<192;i++){
-        for(int j=0; i< roots[i].size; j++){
+    for(int i = 0; i < filter_t::WIDTH; ++i){
+        for(int j = 0; i < roots[i].size; ++j){
             node r = roots[i].tries[j];
             if (r.pos <= r.left->pos)
                 return;

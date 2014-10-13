@@ -81,7 +81,7 @@ static int read_filters(string fname) {
 
 		vector<tree_interface_pair> ti_pairs;
 
-		while (line_s >> tree >> iface) 
+		while (line_s >> tree >> iface)
 			ti_pairs.push_back(tree_interface_pair(tree, iface));
 
 		back_end::add_filter(partition_id, f, ti_pairs.begin(), ti_pairs.end());
@@ -112,9 +112,11 @@ static unsigned int read_queries(vector<packet> & packets, string fname) {
 		line_s >> tree >> iface >> filter_string;
 
 		packets.emplace_back(filter_string, tree, iface);
-		packets.back().reset_output();
 		++res;
 	}
+	for(packet & p : packets)
+		p.reset_output();
+
 	return res;
 }
 
@@ -124,15 +126,15 @@ static int read_bit_permutation(const char * fname) {
 	if (!is)
 		return -1;
 
-	unsigned char new_bit_pos = 0;
-	while(getline(is, line) && new_bit_pos < 192) {
+	unsigned int new_bit_pos = 0;
+	while(getline(is, line) && new_bit_pos < filter_t::WIDTH) {
 		istringstream line_s(line);
 		string command;
 		line_s >> command;
 		if (command != "p")
 			continue;
 
-		unsigned char old_bit_pos;
+		unsigned int old_bit_pos;
 
 		line_s >> old_bit_pos;
 
@@ -140,7 +142,7 @@ static int read_bit_permutation(const char * fname) {
 		++new_bit_pos;
 	}
 	is.close();
-	for(;new_bit_pos < 192; ++new_bit_pos)
+	for(;new_bit_pos < filter_t::WIDTH; ++new_bit_pos)
 		front_end::set_bit_permutation_pos(new_bit_pos, new_bit_pos);
 
 	return new_bit_pos;
@@ -236,7 +238,9 @@ int main(int argc, const char * argv[]) {
 			return 1;
 		};
 		if (print_progress_steps)
-			cout << "\t\t\t" << std::setw(12) << res << " bits." << endl;
+			cout << "\t\t" << std::setw(12) << res << " bits." << endl;
+	} else {
+		front_end::set_identity_permutation();
 	}
 	
 	if (print_progress_steps)
@@ -319,7 +323,8 @@ int main(int argc, const char * argv[]) {
 		for(const packet & p : packets) {
 			if (p.is_matching_complete()) {
 				for(unsigned i = 0; i < INTERFACES; ++i) 
-					cout << ' ' << ((p.get_output(i)) ? '1' : '0');
+					if (p.get_output(i))
+						cout << ' ' << i;
 				cout << endl;
 			} else {
 				cout << "incomplete" << endl;

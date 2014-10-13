@@ -76,46 +76,6 @@ using std::ostream;
 // towards the most significant bit.
 //
 
-//
-// leftmost 1-bit position 
-//
-#ifdef HAVE_BUILTIN_CTZL
-static inline int leftmost_bit(const uint64_t x) noexcept {
-    // Since we represent the leftmost bit in the least-significant
-    // position, the leftmost bit corresponds to the count of trailing
-    // zeroes (see the layout specification above).
-    return __builtin_ctzl(x);
-} 
-#else
-static inline int leftmost_bit(uint64_t x) noexcept {
-    int n = 0;
-	if ((x & 0xFFFFFFFF) == 0) {
-		n += 32;
-		x >>= 32;
-	}
-	if ((x & 0xFFFF) == 0) {
-		n += 16;
-		x >>= 16;
-	}
-	if ((x & 0xFF) == 0) {
-		n += 8;
-		x >>= 8;
-	}
-	if ((x & 0xF) == 0) {
-		n += 4;
-		x >>= 4;
-	}
-	if ((x & 0x3) == 0) {
-		n += 2;
-		x >>= 2;
-	}
-	if ((x & 0x1) == 0) {
-		n += 1;
-	}
-    return n;
-}
-#endif
-
 // We implement the partition queues using a floating batch of
 // packets.  The queues remain associated with their partition, but
 // the packet batches (buffers) are independent object that we
@@ -620,9 +580,15 @@ static void compile_fib() {
 	}
 }
 
-unsigned char bit_permutation[192] = { 0 };
+static bool use_identity_permutation = true;
+static unsigned char bit_permutation[filter_t::WIDTH] = { 0 };
+
+void front_end::set_identity_permutation() noexcept {
+	use_identity_permutation = true;
+}
 
 void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new_pos) {
+	use_identity_permutation = false;
 	bit_permutation[old_pos] = new_pos;
 }
 
@@ -645,7 +611,9 @@ static void apply_permutation(filter_t & f) {
 // This is the main matching function
 // 
 static void match(packet * pkt) {
-	apply_permutation(pkt->filter);
+	if (!use_identity_permutation) {
+		apply_permutation(pkt->filter);
+	}
 
 	const block_t * b = pkt->filter.begin();
 
@@ -947,8 +915,7 @@ void front_end::clear() {
 		p192_table = nullptr;
 	}
 	batch_pool::clear();
-	for(int i = 0; i < 192; ++i) 
-		bit_permutation[i] = i;
+	use_identity_permutation = true;
 }
 
 ostream & front_end::print_statistics(ostream & os) {

@@ -25,7 +25,7 @@ public:
 	vector<tree_interface_pair> ti_pairs;
 };
 
-vector<f_descr> fib;
+static vector<f_descr> fib;
 
 int read_filters(string fname) {
 	ifstream is (fname) ;
@@ -73,8 +73,7 @@ static bool covers(const filter_t & f1, const filter_t & f2) {
 }
 
 static void match(const string & f_string, tree_t tree, interface_t iface) {
-	bool results[INTERFACES];
-	memset(results, 0, sizeof(results));
+	bool results[INTERFACES] = { false };
 
 	filter_t f(f_string);
 
@@ -89,7 +88,8 @@ static void match(const string & f_string, tree_t tree, interface_t iface) {
 	}
 
 	for(unsigned i = 0; i < INTERFACES; ++i) 
-		cout << ' ' << (results[i] ? '1' : '0');
+		if (results[i])
+		cout << ' ' << i;
 	cout << endl;
 }
 
