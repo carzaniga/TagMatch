@@ -317,12 +317,38 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	gpu::synchronize_stream(sh->stream);
 
 	ifx_result_t * result = sh->host_results;
-	for(unsigned int i = 0; i < batch_size; ++i) 
+	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(unsigned int j = 0; j < INTERFACES; ++j) 
 			if (*result++ == 1)
 				batch[i]->set_output(j);
-
+		batch[i]->partition_done();
+#if 0
+		// this is where we could check whether the processing of
+		// message batch[i] is complete, in which case we could
+		// release whatever resources are associated with the packet
+		//
+		if (batch[i]->is_matching_complete())
+			deallocate_packet(batch[i]);
+#endif
+	}
 	release_stream_handle(sh);
+#else  
+#if 1
+    // if the backend is disabled we still loop through the output
+	// array.  We do that to get a more accurate performance
+	// measurement for the frontend.  More specifically, we account
+	// for the extraction of the results.  Here we use the absolute
+	// worst case, where we set ALL output interfaces.
+	for(unsigned int i = 0; i < batch_size; ++i) {
+		for(unsigned int j = 0; j < INTERFACES; ++j) 
+			batch[i]->set_output(j);
+		batch[i]->partition_done();
+#if 0
+		if (batch[i]->is_matching_complete())
+			deallocate_packet(batch[i]);
+#endif
+	}
+#endif
 #endif
 }
 

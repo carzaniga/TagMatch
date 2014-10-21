@@ -318,6 +318,7 @@ partition_queue * partition_queue::first_pending() {
 void partition_queue::enqueue(packet * p) noexcept {
 	assert(tail <= PACKETS_BATCH_SIZE);
 
+	p->add_partition();
 	unsigned int t = tail.load(std::memory_order_acquire);
 	
 	do {

@@ -321,8 +321,11 @@ private:
 	// the corresponding interface.  We could use a bit vector but
 	// this should be faster
 	// 
+#ifdef WITH_ATOMIC_OUTPUT
 	std::atomic<unsigned char> output[INTERFACES]; 
-    
+#else    
+	unsigned char output[INTERFACES];
+#endif
 public:
 	packet(const filter_t f, uint16_t t, uint16_t i)
 		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
@@ -344,6 +347,11 @@ public:
 		++pending_partitions;
     }
 
+    void add_partitions(unsigned int p) {
+		if (p > 0)
+			pending_partitions += p;
+    }
+
     void partition_done() {
 		--pending_partitions;
     }
@@ -355,8 +363,12 @@ public:
     }
 
     void reset_output() {
+#ifdef WITH_ATOMIC_OUTPUT
 		for(unsigned int i = 0; i < INTERFACES; ++i)
 			output[i].store(0);
+#else
+		memset(output, 0, sizeof(output));
+#endif
     }
 
     void frontend_done() {
@@ -368,15 +380,27 @@ public:
     }
 
 	bool get_output(unsigned int ifx) const {
+#ifdef WITH_ATOMIC_OUTPUT		
 		return (output[ifx].load() == 1);
+#else
+		return (output[ifx] == 1);
+#endif
 	}
 
 	void set_output(unsigned int ifx) {
+#ifdef WITH_ATOMIC_OUTPUT		
 		output[ifx].store(1);
+#else
+		output[ifx] = 1;
+#endif
 	}
 
 	void reset_output(unsigned int ifx) {
+#ifdef WITH_ATOMIC_OUTPUT		
 		output[ifx].store(0);
+#else
+		output[ifx] = 0;
+#endif
 	}
 };
 
