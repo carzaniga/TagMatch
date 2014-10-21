@@ -104,17 +104,17 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 	}
 #else
 	for(unsigned int pi = 0; pi < batch_size; ++pi) {
-		if (a_complement_not_subset_of_b(f[5], packets[stream_id][pi*GPU_FILTER_WORDS + 5]))
-			continue;
-		if (a_complement_not_subset_of_b(f[4], packets[stream_id][pi*GPU_FILTER_WORDS + 4]))
-			continue;
-		if (a_complement_not_subset_of_b(f[3], packets[stream_id][pi*GPU_FILTER_WORDS + 3]))
-			continue;
-		if (a_complement_not_subset_of_b(f[2], packets[stream_id][pi*GPU_FILTER_WORDS + 2]))
+		if (a_complement_not_subset_of_b(f[0], packets[stream_id][pi*GPU_FILTER_WORDS + 0]))
 			continue;
 		if (a_complement_not_subset_of_b(f[1], packets[stream_id][pi*GPU_FILTER_WORDS + 1]))
 			continue;
-		if (a_complement_not_subset_of_b(f[0], packets[stream_id][pi*GPU_FILTER_WORDS + 0]))
+		if (a_complement_not_subset_of_b(f[2], packets[stream_id][pi*GPU_FILTER_WORDS + 2]))
+			continue;
+		if (a_complement_not_subset_of_b(f[3], packets[stream_id][pi*GPU_FILTER_WORDS + 3]))
+			continue;
+		if (a_complement_not_subset_of_b(f[4], packets[stream_id][pi*GPU_FILTER_WORDS + 4]))
+			continue;
+		if (a_complement_not_subset_of_b(f[5], packets[stream_id][pi*GPU_FILTER_WORDS + 5]))
 			continue;
 
 		unsigned int ti_index = ti_indexes[id];
