@@ -130,6 +130,7 @@ __global__ void minimal_kernel(uint32_t * fib, unsigned int fib_size,
 }
 
 void gpu::initialize() {
+	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
 	ABORT_ON_ERROR(cudaSetDevice(0));
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 	ABORT_ON_ERROR(cudaThreadSynchronize());
