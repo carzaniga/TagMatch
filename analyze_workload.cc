@@ -142,8 +142,9 @@ static void analyze_fibs(unsigned int threshold) {
 
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
-		 << " [options] " 
-		"p=<prefix-file-name> f=<filters-file-name>"
+		 << " freq"
+		" | map=<permutation-filename>"
+		" | p=<prefix-file-name> f=<filters-file-name> [options]"
 		 << endl
 		 << "options:" << endl
 		 << "\t-Q\t: disable output of progress steps" << endl;
