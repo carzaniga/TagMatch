@@ -166,6 +166,7 @@ int main(int argc, const char * argv[]) {
 	bool print_statistics = false;
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
+	bool print_matching_time_only = false;
 	const char * prefixes_fname = nullptr;
 #ifndef BACK_END_IS_VOID
 	const char * filters_fname = nullptr;
@@ -199,6 +200,8 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strncmp(argv[i],"-Q",2)==0) {
 			print_progress_steps = false;
+			if (strncmp(argv[i],"-Qt",3)==0)
+				print_matching_time_only = true;
 			continue;
 		} else
 		if (strncmp(argv[i],"-s",2)==0) {
@@ -282,15 +285,18 @@ int main(int argc, const char * argv[]) {
 	};
 
 
+#ifndef BACK_END_IS_VOID
 	if (print_progress_steps) 
 		cout << "Back-end FIB compilation..." << std::flush;
+#endif
 
 	back_end::start();
 
 	if (print_progress_steps) {
+#ifndef BACK_END_IS_VOID
 		cout << "\t\t" << std::setw(10) 
 			 << back_end::bytesize()/(1024*1024) << "MB back-end FIB" << endl;
-
+#endif
 		cout << "Matching packets with " << thread_count << " threads..." << std::flush;
 	}
 
@@ -306,11 +312,13 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
-	if (print_progress_steps) 
+	if (print_progress_steps) {
 		cout << "\t" << std::setw(10)
 			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
 			 << "ns average matching time." << endl;
-
+	} else if (print_matching_time_only) {
+		cout << duration_cast<nanoseconds>(stop - start).count()/packets.size() << endl;
+	}
 	if (print_statistics) {
 		cout << "Front-end Statistics:" << endl;
 		front_end::print_statistics(cout);
