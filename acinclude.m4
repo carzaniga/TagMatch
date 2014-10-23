@@ -72,6 +72,11 @@ AC_ARG_ENABLE(backend,
   AC_HELP_STRING([--disable-backend],
 	[disable back-end matching (default is ENABLED).  This is for testing purposes, to test the front-end in isolation]), 
   [ AC_DEFINE(BACK_END_IS_VOID, 1, [Disable back-end matching])])
+AC_ARG_ENABLE(backend-no-output, 
+  AC_HELP_STRING([--disable-backend-no-output],
+	[disable back-end matching (default is ENABLED).  This is for testing purposes, to test the front-end in isolation.  This option differs from --disable-backend in that it also does not go through the loop that sets the output.]), 
+  [ AC_DEFINE(BACK_END_IS_VOID, 1, [Disable back-end matching])]
+  [ AC_DEFINE(NO_FRONTEND_OUTPUT_LOOP, 1, [Disable loop over batch to set output after backend processing])])
 ])
 dnl
 dnl AC_OPT_ASSERTIONS

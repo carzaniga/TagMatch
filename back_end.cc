@@ -333,7 +333,7 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	}
 	release_stream_handle(sh);
 #else  
-#if 1
+#ifndef NO_FRONTEND_OUTPUT_LOOP
     // if the backend is disabled we still loop through the output
 	// array.  We do that to get a more accurate performance
 	// measurement for the frontend.  More specifically, we account
