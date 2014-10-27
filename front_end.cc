@@ -374,7 +374,7 @@ void partition_queue::flush() noexcept {
 template<unsigned int Size>
 class prefix_queue_pair : public partition_queue {
 public:
-	prefix<Size> p;
+	bitvector<Size> p;
 
 public:
 	void initialize(unsigned int id, const block_t * pb) {

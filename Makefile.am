@@ -32,7 +32,7 @@ router_SOURCES = main2.cc predicate.hh timing.hh \
 		router.cc router.hh	
 router_LDADD = $(LIBS_prof) libpredicate.la
 
-cpu_gpu_matcher_SOURCES = packet.hh parameters.hh gpu.hh \
+cpu_gpu_matcher_SOURCES = packet.hh bitvector.hh parameters.hh gpu.hh \
 			cpu_gpu_matcher.cc gpu.cu \
 			front_end.cc front_end.hh back_end.cc back_end.hh 
 cpu_gpu_matcher_LDFLAGS = -lcudart
