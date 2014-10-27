@@ -18,16 +18,16 @@ if test "$ax_cv_cxx_compile_cxx0x_cxx" = yes; then
 elif test "$ax_cv_cxx_compile_cxx0x_gxx" = yes; then
   CXXFLAGS="-std=gnu++0x $CXXFLAGS"
 fi
-AX_CHECK_COMPILE_FLAG([-Wall], [
+AX_CHECK_COMPILE_FLAG([-Wall], [[
   CFLAGS="-Wall $CFLAGS"
   CXXFLAGS="-Wall $CXXFLAGS"
-])
-AX_CHECK_COMPILE_FLAG([-O3], [
+]])
+AX_CHECK_COMPILE_FLAG([-O3], [[
   CXXFLAGS=`echo "$CXXFLAGS" | sed -e 's/-O[^ ]*//'`
   CFLAGS=`echo "$CFLAGS" | sed -e 's/-O[^ ]*//'`
   CFLAGS="$CFLAGS -O3"
   CXXFLAGS="$CXXFLAGS -O3"
-])
+]])
 AC_OPT_ASSERTIONS
 AC_OPT_DEBUGGING
 AC_OPT_PROFILING
