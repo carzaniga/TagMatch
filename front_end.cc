@@ -98,44 +98,42 @@ public:
 // 
 class batch_pool {
 private:
+	// we keep track of all the batch objects we allocate by storing
+	// them (pointers) in the pool vector.  We then use that vector
+	// exclusively to deallocate the batches.  Access to the pool is
+	// synchronized (mutex).
+	static std::mutex pool_mtx;
 	static vector<batch *> pool;
+
+	// once the batch objects are allocated, we either give them to
+	// threads that use them, or we hold them in a singly-linked
+	// free-list.
 	static atomic<batch *> head;
 
-	static batch * allocate_one() {
-		batch * res = new batch();
-		pool.push_back(res);
-		return res;
-	}
-
 public:
-	static void preallocate(unsigned int n) {
-		// intended to execute atomically (run by a single thread)
-		// 
-		while(n-- > 0) {
-			batch * b = allocate_one();
-			b->next = head;
-			head = b;
-		}
-	}
-
+	// Deallocate all allocated batches, regardless of whether they
+	// are in the free-list or not.  This means that clear() must be
+	// called when none of the batches is in use.
+	// 
 	static void clear() {
-		// intended to execute atomically (run by a single thread)
-		// 
+		std::lock_guard<std::mutex> lock(pool_mtx);
+		head = nullptr;
 		for(batch * i : pool)
 			delete(i);
 		pool.clear();
-		head = nullptr;
-	}
-
-	static unsigned int allocated_size() {
-		return pool.size();
 	}
 
 	static batch * get() {
 		batch * b = head.load(std::memory_order_acquire);
 		do {
-			if (!b) 
-				return allocate_one();
+			if (!b) {
+				b = new batch();
+				if (b) {
+					std::lock_guard<std::mutex> lock(pool_mtx);
+					pool.push_back(b);
+				}
+				return b;
+			}
 		} while (!head.compare_exchange_weak(b, b->next));
 
 		return b;
@@ -148,6 +146,7 @@ public:
 	}
 };
 
+mutex batch_pool::pool_mtx;
 vector<batch *> batch_pool::pool;
 atomic<batch *> batch_pool::head(nullptr);
 
