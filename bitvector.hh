@@ -6,7 +6,9 @@
 #endif
 
 #include <cstdint>
+#include <cctype>
 #include <cstddef>				// size_t
+#include <iostream>
 
 //
 // We represent bit vectors of sizes that are multiples of 64.  Thus
@@ -176,6 +178,66 @@ public:
 
 		return true;
     }
+
+	std::ostream & write_binary(std::ostream & output) const {
+#ifdef WORDS_BIGENDIAN
+		unsigned char tmp[sizeof(b)];
+		unsigned char * cp = tmp;
+		for (int i = 0; i < BLOCK_COUNT; ++i) {
+			block_t b = b[i];
+			for(int j = 0; j < sizeof(block_t); ++j) {
+				*cp = (b & 0xff);
+				b >>= CHAR_BIT;
+				++cp;
+			}
+		}
+		return output.write(tmp, sizeof(tmp));
+#else
+		return output.write(reinterpret_cast<const char *>(b), sizeof(b));
+#endif
+	}
+
+	std::istream & read_binary(std::istream & input) {
+#ifdef WORDS_BIGENDIAN
+		unsigned char tmp[sizeof(b)];
+		if (input.read(tmp, sizeof(tmp))) {
+			const unsigned char * cp = tmp;
+			for (int i = 0; i < BLOCK_COUNT; ++i) {
+				b[i] = 0;
+				for(int j = 0; j < sizeof(block_t); ++j) {
+					b[i] = (b[i] << CHAR_BIT) | *cp;
+					++cp;
+				}
+			}
+		}
+		return input;
+#else
+		return input.read(reinterpret_cast<char *>(b), sizeof(b));
+#endif
+	}
+
+	std::ostream & write_ascii(std::ostream & output) const {
+		for (int i = 0; i < BLOCK_COUNT; ++i) 
+			for(block_t mask = BLOCK_ONE; mask != 0; mask <<= 1)
+				output << ((b[i] & mask) ? '1' : '0');
+		return output;
+	}
+
+	std::istream & read_ascii(std::istream & input) {
+		while(isspace(input.peek()))
+			input.get();
+		for (int i = 0; i < BLOCK_COUNT; ++i) {
+			b[i] = 0;
+			for(block_t mask = BLOCK_ONE; mask != 0; mask <<= 1) {
+				switch (input.get()) {
+				case '1': b[i] |= mask;
+				case '0': break;
+				default: return input;
+				}
+			}
+		}
+		return input;
+	}
 };
 
 //

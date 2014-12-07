@@ -14,6 +14,7 @@
 
 #include "parameters.hh"
 #include "bitvector.hh"
+#include "io_util.hh"
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
@@ -34,6 +35,9 @@ public:
 	static const unsigned int TREE_OFFSET = 13;
 	static const uint16_t IFX_MASK = (0xFFFF >> (16 - TREE_OFFSET));
 
+	tree_interface_pair()
+		: value(0) {};
+	
 	tree_interface_pair(tree_t t, interface_t ifx)
 		: value((t << TREE_OFFSET) | (ifx & IFX_MASK)) {};
 	
@@ -68,6 +72,26 @@ public:
 	static uint16_t interface(uint16_t value) {
 		return value & IFX_MASK;
 	}
+
+	std::ostream & write_binary(std::ostream & output) const {
+		return io_util_write_binary(output, value);
+	}
+
+	std::istream & read_binary(std::istream & input) {
+		return io_util_read_binary(input, value);
+	}
+
+	std::ostream & write_ascii(std::ostream & output) const {
+		return output << tree() << ' ' << interface();
+	}
+
+	std::istream & read_ascii(std::istream & input) {
+		uint16_t t;
+		uint16_t i;
+		if (input >> t >> i)
+			value = ((t << TREE_OFFSET) | (i & IFX_MASK));
+		return input;
+	}
 };
 
 //
@@ -85,6 +109,8 @@ public:
 	filter_t filter;
 	tree_interface_pair ti_pair;
 
+	network_packet() : filter(), ti_pair() {};
+
 	network_packet(const filter_t f, tree_t t, interface_t i)
 		: filter(f), ti_pair(t,i) {};
 
@@ -93,6 +119,11 @@ public:
 
 	network_packet(const network_packet & p) 
 		: filter(p.filter), ti_pair(p.ti_pair) {};
+
+	std::ostream & write_binary(std::ostream & output) const;
+	std::istream & read_binary(std::istream & input);
+	std::ostream & write_ascii(std::ostream & output) const;
+	std::istream & read_ascii(std::istream & input);
 };
 
 // this is the class that defines and stores a packet and the related

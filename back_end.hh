@@ -5,7 +5,6 @@
 #include "config.h"
 #endif
 
-#include <cstdlib>
 #include <vector>
 
 #include "packet.hh"
