@@ -46,26 +46,56 @@ std::ostream & fib_entry::write_ascii(std::ostream & output) const {
 std::istream & fib_entry::read_ascii(std::istream & input) {
 	std::string line;
 	if (std::getline(input, line)) {
-		std::istringstream line_s(line);
+		std::istringstream input_line(line);
 		std::string command;
-		line_s >> command;
+		input_line >> command;
 
 		if (command == "+") {
 			tree_interface_pair ti;
 
-			if (! ti.read_ascii(line_s))
+			if (! ti.read_ascii(input_line))
 				return input;
 
-			if (! filter.read_ascii(line_s))
+			if (! filter.read_ascii(input_line))
 				return input;
 
 			ti_pairs.clear();
 
 			do {
 				ti_pairs.push_back(ti);
-			} while (ti.read_ascii(line_s));
+			} while (ti.read_ascii(input_line));
 		}
 	}
 	return input;
 }
+
+std::ostream & partition_prefix::write_ascii(std::ostream & output) const {
+	output << "p " << partition << ' ';
+	filter.write_ascii(output, length);
+	output << ' ' << size << std::endl;
+	return output;
+}
+
+std::istream & partition_prefix::read_ascii(std::istream & input) {
+	std::string line;
+	if (std::getline(input, line)) {
+		std::istringstream input_line(line);
+		std::string command;
+		input_line >> command;
+		if (command == "p") {
+			if(input_line >> partition) {
+				std::string filter_string;
+				if (input_line >> filter_string) {
+					length = filter_string.size();
+					std::istringstream input_filter_string(filter_string);
+					filter.read_ascii(input_filter_string);
+					input_line >> size;
+				}
+			}
+		}
+	}
+	return input;
+}
+
+
 

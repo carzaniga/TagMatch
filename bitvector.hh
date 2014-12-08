@@ -223,6 +223,19 @@ public:
 		return output;
 	}
 
+	std::ostream & write_ascii(std::ostream & output, uint8_t prefix_len) const {
+		for (int i = 0; i < BLOCK_COUNT; ++i) 
+			for(block_t mask = BLOCK_ONE; mask != 0; mask <<= 1) {
+				if (prefix_len == 0) {
+					return output;
+				} else {
+					--prefix_len;
+					output << ((b[i] & mask) ? '1' : '0');
+				}
+			}
+		return output;
+	}
+
 	std::istream & read_ascii(std::istream & input) {
 		while(isspace(input.peek()))
 			input.get();
@@ -232,7 +245,10 @@ public:
 				switch (input.get()) {
 				case '1': b[i] |= mask;
 				case '0': break;
-				default: return input;
+				default: 
+					while(++i < BLOCK_COUNT)
+						b[i] = 0;
+					return input;
 				}
 			}
 		}

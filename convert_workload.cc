@@ -44,10 +44,16 @@ int convert_queries_ascii(std::istream & input, std::ostream & output) {
 }
 
 int convert_prefixes(std::istream & input, std::ostream & output) {
+	partition_prefix p;
+	while(p.read_ascii(input))
+		p.write_binary(output);
 	return 0;
 }
 
 int convert_prefixes_ascii(std::istream & input, std::ostream & output) {
+	partition_prefix p;
+	while(p.read_binary(input))
+		p.write_ascii(output);
 	return 0;
 }
 
