@@ -5,10 +5,12 @@
 #include "config.h"
 #endif
 
+#include <climits>
 #include <cstdint>
 #include <cctype>
 #include <cstddef>				// size_t
 #include <iostream>
+#include <cassert>
 
 //
 // We represent bit vectors of sizes that are multiples of 64.  Thus

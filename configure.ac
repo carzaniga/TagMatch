@@ -37,17 +37,8 @@ AC_OPT_DISABLE_BACKEND
 #
 # Boost unit testing framework
 #
-dnl AX_BOOST_BASE([1.40], [
-dnl   AX_BOOST_UNIT_TEST_FRAMEWORK
-dnl   if test "x$ax_cv_boost_unit_test_framework" = "xyes"; then
-dnl       USE_BOOST_UTF=yes
-dnl   else
-dnl       USE_BOOST_UTF=no
-dnl   fi],  [USE_BOOST_UTF=no])
-if test "x$USE_BOOST_UTF" != "xyes"; then
-   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
-fi
-AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$USE_BOOST_UTF" = "xyes"])
+AC_CHECK_BOOST_UNIT_TEST
+AM_CONDITIONAL([USE_BOOST_UNIT_TEST_FRAMEWORK], [test "x$ax_cv_boost_unit_test_framework" = "xyes"])
 #
 AC_CHECK_BUILTIN_CLZL
 AC_CHECK_BUILTIN_CTZL

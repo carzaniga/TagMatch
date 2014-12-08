@@ -33,8 +33,8 @@ check_PROGRAMS =
 UNIT_TESTS = 
 
 if USE_BOOST_UNIT_TEST_FRAMEWORK
-check_PROGRAMS += test_bv test_bv192 test_predicate
-UNIT_TESTS += test_bv test_bv192 test_predicate
+check_PROGRAMS += test_bv test_bv192 test_io
+UNIT_TESTS += test_bv test_bv192 test_io
 endif
 
 test_bv_SOURCES = test_bv.cc
@@ -43,8 +43,8 @@ test_bv_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
 test_bv192_SOURCES = test_bv192.cc
 test_bv192_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
 
-test_predicate_SOURCES = test_predicate.cc
-test_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libpredicate.la
+test_io_SOURCES = test_io.cc
+test_io_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
 
 TESTS = $(UNIT_TESTS)
 

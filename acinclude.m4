@@ -355,3 +355,31 @@ AC_ARG_WITH(thread-count,
       AC_DEFINE_UNQUOTED([THREAD_COUNT], $withval, [threadpool size])
   ])
 ])
+
+dnl
+dnl AC_CHECK_BOOST_UNIT_TEST
+dnl
+AC_DEFUN([AC_CHECK_BOOST_UNIT_TEST], [
+   AC_CACHE_CHECK(whether we can compile Boost unit tests,
+   ax_cv_boost_unit_test_compile, [
+     AC_LANG_PUSH([C++])
+     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[@%:@include <boost/test/unit_test.hpp>]],
+     				        [[using boost::unit_test::test_suite;
+ 				          test_suite* test= BOOST_TEST_SUITE( "Unit test example 1" ); 
+ 					  return 0;]])], [ax_cv_boost_unit_test_compile=yes])
+     AC_LANG_POP([C++])])
+if test "x$ax_cv_boost_unit_test_compile" = "xyes"; then
+   AC_LANG_PUSH([C++])
+   AC_CHECK_LIB([boost_unit_test_framework], [main], [
+     AC_DEFINE(HAVE_BOOST_UNIT_TEST_FRAMEWORK,,[define if the Boost::Unit_Test_Framework library is available])
+     BOOST_UNIT_TEST_FRAMEWORK_LIB="-lboost_unit_test_framework"
+     AC_SUBST(BOOST_UNIT_TEST_FRAMEWORK_LIB)
+     ax_cv_boost_unit_test_framework=yes], [ax_cv_boost_unit_test_framework=no])
+   AC_LANG_POP([C++])
+else
+     ax_cv_boost_unit_test_framework=no
+fi
+if test "x$ax_cv_boost_unit_test_framework" != "xyes"; then
+   AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
+fi
+])
