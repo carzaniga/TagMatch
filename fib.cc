@@ -97,5 +97,37 @@ std::istream & partition_prefix::read_ascii(std::istream & input) {
 	return input;
 }
 
+std::ostream & partition_fib_entry::write_ascii(std::ostream & output) const {
+	output << "f " << partition << ' ';
+	filter.write_ascii(output);
+	for(unsigned int i = 0; i < ti_pairs.size(); ++i) {
+		output << " ";
+		ti_pairs[i].write_ascii(output);
+	}
+	output << std::endl;
+	return output;
+}
 
+std::istream & partition_fib_entry::read_ascii(std::istream & input) {
+	std::string line;
+	if (std::getline(input, line)) {
+		std::istringstream input_line(line);
+		std::string command;
+		input_line >> command;
+
+		if (command == "f") {
+			if (input_line >> partition) {
+				tree_interface_pair ti;
+
+				if (! filter.read_ascii(input_line))
+					return input;
+
+				ti_pairs.clear();
+				while(ti.read_ascii(input_line))
+					ti_pairs.push_back(ti);
+			}
+		}
+	}
+	return input;
+}
 
