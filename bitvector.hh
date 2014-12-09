@@ -195,7 +195,7 @@ public:
 	 *  bitvector<192> bv;
 	 *  bv.read_ascii(std::cin);
 	 *  
-	 *  for(unsigned int i = next_bit(0); i < bv.WIDTH; ++i)
+	 *  for(unsigned int i = next_bit(0); i < bv.WIDTH; i = next_bit(i + 1))
 	 *      std::cout << ' ' << i;
 	 *  std::cout << std::endl;
 	 */
