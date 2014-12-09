@@ -29,6 +29,8 @@ static_assert(sizeof(uint64_t)*CHAR_BIT == 64, "uint64_t must be a 64-bit word")
 
 typedef uint64_t block_t;
 
+static inline size_t leftmost_bit(const block_t x) noexcept;
+
 static const size_t BLOCK_SIZE = 64;
 static const block_t BLOCK_ONE = 0x1;
 
@@ -181,6 +183,40 @@ public:
 		return true;
     }
 
+	/** iterate through the bits
+	 * 
+	 *  return the first bit position set to 1 starting from pos.
+	 *  That is, returns the position of the leftmost 1-bit that is
+	 *  greater or equal to pos. Return WIDTH when no bits are set to
+	 *  1 (from pos).
+	 *
+	 *  Example:
+	 *  <code>
+	 *  bitvector<192> bv;
+	 *  bv.read_ascii(std::cin);
+	 *  
+	 *  for(unsigned int i = next_bit(0); i < bv.WIDTH; ++i)
+	 *      std::cout << ' ' << i;
+	 *  std::cout << std::endl;
+	 */
+	unsigned int next_bit(unsigned int pos) const {
+		unsigned int i = pos / BLOCK_SIZE; 
+		if (i < BLOCK_COUNT) {
+			block_t B = b[i];
+			pos = pos % BLOCK_SIZE;
+
+			B = ((B >> pos) << pos); // clear the first pos bits
+
+			if (B != 0)
+				return leftmost_bit(B) + i*BLOCK_SIZE;
+
+			while(++i < BLOCK_COUNT)
+				if (b[i] != 0)
+					return leftmost_bit(b[i]) + i*BLOCK_SIZE;
+		}		 
+		return Size;
+	}
+
 	std::ostream & write_binary(std::ostream & output) const {
 #ifdef WORDS_BIGENDIAN
 		unsigned char tmp[sizeof(b)];
@@ -262,14 +298,14 @@ public:
 // leftmost 1-bit position in a block
 //
 #ifdef HAVE_BUILTIN_CTZL
-inline size_t leftmost_bit(const block_t x) noexcept {
+static inline size_t leftmost_bit(const block_t x) noexcept {
     // Since we represent the leftmost bit in the least-significant
     // position, the leftmost bit corresponds to the count of trailing
     // zeroes (see the layout specification above).
     return __builtin_ctzl(x);
 } 
 #else
-inline size_t leftmost_bit(block_t x) noexcept {
+static inline size_t leftmost_bit(block_t x) noexcept {
     size_t n = 0;
 	if ((x & 0xFFFFFFFF) == 0) {
 		n += 32;
