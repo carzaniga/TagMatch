@@ -13,8 +13,8 @@
 #include <map>
 #include <algorithm>
 
-#include "parameters.hh"
 #include "packet.hh"
+#include "fib.hh"
 
 using std::vector;
 using std::map;
@@ -26,26 +26,15 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
-typedef vector<tree_interface_pair> ti_vector;
 
-struct filter_descr {
-	filter_t filter;
-	ti_vector ti_pairs;
-
-	filter_descr(const filter_t & f,
-				 ti_vector::const_iterator begin,
-				 ti_vector::const_iterator end)
-		: filter(f), ti_pairs(begin, end) {};
-};
-
-typedef vector<filter_descr> f_descr_vector;
-typedef map<unsigned int, f_descr_vector > tmp_fib_map;
+typedef vector<fib_entry> fib_entry_vector;
+typedef map<unsigned int, fib_entry_vector > tmp_fib_map;
 
 static tmp_fib_map tmp_fib;
 
 static map<unsigned int, unsigned int> prefix_len;
 
-static int read_filters(string fname) {
+static int read_filters(string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -53,68 +42,54 @@ static int read_filters(string fname) {
 		return -1;
 
 	int res = 0;
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "f") 
-			continue;
-
-		unsigned int partition_id;
-		interface_t iface;
-		tree_t tree;
-		string filter_string;
-
-		line_s >> partition_id >> filter_string;
-
-		filter_t f(filter_string);
-
-		vector<tree_interface_pair> ti_pairs;
-
-		while (line_s >> tree >> iface) 
-			ti_pairs.push_back(tree_interface_pair(tree, iface));
-
-		tmp_fib[partition_id].emplace_back(f, ti_pairs.begin(), ti_pairs.end());
-		++res;
+	partition_fib_entry f;
+	if (binary_format) {
+		while(f.read_binary(is)) {
+			tmp_fib[f.partition].emplace_back(f);
+			++res;
+		}
+	} else {
+		while(f.read_ascii(is)) {
+			tmp_fib[f.partition].emplace_back(f);
+			++res;
+		}
 	}
+	is.close();
 	return res;
 }
 
-static int read_prefixes(const char * fname) {
+static int read_prefixes(const char * fname, bool binary_format) {
 	ifstream is(fname);
 	string line;
 	if (!is)
 		return -1;
 
+	partition_prefix p;
 	int res = 0;
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "p")
-			continue;
-
-		unsigned int prefix_id, prefix_size;
-		string prefix_string;
-
-		line_s >> prefix_id >> prefix_string >> prefix_size;
-
-		prefix_len[prefix_id] = prefix_string.size();
-		++res;
+	if (binary_format) {
+		while(p.read_binary(is)) {
+			prefix_len[p.partition] = p.length;
+			++res;
+		}
+	} else {
+		while(p.read_ascii(is)) {
+			prefix_len[p.partition] = p.length;
+			++res;
+		}
 	}
 	is.close();
 	return res;
 }
 
 static void analyze_fibs(unsigned int threshold) {
-	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
+	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, fib_entry_vector> tmp_fib
 		unsigned int part_id = pf.first;
-		const f_descr_vector & filters = pf.second;
+		const fib_entry_vector & filters = pf.second;
 		std::array<unsigned int, filter_t::WIDTH> freq;
 		unsigned int prefix_pos = prefix_len[part_id];
 
 		freq.fill(0);
-		for(const filter_descr & fd : filters) {
+		for(const fib_entry & fd : filters) {
 			unsigned int offset = 0;			
 			for(const block_t * b = fd.filter.begin(); b != fd.filter.end(); ++b) {
 				block_t curr_block = *b;
@@ -225,29 +200,16 @@ static int map_filters(const char * permutation_fname) {
 	return 0;
 }
 
-static int compute_freqs() {
+static int compute_freqs(bool binary_format) {
 	string line;
 	unsigned int freqs[filter_t::WIDTH] = { 0 };
 	unsigned int count = 0;
-	while(std::getline(std::cin, line)) {
-		std::istringstream line_s(line);
-		std::string command;
+	
+	fib_entry f;
 
-		line_s >> command;
-
-		if (command != "+")
-			continue;
-
-		std::string iface, tree, filter;
-
-		line_s >> tree >> iface >> filter;
-
-		string::size_type p;
-		string::size_type start = 0;
-		while ((p = filter.find('1', start)) != std::string::npos) {
+	while(binary_format ? f.read_binary(std::cin) : f.read_ascii(std::cin)) {
+		for(unsigned int p = f.filter.next_bit(0); p < filter_t::WIDTH; p = f.filter.next_bit(p+1))
 			freqs[p] += 1;
-			start = p + 1;
-		}
 
 		count += 1;
 	}
@@ -259,6 +221,7 @@ static int compute_freqs() {
 }
 
 int main(int argc, const char * argv[]) {
+	bool binary_format = false;
 	unsigned int threshold = 0;
 	bool print_progress_steps = true;
 	const char * filters_fname = nullptr;
@@ -268,20 +231,21 @@ int main(int argc, const char * argv[]) {
 		if (strncmp(argv[i],"map=",4)==0) {
 			return map_filters(argv[i] + 4);
 		} else 
+		if (strcmp(argv[i],"-b")==0) {
+			binary_format = true;
+		} else 
 		if (strncmp(argv[i],"freq",4)==0) {
-			return compute_freqs();
+			return compute_freqs(binary_format);
 		} else 
 		if (strncmp(argv[i],"p=",2)==0) {
 			prefixes_fname = argv[i] + 2;
-			continue;
 		} else 
 		if (strncmp(argv[i],"f=",2)==0) {
 			filters_fname = argv[i] + 2;
-			continue;
 		} else
 		if (sscanf(argv[i],"t=%u", &threshold) > 0) {
-			continue;
-		}
+			;
+		} else
 		if (strncmp(argv[i],"-Q",2)==0) {
 			print_progress_steps = false;
 			continue;
@@ -300,7 +264,7 @@ int main(int argc, const char * argv[]) {
 
 	if (print_progress_steps)
 		cout << "Reading prefixes..." << std::flush;
-	if ((res = read_prefixes(prefixes_fname)) < 0) {
+	if ((res = read_prefixes(prefixes_fname, binary_format)) < 0) {
 		cerr << endl << "couldn't read prefix file: " << prefixes_fname << endl;
 		return 1;
 	};
@@ -309,7 +273,7 @@ int main(int argc, const char * argv[]) {
 
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
-	if ((res = read_filters(filters_fname)) < 0) {
+	if ((res = read_filters(filters_fname, binary_format)) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};

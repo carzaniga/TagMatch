@@ -130,4 +130,3 @@ std::istream & partition_fib_entry::read_ascii(std::istream & input) {
 	}
 	return input;
 }
-
