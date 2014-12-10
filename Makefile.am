@@ -22,7 +22,7 @@ libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
 bin_PROGRAMS = router gen gen2 split_prefixes \
 		cpu_gpu_matcher test_matcher \
-		analyze_workload convert_workload sample_workload
+		analyze_workload convert_workload sample_workload split_workload
 
 gen_SOURCES = gen.cc params.h
 
@@ -49,3 +49,6 @@ convert_workload_SOURCES = convert_workload.cc fib.cc packet.cc \
 
 sample_workload_SOURCES = sample_workload.cc fib.cc packet.cc \
 			fib.hh packet.hh bitvector.hh
+
+split_workload_SOURCES = split_workload.cc packet.cc fib.cc \
+			packet.hh fib.hh bitvector.hh
