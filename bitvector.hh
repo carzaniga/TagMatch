@@ -183,6 +183,17 @@ public:
 		return true;
     }
 
+    bool operator < (const bitvector & x) const {
+		for (int i = 0; i < BLOCK_COUNT; ++i) {
+			if (b[i] != x.b[i]) {
+				unsigned int pos = leftmost_bit(b[i] ^ x.b[i]);
+				return ((BLOCK_ONE << pos) & x.b[i]);
+			}
+		}
+
+		return false;
+    }
+
 	/** iterate through the bits
 	 * 
 	 *  return the first bit position set to 1 starting from pos.
