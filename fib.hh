@@ -22,6 +22,8 @@ public:
 	filter_t filter;
 	ti_vector ti_pairs;
 
+	fib_entry() : filter(), ti_pairs() {}
+
 	std::ostream & write_binary(std::ostream & output) const {
 		filter.write_binary(output);
 		ti_pairs.write_binary(output);
@@ -43,6 +45,8 @@ typedef uint32_t partition_id_t;
 class partition_fib_entry : public fib_entry {
 public:
 	partition_id_t partition;
+
+	partition_fib_entry() : fib_entry(), partition(0) {}
 
 	std::ostream & write_binary(std::ostream & output) const {
 		io_util_write_binary(output, partition);
