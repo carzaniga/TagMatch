@@ -134,6 +134,46 @@ static int count_filters(std::istream & input, std::ostream & output, bool binar
 	return 0;
 }
 
+struct fib_p_comparator {
+	bool operator ()(const fib_entry * a, const fib_entry * b) {
+		return a->filter < b->filter;
+	}
+};
+
+static int sort_filters(std::istream & input, std::ostream & output, bool binary_format) {
+	fib_entry f;
+	vector<fib_entry *> entries;
+
+	if (binary_format) {
+		while(f.read_binary(input)) 
+			entries.push_back(new fib_entry(f));
+	} else {
+		while(f.read_ascii(input)) 
+			entries.push_back(new fib_entry(f));
+	}
+	
+	struct {
+		bool operator ()(const fib_entry * a, const fib_entry * b) {
+			return b->filter < a->filter;
+		}
+	} compare_fib_p;
+
+	sort(entries.begin(), entries.end(), compare_fib_p);
+
+	if (binary_format) {
+		for(auto ep : entries) {
+			ep->write_binary(output);
+			delete(ep);
+		}
+	} else {
+		for(auto ep : entries) {
+			ep->write_ascii(output);
+			delete(ep);
+		}
+	}
+	return 0;
+}
+
 int main(int argc, const char * argv[]) {
 	bool binary_format = false;
 	const char * input_fname = nullptr;
@@ -160,6 +200,9 @@ int main(int argc, const char * argv[]) {
 		} else 
 		if (strcmp(argv[i],"count")==0) {
 			analysis = count_filters;
+		} else
+		if (strcmp(argv[i],"sort")==0) {
+			analysis = sort_filters;
 		} else {
 			print_usage(argv[0]);
 			return 1;
