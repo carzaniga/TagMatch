@@ -190,8 +190,18 @@ public:
 				return ((BLOCK_ONE << pos) & x.b[i]);
 			}
 		}
-
 		return false;
+    }
+
+	/** returns the position of the leftmost bit that differs between
+	 * this bitvector and x.
+	 */
+    unsigned int leftmost_diff (const bitvector & x) const {
+		for (int i = 0; i < BLOCK_COUNT; ++i) {
+			if (b[i] != x.b[i]) 
+				return i*BLOCK_SIZE + leftmost_bit(b[i] ^ x.b[i]);
+		}
+		return WIDTH;
     }
 
 	/** iterate through the bits
