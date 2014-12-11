@@ -13,6 +13,8 @@
 
 #include "front_end.hh"
 #include "back_end.hh"
+#include "fib.hh"
+#include "packet.hh"
 
 using std::vector;
 using std::ifstream;
@@ -26,36 +28,31 @@ using std::chrono::high_resolution_clock;
 using std::chrono::nanoseconds;
 using std::chrono::duration_cast;
 
-static int read_prefixes(const char * fname) {
+static int read_prefixes(const char * fname, bool binary_format) {
 	ifstream is(fname);
 	string line;
 	if (!is)
 		return -1;
 
+	partition_prefix p;
 	int res = 0;
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "p")
-			continue;
-
-		unsigned int prefix_id, prefix_size;
-		string prefix_string;
-
-		line_s >> prefix_id >> prefix_string >> prefix_size;
-
-		filter_t f(prefix_string);
-
-		front_end::add_prefix(prefix_id, f, prefix_string.size());
-		++res;
+	if (binary_format) {
+		while(p.read_binary(is)) {
+			front_end::add_prefix(p.partition, p.filter, p.length);
+			++res;
+		}
+	} else {
+		while(p.read_ascii(is)) {
+			front_end::add_prefix(p.partition, p.filter, p.length);
+			++res;
+		}
 	}
 	is.close();
 	return res;
 }
 
 #ifndef BACK_END_IS_VOID
-static int read_filters(string fname) {
+static int read_filters(string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -63,34 +60,23 @@ static int read_filters(string fname) {
 		return -1;
 
 	int res = 0;
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "f") 
-			continue;
-
-		unsigned int partition_id;
-		interface_t iface;
-		tree_t tree;
-		string filter_string;
-
-		line_s >> partition_id >> filter_string;
-
-		filter_t f(filter_string);
-
-		vector<tree_interface_pair> ti_pairs;
-
-		while (line_s >> tree >> iface)
-			ti_pairs.push_back(tree_interface_pair(tree, iface));
-
-		back_end::add_filter(partition_id, f, ti_pairs.begin(), ti_pairs.end());
-		++res;
+	partition_fib_entry f;
+	if (binary_format) {
+		while(f.read_binary(is)) {
+			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			++res;
+		}
+	} else {
+		while(f.read_ascii(is)) {
+			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			++res;
+		}
 	}
+	is.close();
 	return res;
 }
 #endif
-static unsigned int read_queries(vector<packet> & packets, string fname) {
+static unsigned int read_queries(vector<packet> & packets, string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -98,25 +84,19 @@ static unsigned int read_queries(vector<packet> & packets, string fname) {
 		return -1;
 
 	int res = 0;
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "!") 
-			continue;
-
-		tree_t tree;
-		interface_t iface;
-		string filter_string;
-
-		line_s >> tree >> iface >> filter_string;
-
-		packets.emplace_back(filter_string, tree, iface);
-		++res;
+	network_packet p;
+	if (binary_format) {
+		while(p.read_binary(is)) {
+			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			++res;
+		}
+	} else {
+		while(p.read_ascii(is)) {
+			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			++res;
+		}
 	}
-	for(packet & p : packets)
-		p.reset_output();
-
+	is.close();
 	return res;
 }
 
@@ -151,7 +131,9 @@ static int read_bit_permutation(const char * fname) {
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
 		 << " [options] " 
-		"p=<prefix-file-name> f=<filters-file-name> q=<queries-file-name>"
+		"(p|P)=<prefix-file-name> (f|F)=<filters-file-name> (q|Q)=<queries-file-name>"
+		 << endl
+		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl
 		 << "options:" << endl
 		 << "\tmap=<permutation-file-name>" << endl
@@ -168,10 +150,13 @@ int main(int argc, const char * argv[]) {
 	bool print_progress_steps = true;
 	bool print_matching_time_only = false;
 	const char * prefixes_fname = nullptr;
+	bool prefixes_binary_format = false;
 #ifndef BACK_END_IS_VOID
 	const char * filters_fname = nullptr;
+	bool filters_binary_format = false;
 #endif
 	const char * queries_fname = nullptr; 
+	bool queries_binary_format = false;
 	const char * permutation_fname = nullptr; 
 	unsigned int thread_count = DEFAULT_THREAD_COUNT;
 
@@ -187,6 +172,23 @@ int main(int argc, const char * argv[]) {
 			continue;
 		} else
 		if (strncmp(argv[i],"q=",2)==0) {
+			queries_fname = argv[i] + 2;
+			continue;
+		} else
+		if (strncmp(argv[i],"P=",2)==0) {
+			prefixes_binary_format = true;
+			prefixes_fname = argv[i] + 2;
+			continue;
+		} else 
+		if (strncmp(argv[i],"F=",2)==0) {
+#ifndef BACK_END_IS_VOID
+			filters_binary_format = true;
+			filters_fname = argv[i] + 2;
+#endif
+			continue;
+		} else
+		if (strncmp(argv[i],"Q=",2)==0) {
+			queries_binary_format = true;
 			queries_fname = argv[i] + 2;
 			continue;
 		} else
@@ -248,7 +250,7 @@ int main(int argc, const char * argv[]) {
 	
 	if (print_progress_steps)
 		cout << "Reading prefixes..." << std::flush;
-	if ((res = read_prefixes(prefixes_fname)) < 0) {
+	if ((res = read_prefixes(prefixes_fname, prefixes_binary_format)) < 0) {
 		cerr << endl << "couldn't read prefix file: " << prefixes_fname << endl;
 		return 1;
 	};
@@ -258,7 +260,7 @@ int main(int argc, const char * argv[]) {
 #ifndef BACK_END_IS_VOID
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
-	if ((res = read_filters(filters_fname)) < 0) {
+	if ((res = read_filters(filters_fname, filters_binary_format)) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
@@ -270,7 +272,7 @@ int main(int argc, const char * argv[]) {
 	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
-	if ((res = read_queries(packets, queries_fname)) < 0) {
+	if ((res = read_queries(packets, queries_fname, queries_binary_format)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
