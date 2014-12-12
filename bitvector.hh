@@ -11,6 +11,7 @@
 #include <cstddef>				// size_t
 #include <iostream>
 #include <cassert>
+#include <cstring>
 
 //
 // We represent bit vectors of sizes that are multiples of 64.  Thus
@@ -29,9 +30,65 @@ static_assert(sizeof(uint64_t)*CHAR_BIT == 64, "uint64_t must be a 64-bit word")
 
 typedef uint64_t block_t;
 
-static inline size_t leftmost_bit(const block_t x) noexcept;
+//
+// leftmost 1-bit position in a block
+//
+#ifdef HAVE_BUILTIN_CTZL
+static inline int leftmost_bit(const block_t x) noexcept {
+    // Since we represent the leftmost bit in the least-significant
+    // position, the leftmost bit corresponds to the count of trailing
+    // zeroes (see the layout specification below).
+    return __builtin_ctzl(x);
+} 
+#else
+static inline unsigned int leftmost_bit(block_t x) noexcept {
+    unsigned int n = 0;
+	if ((x & 0xFFFFFFFF) == 0) {
+		n += 32;
+		x >>= 32;
+	}
+	if ((x & 0xFFFF) == 0) {
+		n += 16;
+		x >>= 16;
+	}
+	if ((x & 0xFF) == 0) {
+		n += 8;
+		x >>= 8;
+	}
+	if ((x & 0xF) == 0) {
+		n += 4;
+		x >>= 4;
+	}
+	if ((x & 0x3) == 0) {
+		n += 2;
+		x >>= 2;
+	}
+	if ((x & 0x1) == 0) {
+		n += 1;
+	}
+    return n;
+}
+#endif
 
-static const size_t BLOCK_SIZE = 64;
+//
+// leftmost 1-bit position in a block
+//
+#ifdef HAVE_BUILTIN_POPCOUNT
+static inline int block_popcount(block_t v) noexcept {
+	return __builtin_popcountl(v);
+}
+#else
+static inline unsigned int block_popcount(block_t v) noexcept {
+	// taken from http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
+	v = v - ((v >> 1) & 0x5555555555555555);
+	v = (v & 0x3333333333333333) + ((v >> 2) & 0x3333333333333333);
+	v = (v + (v >> 4)) & 0x0f0f0f0f0f0f0f0f;
+	v = (v * 0x0101010101010101) >> 56;
+	return v;
+}
+#endif
+
+static const unsigned int BLOCK_SIZE = 64;
 static const block_t BLOCK_ONE = 0x1;
 
 //
@@ -63,11 +120,7 @@ public:
 	static const unsigned int WIDTH = Size;
 
     bitvector(const std::string & p) {
-		for (int i = 0; i < BLOCK_COUNT; ++i)
-			b[i] = 0;
-
-		assert(p.size() <= Size);
-
+		clear();
 		// see the layout specification above
 		//
 		block_t mask = BLOCK_ONE;
@@ -157,6 +210,10 @@ public:
 		b[pos/BLOCK_SIZE] |= (BLOCK_ONE << (pos % BLOCK_SIZE));
 	}
 
+	bool operator[](unsigned int pos) const {
+		return (b[pos/BLOCK_SIZE] & (BLOCK_ONE << (pos % BLOCK_SIZE)));
+	}
+
 	bitvector & operator |= (const bitvector & x) {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] |= x.b[i];
@@ -175,9 +232,21 @@ public:
 		return *this;
 	}
 
+    bool operator == (const bitvector & x) const {
+		return memcmp(b, x.b, sizeof(b)) == 0;
+	}
+
     bool subset_of(const block_t * p) const {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			if ((b[i] & ~p[i]) != 0)
+				return false;
+
+		return true;
+    }
+
+    bool subset_of(const bitvector & x) const {
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			if ((b[i] & ~x.b[i]) != 0)
 				return false;
 
 		return true;
@@ -236,6 +305,13 @@ public:
 					return leftmost_bit(b[i]) + i*BLOCK_SIZE;
 		}		 
 		return Size;
+	}
+
+	unsigned int popcount() const {
+		unsigned int result = 0;
+		for (int i = 0; i < BLOCK_COUNT; ++i) 
+			result += block_popcount(b[i]);
+		return result;
 	}
 
 	std::ostream & write_binary(std::ostream & output) const {
@@ -314,45 +390,5 @@ public:
 		return input;
 	}
 };
-
-//
-// leftmost 1-bit position in a block
-//
-#ifdef HAVE_BUILTIN_CTZL
-static inline size_t leftmost_bit(const block_t x) noexcept {
-    // Since we represent the leftmost bit in the least-significant
-    // position, the leftmost bit corresponds to the count of trailing
-    // zeroes (see the layout specification above).
-    return __builtin_ctzl(x);
-} 
-#else
-static inline size_t leftmost_bit(block_t x) noexcept {
-    size_t n = 0;
-	if ((x & 0xFFFFFFFF) == 0) {
-		n += 32;
-		x >>= 32;
-	}
-	if ((x & 0xFFFF) == 0) {
-		n += 16;
-		x >>= 16;
-	}
-	if ((x & 0xFF) == 0) {
-		n += 8;
-		x >>= 8;
-	}
-	if ((x & 0xF) == 0) {
-		n += 4;
-		x >>= 4;
-	}
-	if ((x & 0x3) == 0) {
-		n += 2;
-		x >>= 2;
-	}
-	if ((x & 0x1) == 0) {
-		n += 1;
-	}
-    return n;
-}
-#endif
 
 #endif // BITVECTOR_HH_INCLUDED
