@@ -12,10 +12,10 @@ AM_LDFLAGS = $(LDFLAGS_prof)
 # These things should be checked and set through some autocont
 # parameters and tests.
 #
-NVCC=nvcc
-CUDA_FLAGS=--ptxas-options="-v" -arch sm_21 -O2
+if WORKING_NVCC
 .cu.$(OBJEXT):
-	$(NVCC) $(CUDA_FLAGS) -c $< -o $@
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+endif
 
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
@@ -32,10 +32,21 @@ router_SOURCES = main2.cc predicate.hh timing.hh \
 		router.cc router.hh	
 router_LDADD = $(LIBS_prof) libpredicate.la
 
+if WORKING_NVCC
 cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
-			cpu_gpu_matcher.cc gpu.cu fib.cc packet.cc \
-			front_end.cc front_end.hh back_end.cc back_end.hh 
+			cpu_gpu_matcher.cc fib.cc packet.cc \
+			front_end.cc front_end.hh back_end.cc back_end.hh \
+			gpu.cu 
+
 cpu_gpu_matcher_LDFLAGS = -lcudart
+else
+##
+## this can only work with --disable-backend
+##
+cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
+			cpu_gpu_matcher.cc fib.cc packet.cc \
+			front_end.cc front_end.hh back_end.cc back_end.hh
+endif
 
 test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh
 

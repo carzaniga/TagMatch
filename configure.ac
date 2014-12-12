@@ -48,7 +48,7 @@ AC_C_BIGENDIAN
 #
 AC_WITH_THREAD_COUNT
 #
-dnl AC_CHECK_PROG(NVCC,nvcc)
+AC_CHECK_NVCC
 #
 AC_CONFIG_FILES([Makefile 
 		 test/Makefile])

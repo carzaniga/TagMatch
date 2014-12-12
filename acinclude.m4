@@ -383,3 +383,43 @@ if test "x$ax_cv_boost_unit_test_framework" != "xyes"; then
    AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
 fi
 ])
+
+dnl
+dnl AC_CHECK_NVCC
+dnl
+AC_DEFUN([AC_CHECK_NVCC], [
+AC_ARG_VAR([NVCCFLAGS], [special flags for nvcc compiler])
+if test "x$NVCCFLAGS" = "x"; then
+   NVCCFLAGS="-arch sm_21"
+fi
+AC_ARG_VAR([NVCC], [nvcc compiler to use])
+AC_PATH_PROG([NVCC], [nvcc], [no])
+working_nvcc=no
+if test "x$NVCC" != "xno"; then
+    AC_MSG_CHECKING([whether nvcc works])
+    cat>conftest.cu<<EOF
+__global__ void test_kernel(unsigned int * p, unsigned int size) {
+    unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
+    if(id >= size)
+	return;
+    *p = id;
+    __syncthreads();    
+}
+EOF
+    if $NVCC -c conftest.cu -o conftest.o $NVCCFLAGS > /dev/null 2>&1 && test -r conftest.o; then
+        working_nvcc=yes
+    fi
+    rm -f conftest.cu conftest.o
+    AC_MSG_RESULT([$working_nvcc])
+fi
+if test "x$working_nvcc" != "xyes"; then
+    AC_MSG_WARN([[
+No working CUDA compiler.  This might be because the configure script
+could not find the nvcc compiler, or because it did find the nvcc, but
+it did use the appropriate compilation flags.  You may use the NVCC
+variable to specify which nvcc compiler to use.  You may also use the
+NVCCFLAGS variable to pass special compilation flags.  The default
+flags are "-arch sm_21".]])
+
+fi
+AM_CONDITIONAL([WORKING_NVCC], [test "x$working_nvcc" = "xyes"]) ])
