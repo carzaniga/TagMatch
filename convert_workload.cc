@@ -25,8 +25,8 @@ static int convert_queries(std::istream & input, std::ostream & output, bool bin
 	network_packet packet;
 
 	if (binary_input) {
-		while(packet.read_ascii(input))
-			packet.write_binary(output);
+		while(packet.read_binary(input))
+			packet.write_ascii(output);
 	} else {
 		while(packet.read_ascii(input))
 			packet.write_binary(output);
