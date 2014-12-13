@@ -136,6 +136,8 @@ int main(int argc, const char * argv[]) {
 
 	int res;
 
+	filter_set::clear();
+
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
 	if ((res = read_filters(filters_fname, filters_binary_format)) < 0) {
@@ -161,6 +163,8 @@ int main(int argc, const char * argv[]) {
 		filter_set::clear();
 		return 0;
 	};
+
+	filter_set::consolidate();
 
 	if (print_progress_steps) {
 		cout << "Matching packets... " << std::flush;

@@ -13,6 +13,7 @@ class filter_set {
 public:
 	static void clear();
 	static void add(const filter_t & x);
+	static void consolidate();
 	static bool find(const filter_t & x);
 	static size_t count_subsets_of(const filter_t & x);
 	static size_t count_supersets_of(const filter_t & x);
