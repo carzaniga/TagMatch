@@ -2,7 +2,7 @@
 #include "config.h"
 #endif
 
-// #define POINTERS_ARE_INDEXES 1
+#define POINTERS_ARE_INDEXES 1
 
 #include <cstddef>
 #include <cassert>
@@ -23,14 +23,17 @@ private:
 
 	static std::vector<T> memory;
 
+	pointer(uint32_t i) : ptr(i) {};
+
 public:
 	pointer() {};
 	pointer(const pointer & x) : ptr(x.ptr) {};
-	pointer(T * p) : ptr(p) {
-		if (p == nullptr) 
+	pointer(T * p) {
+		if(!p) {
 			ptr = NULL_PTR;
-		else
+		} else {
 			ptr = p - &(memory[0]);
+		}
 	};
 
 	static void deallocate_all() {
@@ -39,7 +42,7 @@ public:
 
 	static pointer allocate(size_t n) {
 		uint32_t i = memory.size();
-		memory.resize(n);
+		memory.resize(i + n);
 		return pointer(i);
 	}
 
@@ -56,6 +59,16 @@ public:
 		return ptr != x.ptr;
 	}
 
+	bool operator == (T * p) const {
+		assert(p == nullptr);
+		return ptr == NULL_PTR;
+	}
+
+	bool operator != (T * p) const {
+		assert(p == nullptr);
+		return ptr != NULL_PTR;
+	}
+
 	size_t operator - (const pointer & x) const {
 		return x - x.ptr;
 	}
@@ -65,7 +78,7 @@ public:
 	}
 
 	T * operator->() const {
-		return &(memory[ptr];
+		return &(memory[ptr]);
 	}
 
 	T & operator[] (size_t i) const {
@@ -73,7 +86,7 @@ public:
 	}
 
 	pointer operator+ (size_t i) const {
-		return pointer{ptr + i};
+		return pointer(ptr + i);
 	}
 
 	pointer & operator++ () {
@@ -91,7 +104,7 @@ public:
 };
 
 template<typename T>
-typename std::vector<T>:: pointer<T>::memory;
+typename std::vector<T> pointer<T>::memory;
 
 #else
 template<typename T>
@@ -123,7 +136,7 @@ public:
 	}
 
 	static pointer allocate(size_t n) {
-		if (current_chunk_size + n > CHUNK_SIZE || current_chunk == nullptr) {
+		if (current_chunk_size + n > CHUNK_SIZE || (!current_chunk)) {
 			chunk * new_chunk = new chunk();
 			new_chunk->next = current_chunk;
 			current_chunk = new_chunk;
@@ -136,11 +149,6 @@ public:
 
 	pointer & operator = (const pointer & x) {
 		ptr = x.ptr;
-		return *this;
-	}
-
-	pointer & operator = (T * p) {
-		ptr = p;
 		return *this;
 	}
 
@@ -205,28 +213,37 @@ private:
 		pointer< pointer<node> > siblings;
 	};
 
-static const unsigned int MIN_TABLE_SIZE = 4;
+static const unsigned int MIN_TABLE_SIZE = 8;
 
 public:
+	node(const node & x) : pos(x.pos), have_sibling_table(x.have_sibling_table) {
+		if (have_sibling_table) {
+			next_sibling = x.next_sibling;
+		} else {
+			siblings = x.siblings;
+		}
+	}
+
 	node() : have_sibling_table(false), next_sibling(nullptr) {};
 
 	pointer<node> sibling_greater_or_equal(uint8_t p) {
 		if (have_sibling_table) {
 			return siblings[p];
 		} else {
-			pointer<node> n = this;
-			while (n->pos < p) {
+			if (pos >= p)
+				return pointer<node>(this);
+
+			pointer<node> n = next_sibling;
+			while((n) && n->pos < p)
 				n = n->next_sibling;
-				if (n == nullptr)
-					break;
-			}
+
 			return n;
 		}
 	}
 
-	void consolidate();
+	static void consolidate(pointer<node> n);
 
-	static void append_filter(pointer<node>* hook, const filter_t & f);
+	static void append_filter(pointer<node> n, const filter_t & f);
 };
 
 pointer<node> root = nullptr;
@@ -237,12 +254,12 @@ void filter_set::clear() {
 	root = nullptr;
 }
 
-void node::consolidate() {
-	if (have_sibling_table)
+void node::consolidate(pointer<node> n) {
+	if (n->have_sibling_table)
 		return;
 
 	unsigned int siblings_count = 0;
-	for(pointer<node> n = next_sibling; n != nullptr; n = n->next_sibling)
+	for(pointer<node> ns = n->next_sibling; (ns); ns = ns->next_sibling)
 		++siblings_count;
 
 	if (siblings_count < MIN_TABLE_SIZE)
@@ -250,65 +267,77 @@ void node::consolidate() {
 
 	pointer< pointer<node> > table = pointer< pointer<node> >::allocate(filter_t::WIDTH + 1);
 
-	pointer<node> n = this;
 	for(uint8_t i = 0; i <= filter_t::WIDTH; ++i) {
 		table[i] = n;
-		if (n != nullptr && i == n->pos) {
+		if ((n) && i == n->pos) {
 			pointer<node> next = n->next_sibling;
 			n->have_sibling_table = true;
 			n->siblings = table;
-			if (n->pos < filter_t::WIDTH)
-				n[1].consolidate();
+			if (n->pos < filter_t::WIDTH) {
+				pointer<node> np = n;
+				consolidate(++np);
+			}
 			n = next;
 		}
 	}
 }
 
-void node::append_filter(pointer<node>* hook, const filter_t & f) {
-	unsigned int prefix_len = 0;
+pointer<node> new_chain(const filter_t & f, unsigned int pos, unsigned int len) {
+	pointer<node> res = pointer<node>::allocate(len);
+	pointer<node> n = res;
+	for(;;) {
+		n->pos = pos;
+		if (pos < filter_t::WIDTH) {
+			++n;
+			pos = f.next_bit(pos + 1);
+		} else
+			return res;
+	}
+}
+
+void node::append_filter(pointer<node> n, const filter_t & f) {
+	unsigned int len = f.popcount() + 1;
 	unsigned int f_pos = f.next_bit(0); 
 
-	while(*hook != nullptr) {
-		pointer<node> n = *hook;
+	assert((n) && n->pos <= f_pos);
+
+	for(;;) {
 		while(n->pos == f_pos) {
 			if (f_pos == filter_t::WIDTH)
 				return;			// exact duplicate filter
 			f_pos = f.next_bit(f_pos + 1);
-			++prefix_len;
+			--len;
 			++n;
 		}
-		assert((*hook)->pos < f_pos);
-		hook = &(n->next_sibling);
-	}
-	assert(prefix_len <= f.popcount());
-
-	pointer<node> n = pointer<node>::allocate(f.popcount() + 1 - prefix_len);
-	*hook = n;
-
-	for(;;) {
-		n->pos = f_pos;
-		if (f_pos < filter_t::WIDTH) {
-			++n;
-			f_pos = f.next_bit(f_pos + 1);
-		} else
-			break;
+		assert(len > 0);
+		assert(n->pos < f_pos);
+		if (!n->next_sibling) {
+			n->next_sibling = new_chain(f, f_pos, len);
+			return;
+		} else {
+			n = n->next_sibling;
+		}
 	}
 }
 
 void filter_set::add(const filter_t & f) {
-	node::append_filter(&root, f);
+	if (root) {
+		node::append_filter(root, f);
+	} else {
+		root = new_chain(f, f.next_bit(0), f.popcount() + 1);
+	}
 }
 
 void filter_set::consolidate() {
-	if (root != nullptr)
-		root->consolidate();
+	if (root)
+		node::consolidate(root);
 }
 
 bool filter_set::find(const filter_t & f) {
 #if 0
 	pointer<node> n = root;
 	unsigned int f_pos = f.next_bit(0);
-	while(n != nullptr) {
+	while(n) {
 		if (f_pos == n->pos) {
 			if (f_pos == filter_t::WIDTH)
 				return true;
@@ -334,7 +363,7 @@ size_t filter_set::count_subsets_of(const filter_t & f) {
 
 	unsigned int f_pos = f.next_bit(root->pos);
 	pointer<node> n = root->sibling_greater_or_equal(f_pos);
-	if (n == nullptr)
+	if (!n)
 		return 0;
 
 	for (;;) { // assert(f_pos <= n->pos);
@@ -350,7 +379,7 @@ size_t filter_set::count_subsets_of(const filter_t & f) {
 		} else { // assert(f_pos < n->pos);
 			f_pos = f.next_bit(n->pos);
 			n = n->sibling_greater_or_equal(f_pos);
-			if (n != nullptr)
+			if (n)
 				continue;
 		}
 		// pop node from stack
@@ -360,7 +389,7 @@ size_t filter_set::count_subsets_of(const filter_t & f) {
 			n = stack[--head];
 			f_pos = f.next_bit(n->pos + 1);
 			n = n->sibling_greater_or_equal(f_pos);
-		} while (n == nullptr);
+		} while (!n);
 	}
 }
 
