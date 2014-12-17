@@ -111,11 +111,11 @@ template<typename T>
 class pointer {
 private:
 	T * ptr;
-	static const size_t CHUNK_SIZE = 0x10000; // 64K objects
+	static const size_t CHUNK_SIZE = 0x100000; // 64K objects
 
-	struct chunk {
-		chunk * next;
+	struct alignas(64) chunk {
 		T objects[CHUNK_SIZE];
+		chunk * next;
 	};
 
 	static size_t current_chunk_size;
