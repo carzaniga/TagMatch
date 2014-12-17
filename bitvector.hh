@@ -79,6 +79,34 @@ public:
 		}
     }
 
+    bitvector(const std::string & p, int prefix_len) {
+		//I set to zero all the bits of the filter that are in the prefix.
+		//I do this because later in the kernel, I can avoid checking 
+		//a message against a common prefix that is all zeroes.
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = 0;
+
+		assert(p.size() <= Size);
+
+		// see the layout specification above
+		//
+		block_t mask = BLOCK_ONE;
+		int i = 0;
+		int k = -1; 
+		for(std::string::const_iterator c = p.begin(); c != p.end(); ++c) {
+			k++ ;
+			if (*c == '1' && k >= prefix_len)
+				b[i] |= mask;
+
+			mask <<= 1;
+			if (mask == 0) {
+				mask = BLOCK_ONE;
+				if (++i == BLOCK_COUNT)
+					return;
+			}
+		}
+    }
+
 	bitvector() {};
 
     bitvector(const block_t * p) {

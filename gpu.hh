@@ -1,13 +1,10 @@
 #ifndef GPU_HH_INCLUDED
-#define GPU_HH_INCLUDED
 
 #include <stdint.h>
 #include <stdlib.h>
 
-#define GPU_BLOCK_DIM_X 32
-#define GPU_BLOCK_DIM_Y 32
-#define GPU_BLOCK_SIZE (GPU_BLOCK_DIM_X*GPU_BLOCK_DIM_Y) // Statc block size of 32*32 (1024)0
-#define GPU_STREAMS 5 
+#define GPU_MSG_BLOCKS 6
+#define GPU_STREAMS 5  
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."
@@ -65,7 +62,8 @@ public:
 						   uint16_t * dev_ti_table, unsigned int * ti_table_indexes, 
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
 						   ifx_result_t * dev_results,
-						   unsigned int stream);
+						   unsigned int stream,
+						   unsigned char blocks);
 
 	static void synchronize_stream(unsigned int stream);
 	static void synchronize_device();

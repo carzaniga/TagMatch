@@ -6,7 +6,7 @@
 #include <cstring>
 #endif
 #include <vector>
-#include <map>
+//#include <map> this is included in the header file. 
 #include <atomic>
 
 #include "parameters.hh"
@@ -53,7 +53,8 @@ static tmp_fib_map tmp_fib;
 
 void back_end::add_filter(unsigned int part, const filter_t & f, 
 						  ti_vector::const_iterator begin,
-						  ti_vector::const_iterator end) {
+						  ti_vector::const_iterator end
+						  ) {
 	// we simply add this filter to our temporary table
 	// 
 	tmp_fib[part].emplace_back(f, begin, end);
@@ -207,6 +208,8 @@ static void destroy_stream_handlers() {
 	}
 }
 
+map<unsigned int, unsigned char> * prefix_lengths ; 
+
 static void compile_fibs() {
 	// we first compute the total number of partitions
 	// (dev_partitions_size), the size of the global ti_table
@@ -221,11 +224,15 @@ static void compile_fibs() {
 	dev_partitions_size = 0;
 	unsigned int host_ti_table_size = 0;
 	unsigned int total_filters = 0;
+	unsigned int max=0;
 
 	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
 		unsigned int part_id_plus_one = pf.first + 1;
 		const f_descr_vector & filters = pf.second;
 
+		if( max < filters.size() )
+			max=filters.size() ;
+				
 		if(part_id_plus_one > dev_partitions_size)
 			dev_partitions_size = part_id_plus_one;
 
@@ -233,12 +240,16 @@ static void compile_fibs() {
 		for(const filter_descr & fd : filters)
 			host_ti_table_size += fd.ti_pairs.size() + 1;
 	}
+	//since we only need to know the number of partitions, instead of 
+	//dev_partitions_size we could have a simple counter in the previous
+	//for loop.
 	dev_partitions = new part_descr[dev_partitions_size];
 
 	// local buffers to hold the temporary host-side of the fibs
 	// 
 	uint16_t * host_ti_table = new uint16_t[host_ti_table_size];
-	uint32_t * host_rep = new uint32_t[total_filters * GPU_FILTER_WORDS];
+	//uint32_t * host_rep = new uint32_t[total_filters * GPU_FILTER_WORDS];
+	uint32_t * host_rep = new uint32_t[ max * GPU_FILTER_WORDS];
 	uint32_t * host_ti_table_indexes = new uint32_t[total_filters];
 
 	unsigned int ti_table_curr_pos = 0;
@@ -251,6 +262,8 @@ static void compile_fibs() {
 
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_indexes;
+		unsigned char full_blocks = prefix_lengths->at(part)>>5;  
+//		full_blocks=0;
 		for(const filter_descr & fd : filters) {
 			// we now store the index in the global tiff table for this fib entry
 			// 
@@ -269,10 +282,20 @@ static void compile_fibs() {
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			// 
-			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
+			for(unsigned int i = full_blocks ; i < GPU_FILTER_WORDS; ++i)
+			//for(unsigned int i = 0 ; i < GPU_FILTER_WORDS; ++i)
+#if 1
+				*host_rep_f++ = (fd.filter.uint32_value(i));
+#else
 				*host_rep_f++ = ~(fd.filter.uint32_value(i));
+#endif
 		}
-		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size*GPU_FILTER_WORDS);
+		
+//		printf("pid= %d \t blocks=%d\n ", part, (int)prefix_lengths.at(part))  ;
+		//std::cout<< "pid=" << part << "\t" << "blocks= " << prefix_lengths.at(part) << std::endl ;
+//		if(part==2576)
+//			printf("partition 2576, block size=%d \n", (int)prefix_lenths.at(part)) ;
+		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size * (GPU_FILTER_WORDS - full_blocks) );
 
 		dev_partitions[part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[part].size);
 	}
@@ -288,30 +311,42 @@ static void compile_fibs() {
 
 void back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size) {
 #ifndef BACK_END_IS_VOID
-	stream_handle * sh = allocate_stream_handle();
-
+	stream_handle * sh = allocate_stream_handle(); 
+	unsigned char prefix_length = prefix_lengths->at(part) ; 
+	unsigned char blocks = prefix_length>>5; 
+//	blocks=0;
 	// We first copy every packet (filter plus tree-interface pair)
 	// over to the device.  To do that we first assemble the whole
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
 	// 
 	uint32_t * curr_p_buf = sh->host_queries;
-
+#if 0
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = 0; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
 		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
 	}
+	gpu::async_copy_packets(sh->host_queries, batch_size*GPU_FILTER_WORDS, sh->stream);
+#else 
+	for(unsigned int i = 0; i < batch_size; ++i) {
+		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
+			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
+		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
+	}
+	gpu::async_copy_packets(sh->host_queries, batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
 
-	gpu::async_copy_packets(sh->host_queries, batch_size, sh->stream);
+#endif 
 	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
 	gpu::async_set_zero(sh->dev_results, batch_size*INTERFACES*sizeof(ifx_result_t), sh->stream);
 
+//	if(part==2575)
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
 					dev_ti_table, dev_partitions[part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
 					sh->dev_results, 
-					sh->stream);
+//					sh->stream, prefix_length);
+					sh->stream, blocks);
 
 	gpu::async_get_results(sh->host_results, sh->dev_results, batch_size, sh->stream);
 	gpu::synchronize_stream(sh->stream);
@@ -358,7 +393,9 @@ size_t back_end::bytesize() {
 	return back_end_memory;
 }
 
-void back_end::start() {
+void back_end::start( map<unsigned int, unsigned char> * prefix_size) {
+	prefix_lengths = prefix_size ; 
+
 #ifndef BACK_END_IS_VOID
 	gpu_mem_info mi;
 	gpu::initialize();

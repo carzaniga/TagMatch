@@ -475,7 +475,7 @@ public:
 	const filter_t filter;
 
 	tmp_prefix_descr(unsigned int i, const filter_t f)
-		: id(i), filter(f) {};
+		: id(i), filter(f){};
 };
 
 class tmp_prefix_pos_descr {
@@ -497,25 +497,26 @@ static tmp_prefix_pos_descr tmp_pp[192];
 
 // This is how we compile the temporary FIB
 // 
-void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
+void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned char n) {
     const block_t * b = f.begin();
+//	unsigned char full_blocks = (n / 32) ;
 
     if (*b) {
 		if (n <= 64) {
-			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);// full_blocks);
 		} else if (n <= 128) {
-			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);// full_blocks);
 		} else {
-			tmp_pp[leftmost_bit(*b)].p192.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b)].p192.emplace_back(id, f);//full_blocks);
 		}
     } else if (*(++b)) {
 		if (n <= 64) {
-			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);//full_blocks);
 		} else {
-			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);//full_blocks);
 		}
     } else if (*(++b)) {
-		tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+		tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);//full_blocks);
     }
 }
 

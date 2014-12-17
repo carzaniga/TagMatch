@@ -10,6 +10,7 @@
 #include <chrono>
 #include <string>
 #include <cstdlib>
+#include <map>
 
 #include "front_end.hh"
 #include "back_end.hh"
@@ -25,6 +26,8 @@ using std::endl;
 using std::chrono::high_resolution_clock;
 using std::chrono::nanoseconds;
 using std::chrono::duration_cast;
+
+static std::map<unsigned int, unsigned char> prefix_sizes ;
 
 static int read_prefixes(const char * fname) {
 	ifstream is(fname);
@@ -47,8 +50,13 @@ static int read_prefixes(const char * fname) {
 
 		filter_t f(prefix_string);
 
-		front_end::add_prefix(prefix_id, f, prefix_string.size());
+		unsigned char size = prefix_string.size() ;//32 ;
+//		cout<< (int)prefix_id << " " <<(int)size << " " << prefix_string << endl;
+//		unsigned char len = prefix_string.size();
+
+		front_end::add_prefix(prefix_id, f, size);
 		++res;
+		prefix_sizes.emplace(prefix_id, size) ;
 	}
 	is.close();
 	return res;
@@ -77,7 +85,8 @@ static int read_filters(string fname) {
 
 		line_s >> partition_id >> filter_string;
 
-		filter_t f(filter_string);
+		int prefix_len = prefix_sizes[partition_id] ;
+		filter_t f(filter_string, prefix_len);
 
 		vector<tree_interface_pair> ti_pairs;
 
@@ -290,7 +299,7 @@ int main(int argc, const char * argv[]) {
 		cout << "Back-end FIB compilation..." << std::flush;
 #endif
 
-	back_end::start();
+	back_end::start(&prefix_sizes);
 
 	if (print_progress_steps) {
 #ifndef BACK_END_IS_VOID
@@ -327,13 +336,22 @@ int main(int argc, const char * argv[]) {
 	back_end::clear();
 	front_end::clear();
 
+	int pid=-1;
 	if (print_matching_results) {
 		for(const packet & p : packets) {
+			pid++ ;
 			if (p.is_matching_complete()) {
-				for(unsigned i = 0; i < INTERFACES; ++i) 
-					if (p.get_output(i))
+				bool flag=false;
+				for(unsigned i = 0; i < INTERFACES; ++i){ 
+					if (p.get_output(i)){
+						if(flag==false)
+							cout <<"pid="<< pid; 
 						cout << ' ' << i;
-				cout << endl;
+						flag=true;
+					}
+				}
+				if(flag)
+					cout << endl;
 			} else {
 				cout << "incomplete" << endl;
             }

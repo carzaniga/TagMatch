@@ -7,6 +7,7 @@
 
 #include <cstdlib>
 #include <vector>
+#include <map>
 
 #include "packet.hh"
 
@@ -17,7 +18,7 @@ public:
 	static void add_filter(unsigned int partition, const filter_t & f, 
 						   std::vector<tree_interface_pair>::const_iterator begin,
 						   std::vector<tree_interface_pair>::const_iterator end);
-	static void start();
+	static void start(std::map<unsigned int, unsigned char> * prefix_lengths );
 	static void process_batch(unsigned int part, packet ** batch, unsigned int batch_size);
 	static void stop();
 	static void clear();
