@@ -39,11 +39,13 @@ static int read_prefixes(const char * fname, bool binary_format) {
 	if (binary_format) {
 		while(p.read_binary(is)) {
 			front_end::add_prefix(p.partition, p.filter, p.length);
+			back_end::add_partition(p.partition, p.filter, p.length);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
 			front_end::add_prefix(p.partition, p.filter, p.length);
+			back_end::add_partition(p.partition, p.filter, p.length);
 			++res;
 		}
 	}
@@ -330,15 +332,24 @@ int main(int argc, const char * argv[]) {
 	front_end::clear();
 
 	if (print_matching_results) {
-		for(const packet & p : packets) {
-			if (p.is_matching_complete()) {
-				for(unsigned i = 0; i < INTERFACES; ++i) 
-					if (p.get_output(i))
+		for(unsigned int pid = 0; pid < packets.size(); ++pid) {
+			bool this_pid_printed = false;
+			if (packets[pid].is_matching_complete()) {
+				for(unsigned i = 0; i < INTERFACES; ++i) { 
+					if (packets[pid].get_output(i)) {
+						if (!this_pid_printed) {
+							cout << "packet=" << pid; 
+							this_pid_printed = true;
+						}
 						cout << ' ' << i;
-				cout << endl;
+					}
+				}
+				if (this_pid_printed)
+					cout << endl;
 			} else {
 				cout << "incomplete" << endl;
             }
+			++pid;
         }
     }
 	return 0;

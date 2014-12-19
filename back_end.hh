@@ -13,6 +13,7 @@
 /// 
 class back_end {
 public:
+	static void add_partition(unsigned int id, const filter_t & prefix, unsigned int prefix_length);
 	static void add_filter(unsigned int partition, const filter_t & f, 
 						   std::vector<tree_interface_pair>::const_iterator begin,
 						   std::vector<tree_interface_pair>::const_iterator end);
