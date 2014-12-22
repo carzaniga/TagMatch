@@ -349,7 +349,6 @@ int main(int argc, const char * argv[]) {
 			} else {
 				cout << "incomplete" << endl;
             }
-			++pid;
         }
     }
 	return 0;

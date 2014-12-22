@@ -154,7 +154,7 @@ __global__ void three_phase_matching(uint32_t * fib, unsigned int fib_size,
 			uint32_t d[Blocks];
 			unsigned int prefix_end = prefix_complete_blocks;
 
-			for(int i = 0; i < Blocks; ++i)
+			for(int i = prefix_end; i < Blocks; ++i)
 				d[i] = fib[id*Blocks + i];
 
 			for(unsigned int pi = 0; pi < batch_size; ++pi) {
