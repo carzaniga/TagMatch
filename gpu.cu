@@ -48,7 +48,7 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 		uint16_t ti_xor = query_ti_table[(msg)] ^ ti_table[ti_indexes[id] + i];					\
 		if ((ti_xor < (0x0001 << 13)) && (ti_xor != 0))											\
 			results[(msg)*INTERFACES + ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3))] = 1;	\
-	} 
+	}
 
 
 template <unsigned int Blocks>
@@ -154,11 +154,11 @@ __global__ void three_phase_matching(uint32_t * fib, unsigned int fib_size,
 			uint32_t d[Blocks];
 			unsigned int prefix_end = prefix_complete_blocks;
 
-			for(int i = prefix_end; i < Blocks; ++i)
+			for(unsigned int i = prefix_end; i < Blocks; ++i)
 				d[i] = fib[id*Blocks + i];
 
 			for(unsigned int pi = 0; pi < batch_size; ++pi) {
-				for(uint8_t i = prefix_end; i < Blocks; ++i)
+				for(unsigned int i = prefix_end; i < Blocks; ++i)
 					if (BV_BLOCK_NOT_SUBSET(d[i], packets[stream_id][pi*Blocks + i]))
 						goto no_match;
 
@@ -201,7 +201,7 @@ __global__ void three_phase_matching(uint32_t * fib, unsigned int fib_size,
 
 			for(unsigned int pi = 0; pi < candidate_count; ++pi) {
 				uint16_t message = candidate_messages[pi];
-				for(uint8_t i = prefix_end; i < Blocks; ++i)
+				for(unsigned int i = prefix_end; i < Blocks; ++i)
 					if(BV_BLOCK_NOT_SUBSET(d[i], packets[stream_id][message*Blocks + i]))
 						goto candidate_no_match;
 
