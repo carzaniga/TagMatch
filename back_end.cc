@@ -339,17 +339,17 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	gpu::async_get_results(sh->host_results, sh->dev_results, sh->stream);
 	gpu::synchronize_stream(sh->stream);
 
-//	for(unsigned int i = 0; i < sh->host_results->count; ++i) {
-//		batch[sh->host_results->pairs[i]>>8]->set_output(sh->host_results->pairs[i] & 0xff);
-//#if 0
-//		// this is where we could check whether the processing of
-//		// message batch[i] is complete, in which case we could
-//		// release whatever resources are associated with the packet
-//		//
-//		if (batch[i]->is_matching_complete())
-//			deallocate_packet(batch[i]);
-//#endif
-//	}
+	for(unsigned int i = 0; i < sh->host_results->count; ++i) {
+		batch[sh->host_results->pairs[i]>>8]->set_output(sh->host_results->pairs[i] & 0xff);
+#if 0
+		// this is where we could check whether the processing of
+		// message batch[i] is complete, in which case we could
+		// release whatever resources are associated with the packet
+		//
+		if (batch[i]->is_matching_complete())
+			deallocate_packet(batch[i]);
+#endif
+	}
 	for(unsigned int i=0; i< batch_size; i++)
 		batch[i]->partition_done();
 	release_stream_handle(sh);

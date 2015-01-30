@@ -588,6 +588,13 @@ match_all:
 
 no_match: ;
 		}
+#if TIME
+		if(id==0){
+			t4=clock(); 
+			printf("%u c= %u %u %u %u\n",fib_size ,candidate_count, (t2-t1), (t3-t2), (t4-t3));
+		}
+#endif
+
 	}
 }
 
