@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include "parameters.hh"
 
 #define GPU_MSG_BLOCKS 6
 #define GPU_STREAMS 5  
@@ -17,7 +18,12 @@
 // 192 bits / 32-bit words
 #define GPU_FILTER_WORDS 6
 
-typedef unsigned char ifx_result_t;
+typedef uint16_t ifx_result_t;
+
+struct result_t {
+	uint32_t count;
+	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES];
+};
 
 struct gpu_mem_info {
 	size_t free;
@@ -53,8 +59,7 @@ public:
 	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream);
 	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
-	static void async_get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
-								  unsigned int size, unsigned int stream);
+	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int stream);
 
 	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 							unsigned int size);
@@ -62,7 +67,7 @@ public:
 	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
 						   uint16_t * dev_ti_table, unsigned int * ti_table_indexes, 
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
-						   ifx_result_t * dev_results,
+						   result_t * dev_results,
 						   unsigned int stream,
 						   unsigned char blocks);
 

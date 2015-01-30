@@ -11,7 +11,6 @@
 #include <atomic>
 #include <cstdint>
 
-#include "parameters.hh"
 #include "gpu.hh"
 #include "back_end.hh"
 
@@ -146,11 +145,11 @@ struct stream_handle {
 	// 
 	uint32_t * host_queries;
 	uint16_t * host_query_ti_table;
-	ifx_result_t * host_results;
+	result_t * host_results;
 
     // PACKETS_BATCH_SIZE * INTERFACES
 	uint16_t * dev_query_ti_table;
-	ifx_result_t * dev_results;
+	result_t * dev_results;
 
 	void initialize(unsigned int s, unsigned int n) {
 		stream = s;
@@ -158,10 +157,12 @@ struct stream_handle {
 
 		host_query_ti_table = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
 		host_queries = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
-		host_results = gpu::allocate_host_pinned<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
+		//host_results = gpu::allocate_host_pinned<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES + 1);
+		host_results = gpu::allocate_host_pinned<result_t>(1);
 
 		dev_query_ti_table = gpu::allocate<uint16_t>(PACKETS_BATCH_SIZE);
-		dev_results = gpu::allocate<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
+		//dev_results = gpu::allocate<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
+		dev_results = gpu::allocate<result_t>(1);
 	}
 
 	void destroy() {
@@ -244,7 +245,7 @@ static void compile_fibs() {
 
 		if(max < filters.size())
 			max = filters.size();
-				
+		
 		if(part_id_plus_one > dev_partitions_size)
 			dev_partitions_size = part_id_plus_one;
 
@@ -329,32 +330,28 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	}
 	gpu::async_copy_packets(sh->host_queries, batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
 	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
-	gpu::async_set_zero(sh->dev_results, batch_size*INTERFACES*sizeof(ifx_result_t), sh->stream);
-
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
 					dev_ti_table, dev_partitions[part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
 					sh->dev_results, 
 					sh->stream, blocks);
 
-	gpu::async_get_results(sh->host_results, sh->dev_results, batch_size, sh->stream);
+	gpu::async_get_results(sh->host_results, sh->dev_results, sh->stream);
 	gpu::synchronize_stream(sh->stream);
 
-	ifx_result_t * result = sh->host_results;
-	for(unsigned int i = 0; i < batch_size; ++i) {
-		for(unsigned int j = 0; j < INTERFACES; ++j) 
-			if (*result++ == 1)
-				batch[i]->set_output(j);
+//	for(unsigned int i = 0; i < sh->host_results->count; ++i) {
+//		batch[sh->host_results->pairs[i]>>8]->set_output(sh->host_results->pairs[i] & 0xff);
+//#if 0
+//		// this is where we could check whether the processing of
+//		// message batch[i] is complete, in which case we could
+//		// release whatever resources are associated with the packet
+//		//
+//		if (batch[i]->is_matching_complete())
+//			deallocate_packet(batch[i]);
+//#endif
+//	}
+	for(unsigned int i=0; i< batch_size; i++)
 		batch[i]->partition_done();
-#if 0
-		// this is where we could check whether the processing of
-		// message batch[i] is complete, in which case we could
-		// release whatever resources are associated with the packet
-		//
-		if (batch[i]->is_matching_complete())
-			deallocate_packet(batch[i]);
-#endif
-	}
 	release_stream_handle(sh);
 #else  
 #ifndef NO_FRONTEND_OUTPUT_LOOP
