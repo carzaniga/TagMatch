@@ -36,6 +36,9 @@ cudaStream_t streams[GPU_STREAMS];
 __align__(128) __constant__ __device__
 uint32_t packets[GPU_STREAMS][PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
 
+//__device__ uint32_t output_ready=1 ;
+__constant__ __device__ uint32_t output_ready=1 ;
+
 
 #define BV_BLOCK_NOT_SUBSET_IS_A_MACRO 0
 
@@ -494,6 +497,7 @@ candidate_no_match56:
 #endif
 	return;
 match_all:	
+
 	// there is no usable prefix or the common prefix is all-zero,
 	// so we fall back to the basic matching procedure, possibly
 	// skipping the all-zero prefix blocks.
@@ -512,30 +516,91 @@ match_all:
 					goto no_match;
 #else
 		uint32_t d0,d1,d2,d3,d4,d5;
-		switch(Blocks) {
-			case 6:	d0 = fib[id*Blocks + 0];
-					d1 = fib[id*Blocks + 1];
-					d2 = fib[id*Blocks + 2];
-					d3 = fib[id*Blocks + 3];
-					d4 = fib[id*Blocks + 4];
-					d5 = fib[id*Blocks + 5];
-					break; 
-			case 5:	d0 = fib[id*Blocks + 0];
-					d1 = fib[id*Blocks + 1];
-					d2 = fib[id*Blocks + 2];
-					d3 = fib[id*Blocks + 3];
-					d4 = fib[id*Blocks + 4];
+	switch(Blocks) {
+		case 6:	d5 = fib[id*Blocks + 5];
+		case 5:	d4 = fib[id*Blocks + 4];
+		case 4: d3 = fib[id*Blocks + 3];
+		case 3:	d2 = fib[id*Blocks + 2];
+		case 2: d1 = fib[id*Blocks + 1];
+		case 1:	d0 = fib[id*Blocks + 0];
+	}
+#if 1
+		uint32_t p0,p1,p2,p3,p4,p5;
+		uint32_t * p = &(packets[stream_id][0]);
+		for(unsigned int pi = 0; pi < batch_size; ++pi) {
+			p0 =*p++;
+			if(Blocks==6){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+				p5 = *p++;
+			}
+			if(Blocks==5){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+			}
+			if(Blocks==4){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+			}
+			if(Blocks==3){
+				p1 = *p++;
+				p2 = *p++;
+			}
+
+			switch(Blocks){
+				case 6: 	
+					if (BV_BLOCK_NOT_SUBSET(d0, p0))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d1, p1))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d2, p2))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d3, p3))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d4, p4))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d5, p5))
+						continue;
 					break;
-			case 4:	d0 = fib[id*Blocks + 0];
-					d1 = fib[id*Blocks + 1];
-					d2 = fib[id*Blocks + 2];
-					d3 = fib[id*Blocks + 3];
+				case 5: 	
+					if (BV_BLOCK_NOT_SUBSET(d0, p0))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d1, p1))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d2, p2))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d3, p3))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d4, p4))
+						continue;
 					break;
-			case 3:	d0 = fib[id*Blocks + 0];
-					d1 = fib[id*Blocks + 1];
-					d2 = fib[id*Blocks + 2];
+				case 4: 	
+					if (BV_BLOCK_NOT_SUBSET(d0, p0))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d1, p1))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d2, p2))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d3, p3))
+						continue;
 					break;
-		}
+				case 3: 	
+					if (BV_BLOCK_NOT_SUBSET(d0, p0))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d1, p1))
+						continue;
+					if (BV_BLOCK_NOT_SUBSET(d2, p2))
+						continue;
+					break;
+			}
+
+#else
+
 		for(unsigned int pi = 0; pi < batch_size; ++pi) {
 			switch(Blocks){
 				case 6: 	
@@ -584,6 +649,7 @@ match_all:
 					break;
 			}
 #endif
+#endif
 			RECORD_MATCHING_FILTER(id,pi);
 
 no_match: ;
@@ -607,6 +673,7 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 
 	uint32_t id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
 
+
 	if(id >= fib_size)
 		return;
 
@@ -614,13 +681,17 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 		results->count = 0; 
 	__syncthreads();
 	uint32_t d0,d1,d2,d3,d4,d5;
-	d0 = fib[id*Blocks + 0];
-	d1 = fib[id*Blocks + 1];
-	d2 = fib[id*Blocks + 2];
-	d3 = fib[id*Blocks + 3];
-	d4 = fib[id*Blocks + 4];
-	d5 = fib[id*Blocks + 5];
 
+	switch(Blocks) {
+		case 6:	d5 = fib[id*Blocks + 5];
+		case 5:	d4 = fib[id*Blocks + 4];
+		case 4: d3 = fib[id*Blocks + 3];
+		case 3:	d2 = fib[id*Blocks + 2];
+		case 2: d1 = fib[id*Blocks + 1];
+		case 1:	d0 = fib[id*Blocks + 0];
+	}
+
+#if 0 
 	for(unsigned int pi = 0; pi < batch_size; ++pi) {
 		if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][pi*Blocks + 0]))
 			continue;
@@ -642,6 +713,61 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 
 		RECORD_MATCHING_FILTER(id, pi);
 	}
+#else 
+	uint32_t p0,p1,p2,p3,p4,p5;
+	uint32_t * p = &(packets[stream_id][0]);
+#if 0
+#else 
+	for(unsigned int pi = 0; pi < batch_size; ++pi) {
+		p0 =*p++;
+		if(Blocks==6){
+			p1 = *p++;
+			p2 = *p++;
+			p3 = *p++;
+			p4 = *p++;
+			p5 = *p++;
+		}
+		if(Blocks==5){
+			p1 = *p++;
+			p2 = *p++;
+			p3 = *p++;
+			p4 = *p++;
+		}
+		if(Blocks==4){
+			p1 = *p++;
+			p2 = *p++;
+			p3 = *p++;
+		}
+		if(Blocks==3){
+			p1 = *p++;
+			p2 = *p++;
+		}
+		if(Blocks==2)
+			p1 = *p++;
+		
+
+		if (BV_BLOCK_NOT_SUBSET(d0, p0))
+			continue;
+		if (Blocks > 1)
+			if (BV_BLOCK_NOT_SUBSET(d1, p1))
+				continue;
+		if (Blocks > 2)
+			if (BV_BLOCK_NOT_SUBSET(d2, p2))
+				continue;
+		if (Blocks > 3)
+			if (BV_BLOCK_NOT_SUBSET(d3, p3))
+				continue;
+		if (Blocks > 4)
+			if (BV_BLOCK_NOT_SUBSET(d4, p4))
+				continue;
+		if (Blocks > 5)
+			if (BV_BLOCK_NOT_SUBSET(d5, p5))
+				continue;
+
+		RECORD_MATCHING_FILTER(id, pi);
+	}
+#endif
+#endif
 }
 
 void gpu::initialize() {
@@ -702,6 +828,11 @@ void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, u
 	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, size * INTERFACES * sizeof(ifx_result_t), cudaMemcpyDeviceToHost));
 }
 
+// this function probably doesn't do what it is supposed to do!
+void gpu::async_get_ack(uint32_t * ack, unsigned int stream_id){
+	ABORT_ON_ERROR(cudaMemcpyFromSymbolAsync((void*)ack, output_ready, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost, streams[stream_id]));
+}
+
 void gpu::synchronize_device() {
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 	ABORT_ON_ERROR(cudaThreadSynchronize());
@@ -742,7 +873,30 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 	if (kernelCounter > stopCounter)
 	      return;
 #endif
+
 	switch (skip_blocks) {
+#if 0
+	case 0:
+		one_phase_matching<6> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+		break;
+
+	case 1:
+		one_phase_matching<5> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+		break;
+
+	case 2:
+		one_phase_matching<4> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+		break;
+
+	case 3:
+		one_phase_matching<3> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+		break;
+
+#else
 	case 0:
 		three_phase_matching<6> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
@@ -762,7 +916,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 		three_phase_matching<3> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
 		break;
-
+#endif
 	case 4: 	
 		one_phase_matching<2> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>> 
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);

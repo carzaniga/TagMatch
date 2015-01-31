@@ -337,8 +337,19 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 					sh->stream, blocks);
 
 	gpu::async_get_results(sh->host_results, sh->dev_results, sh->stream);
+#if 1
 	gpu::synchronize_stream(sh->stream);
-
+#else
+	// this is to get an ack from kernel when transfer of the results to cpu is done.
+	// The code is not finalized yet.
+//	uint32_t * temp=0;
+	uint32_t temp[1];
+	gpu::async_get_ack(temp, sh->stream) ;
+	gpu::synchronize_stream(sh->stream);
+//	if(temp[0]!=1)
+//		printf("%d ", temp[0]);
+//	delete temp;
+#endif
 	for(unsigned int i = 0; i < sh->host_results->count; ++i) {
 		batch[sh->host_results->pairs[i]>>8]->set_output(sh->host_results->pairs[i] & 0xff);
 #if 0
