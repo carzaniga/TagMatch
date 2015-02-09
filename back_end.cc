@@ -159,7 +159,9 @@ struct stream_handle {
 		host_queries = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
 		//host_results = gpu::allocate_host_pinned<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES + 1);
 		host_results = gpu::allocate_host_pinned<result_t>(1);
-
+#if 1
+		host_results->done = false;
+#endif
 		dev_query_ti_table = gpu::allocate<uint16_t>(PACKETS_BATCH_SIZE);
 		//dev_results = gpu::allocate<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
 		dev_results = gpu::allocate<result_t>(1);
@@ -337,15 +339,19 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 					sh->stream, blocks);
 
 	gpu::async_get_results(sh->host_results, sh->dev_results, sh->stream);
-#if 1
+#if 0
 	gpu::synchronize_stream(sh->stream);
 #else
+	while(!sh->host_results->done){
+	
+	}
+	sh->host_results->done = false;
 	// this is to get an ack from kernel when transfer of the results to cpu is done.
 	// The code is not finalized yet.
 //	uint32_t * temp=0;
-	uint32_t temp[1];
-	gpu::async_get_ack(temp, sh->stream) ;
-	gpu::synchronize_stream(sh->stream);
+//	uint32_t temp[1];
+//	gpu::async_get_ack(temp, sh->stream) ;
+//	gpu::synchronize_stream(sh->stream);
 //	if(temp[0]!=1)
 //		printf("%d ", temp[0]);
 //	delete temp;

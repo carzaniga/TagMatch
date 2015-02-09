@@ -97,9 +97,15 @@ __global__ void three_phase_matching(const uint32_t * __restrict__ fib, unsigned
 	// 
 	// this is the counter for the output tree-interface pairs. only 1 thread in the current  
 	// kernel has to set it
+#if 0
 	if(id == 0 )
 		results->count=0;
-
+#else
+	if(id == 0 ){
+		results->count=0;
+		results->done=true;
+	}
+#endif
 #if TIME
 	uint32_t t1=0,t2=0,t3=0,t4=0 ;
 	if(id==0)
@@ -677,8 +683,16 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 	if(id >= fib_size)
 		return;
 
+#if 0
 	if(id == 0 )
-		results->count = 0; 
+		results->count=0;
+#else
+	if(id == 0 ){
+		results->count=0;
+		results->done=true;
+	}
+#endif
+
 	__syncthreads();
 	uint32_t d0,d1,d2,d3,d4,d5;
 

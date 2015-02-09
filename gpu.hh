@@ -23,6 +23,7 @@ typedef uint16_t ifx_result_t;
 struct result_t {
 	uint32_t count;
 	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES];
+	volatile bool done;
 };
 
 struct gpu_mem_info {
