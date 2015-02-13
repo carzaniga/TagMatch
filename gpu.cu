@@ -57,8 +57,11 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 			results->pairs[atomicAdd(&(results->count), 1)] = (msg)<<8 | ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3)) ;\
 	}
 
+
 template <const unsigned int Blocks>
-__global__ void three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size, 
+__global__ void 
+//__launch_bounds__(256, 8)
+three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size, 
 									 const uint16_t * __restrict__ ti_table, const unsigned int * __restrict__ ti_indexes,  
 									 const uint16_t * __restrict__ query_ti_table ,  unsigned int batch_size, 
 									 result_t * results,

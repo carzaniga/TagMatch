@@ -13,6 +13,8 @@
 
 #include "gpu.hh"
 #include "back_end.hh"
+#include <time.h> 
+#include <mutex>
 
 using std::vector;
 using std::map;
@@ -126,12 +128,14 @@ static uint16_t * dev_ti_table = nullptr;
 // primarily buffers we use to transfer data to and from the GPU for
 // matching.
 // 
+static std::mutex mu[GPU_STREAMS]; 
 struct stream_handle {
 	// we maintain a list of free handles.  This is the pointer to the
 	// next free handle.  More specifically, it is an index in the
 	// stream_handles array.
 	//
 	unsigned char next;
+	std::mutex * mutex;
 	
 	// stream identifier shared with the GPU
 	//
@@ -153,6 +157,7 @@ struct stream_handle {
 
 	void initialize(unsigned int s, unsigned int n) {
 		stream = s;
+		mutex = mu+ s;
 		next = n;
 
 		host_query_ti_table = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
@@ -186,8 +191,9 @@ struct stream_handle {
 // doesn't change much anyway.
 // 
 static const unsigned char STREAM_HANDLES_NULL = 0xff;
+static const unsigned char STREAM_HANDLES_MULTIPLIER = 1;
 
-static stream_handle stream_handles[GPU_STREAMS];
+static stream_handle stream_handles[GPU_STREAMS * STREAM_HANDLES_MULTIPLIER];
 
 static atomic<unsigned char> free_stream_handles;
 
@@ -212,15 +218,15 @@ static void initialize_stream_handlers() {
 	// this is supposed to execute atomically
 	// 
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
-		stream_handles[i].initialize(i,free_stream_handles);
+	for(unsigned int i = 0; i < GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
+		stream_handles[i].initialize(i % GPU_STREAMS,free_stream_handles);
 		free_stream_handles = i;
 	}
 }
 
 static void destroy_stream_handlers() {
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
+	for(unsigned int i = 0; i < GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
 		stream_handles[i].destroy();
 	}
 }
@@ -323,13 +329,24 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
 	// 
+//	sh->mutex->lock();
 	uint32_t * curr_p_buf = sh->host_queries;
-
+#if 1
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
 		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
 	}
+#else 
+	int min = 0 ;
+	for(unsigned int i = 0; i < batch_size; ++i) {
+		if (batch[i]->filter > batch[min]->filter)
+			min=i ;
+		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
+			*curr_p_buf++ = batch[min]->filter.uint32_value(j);
+		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
+	}
+#endif 
 	gpu::async_copy_packets(sh->host_queries, batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
 	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
@@ -339,11 +356,15 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 					sh->stream, blocks);
 
 	gpu::async_get_results(sh->host_results, sh->dev_results, sh->stream);
+//	sh->mutex->unlock();
 #if 0
 	gpu::synchronize_stream(sh->stream);
 #else
 	while(!sh->host_results->done){
-	
+//		struct timespec ts;	
+//		ts.tv_sec = 0;
+//		ts.tv_nsec = 100;
+//		nanosleep(&ts, NULL);
 	}
 	sh->host_results->done = false;
 	// this is to get an ack from kernel when transfer of the results to cpu is done.
