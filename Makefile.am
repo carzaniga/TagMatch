@@ -48,7 +48,8 @@ cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh
 			front_end.cc front_end.hh back_end.cc back_end.hh
 endif
 
-test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh
+test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh \
+			packet.cc fib.cc
 
 split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
 

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "packet.hh"
+#include "fib.hh"
 
 using std::vector;
 using std::ifstream;
@@ -19,103 +20,97 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
-class f_descr {
-public:
-	filter_t f;
-	vector<tree_interface_pair> ti_pairs;
-};
+static vector<partition_fib_entry> fib;
 
-static vector<f_descr> fib;
+#if 0
+static int read_prefixes(const char * fname, bool binary_format) {
+	ifstream is(fname);
+	string line;
+	if (!is)
+		return -1;
 
-int read_filters(string fname) {
+	partition_prefix p;
+	int res = 0;
+	if (binary_format) {
+		while(p.read_binary(is)) {
+			front_end::add_prefix(p.partition, p.filter, p.length);
+			++res;
+		}
+	} else {
+		while(p.read_ascii(is)) {
+			front_end::add_prefix(p.partition, p.filter, p.length);
+			++res;
+		}
+	}
+	is.close();
+	return res;
+}
+#endif
+
+static int read_filters(string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
-		return 1;
+		return -1;
 
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "f") 
-			continue;
-
-		unsigned int partition_id;
-		interface_t iface;
-		tree_t tree;
-		string filter_string;
-
-		line_s >> partition_id >> filter_string;
-
-		filter_t f(filter_string);
-
-		fib.emplace_back();
-		fib.back().f = f;
-
-		while (line_s >> tree >> iface) 
-			fib.back().ti_pairs.push_back(tree_interface_pair(tree, iface));
-	}
-	return 0;
-}
-
-static bool covers(const filter_t & f1, const filter_t & f2) {
-	const block_t * b1 = f1.begin();
-	const block_t * b2 = f2.begin();
-
-	do {
-		if ((~(*b1) & *b2) != 0)
-			return false;
-		++b1;
-		++b2;
-	} while(b1 != f1.end());
-	return true;
-}
-
-static void match(const string & f_string, tree_t tree, interface_t iface) {
-	bool results[INTERFACES] = { false };
-
-	filter_t f(f_string);
-
-	for(vector<f_descr>::const_iterator di = fib.begin(); di != fib.end(); ++di) {
-		if (covers(f, di->f)) {
-			for(vector<tree_interface_pair>::const_iterator tip = di->ti_pairs.begin();
-				tip != di->ti_pairs.end(); ++tip) {
-				if (tree == tip->tree() && iface != tip->interface())
-					results[tip->interface()] = true;
-			}
+	int res = 0;
+	partition_fib_entry f;
+	if (binary_format) {
+		while(f.read_binary(is)) {
+			fib.emplace_back(f);
+			++res;
+		}
+	} else {
+		while(f.read_ascii(is)) {
+			fib.emplace_back(f);
+			++res;
 		}
 	}
+	is.close();
+	return res;
+}
+
+static void match(const network_packet & p) {
+	bool results[INTERFACES] = { false };
+
+    const tree_t tree = p.ti_pair.tree();
+	const interface_t iface = p.ti_pair.interface();
+
+	for(const fib_entry & entry : fib) 
+		if (entry.filter.subset_of(p.filter)) 
+			for(const tree_interface_pair & tip : entry.ti_pairs)
+				if (tree == tip.tree() && iface != tip.interface())
+					results[tip.interface()] = true;
 
 	for(unsigned i = 0; i < INTERFACES; ++i) 
 		if (results[i])
-		cout << ' ' << i;
+			cout << ' ' << i;
 	cout << endl;
 }
 
-int read_and_match_queries(string fname) {
+static unsigned int read_and_match_queries(string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
-		return 1;
+		return -1;
 
-	while(getline(is, line)) {
-		istringstream line_s(line);
-		string command;
-		line_s >> command;
-		if (command != "!") 
-			continue;
-
-		tree_t tree;
-		interface_t iface;
-		string filter_string;
-
-		line_s >> tree >> iface >> filter_string;
-
-		match(filter_string, tree, iface);
+	int res = 0;
+	network_packet p;
+	if (binary_format) {
+		while(p.read_binary(is)) {
+			match(p);
+			++res;
+		}
+	} else {
+		while(p.read_ascii(is)) {
+			match(p);
+			++res;
+		}
 	}
-	return 0;
+	is.close();
+	return res;
 }
 
 void print_usage(const char * progname) {
@@ -123,19 +118,47 @@ void print_usage(const char * progname) {
 		 << " f=filters_file_name q=queries_file_name"
 		 << endl;
 }
+
 int main(int argc, const char * argv[]) {
-	const char * filters_fname = 0;
-	const char * queries_fname = 0; 
+#if 0
+	const char * prefixes_fname = nullptr;
+	bool prefixes_binary_format = false;
+#endif
+	const char * filters_fname = nullptr;
+	bool filters_binary_format = false;
+	const char * queries_fname = nullptr; 
+	bool queries_binary_format = false;
 
 	for(int i = 1; i < argc; ++i) {
+#if 0
+		if (strncmp(argv[i],"P=",2)==0) {
+			prefixes_binary_format = true;
+			prefixes_fname = argv[i] + 2;
+			continue;
+		} else 
+		if (strncmp(argv[i],"p=",2)==0) {
+			prefixes_fname = argv[i] + 2;
+			continue;
+		} else 
+#endif
 		if (strncmp(argv[i],"f=",2)==0) {
 			filters_fname = argv[i] + 2;
 			continue;
-		}
+		} else
+		if (strncmp(argv[i],"F=",2)==0) {
+			filters_binary_format = true;
+			filters_fname = argv[i] + 2;
+			continue;
+		} else
 		if (strncmp(argv[i],"q=",2)==0) {
 			queries_fname = argv[i] + 2;
 			continue;
-		}
+		} else
+		if (strncmp(argv[i],"Q=",2)==0) {
+			queries_binary_format = true;
+			queries_fname = argv[i] + 2;
+			continue;
+		} else
 		if (strcmp(argv[i], "-h")==0 || strcmp(argv[i], "--help")==0) {
 			print_usage(argv[0]);
 			return 1;
@@ -147,12 +170,12 @@ int main(int argc, const char * argv[]) {
 		return 1;
 	}		
 
-	if (read_filters(filters_fname) != 0) {
+	if (read_filters(filters_fname, filters_binary_format) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
 	
-	if (read_and_match_queries(queries_fname) != 0) {
+	if (read_and_match_queries(queries_fname, queries_binary_format) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
