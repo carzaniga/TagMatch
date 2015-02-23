@@ -572,10 +572,10 @@ static void compile_fib() {
 	}
 
 	for(unsigned int i = 128; i < 192; ++i) {
-		pp2[i - 128].p64_begin = p64_table + p64_i;
+		pp3[i - 128].p64_begin = p64_table + p64_i;
 		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
-		pp2[i - 128].p64_end = p64_table + p64_i;
+		pp3[i - 128].p64_end = p64_table + p64_i;
 		tmp_pp[i].clear();
 	}
 }
