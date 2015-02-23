@@ -285,7 +285,12 @@ int main(int argc, const char * argv[]) {
 		back_end::clear();
 		return 0;
 	};
-
+	if (print_progress_steps)
+		cout << "Clearing packet output..." << std::flush;
+	for(packet & p : packets)
+		p.reset();
+	if (print_progress_steps) 
+		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
 
 #ifndef BACK_END_IS_VOID
 	if (print_progress_steps) 

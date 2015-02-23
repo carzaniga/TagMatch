@@ -510,12 +510,12 @@ void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) 
 		}
     } else if (*(++b)) {
 		if (n <= 64) {
-			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b) + 64].p64.emplace_back(id, f);
 		} else {
-			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
+			tmp_pp[leftmost_bit(*b) + 64].p128.emplace_back(id, f);
 		}
     } else if (*(++b)) {
-		tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+		tmp_pp[leftmost_bit(*b) + 128].p64.emplace_back(id, f);
     }
 }
 
@@ -639,7 +639,8 @@ static void match(packet * pkt) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 			
-    } else if (*(++b)) {
+    } 
+	if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
@@ -656,7 +657,8 @@ static void match(packet * pkt) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 
-    } else if (*(++b)) {
+    }
+	if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
