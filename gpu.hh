@@ -6,7 +6,7 @@
 #include "parameters.hh"
 
 #define GPU_MSG_BLOCKS 6
-#define GPU_STREAMS  8  
+#define GPU_STREAMS  7  
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."
@@ -22,9 +22,16 @@ typedef uint16_t ifx_result_t;
 
 struct result_t {
 	uint32_t count;
-	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES];
+	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES]; // is this enough? I guess not
+	//uint16_t pairs[PACKETS_BATCH_SIZE][INTERFACES]; // is this enough? I guess not
 	volatile bool done;
 };
+
+//struct packet_t {
+//	uint32_t packets[PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
+//	uint16_t pairs[PACKETS_BATCH_SIZE]; 
+//};
+
 
 struct gpu_mem_info {
 	size_t free;
@@ -62,7 +69,6 @@ public:
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
 	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int stream);
 
-	static void async_get_ack(uint32_t * ack, unsigned int stream_id);
 	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 							unsigned int size);
 
@@ -71,7 +77,8 @@ public:
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
 						   result_t * dev_results,
 						   unsigned int stream,
-						   unsigned char blocks);
+						   unsigned char blocks,
+						   uint32_t * intersections);
 
 	static void synchronize_stream(unsigned int stream);
 	static void synchronize_device();

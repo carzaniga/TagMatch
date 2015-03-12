@@ -7,8 +7,10 @@
 #include "cuda_profiler_api.h"
 #include <signal.h>
 
+//#define WITH_INTERSECTIONS
 #define TIME 0
 #define PROFILE 0
+//#define Blocks 6
 #define ABORT_ON_ERROR(f)												\
 	do {																\
 		cudaError_t status_ = (f);										\
@@ -36,9 +38,9 @@ cudaStream_t streams[GPU_STREAMS];
 __align__(128) __constant__ __device__
 uint32_t packets[GPU_STREAMS][PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
 
-//__device__ uint32_t output_ready=1 ;
-__constant__ __device__ uint32_t output_ready=1 ;
 
+//__align__(128) __constant__ __device__
+//packet_t messages[GPU_STREAMS];
 
 #define BV_BLOCK_NOT_SUBSET_IS_A_MACRO 0
 
@@ -57,19 +59,26 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 			results->pairs[atomicAdd(&(results->count), 1)] = (msg)<<8 | ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3)) ;\
 	}
 
+//#define RECORD_MATCHING_FILTER(id,msg)															\
+	for(unsigned int i = ti_table[ti_indexes[id]]; i > 0; --i) {								\
+		uint16_t ti_xor = query_ti_table[(msg)] ^ ti_table[ti_indexes[id] + i];					\
+		if ((ti_xor < (0x0001 << 13)) && (ti_xor != 0))											\
+			results->pairs[(msg)*INTERFACES + ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3))] = 1;	\
+	}	 
 
-template <const unsigned int Blocks>
 __global__ void 
 //__launch_bounds__(256, 8)
 three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size, 
 									 const uint16_t * __restrict__ ti_table, const unsigned int * __restrict__ ti_indexes,  
 									 const uint16_t * __restrict__ query_ti_table ,  unsigned int batch_size, 
 									 result_t * results,
-									 unsigned int stream_id) {
+									 unsigned int stream_id,
+									 uint32_t * intersections) {
 	// candidate messages are stored in an array in shared memory
 	//__align__(128) __shared__ uint8_t candidate_messages[PACKETS_BATCH_SIZE];
 	__align__(128) __shared__ uint8_t candidate_messages[PACKETS_BATCH_SIZE];
 	__shared__ uint32_t candidate_count; 
+	const unsigned int Blocks = 6 ;
 
 	// common prefix of all filters in this thread block
 	__shared__ uint32_t prefix_blocks[Blocks];
@@ -80,12 +89,17 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 	// position of first non-zero prefix block (==Blocks if no prefix
 	// on no non-zero blocks)
 	__shared__ unsigned int prefix_first_non_zero; 
+#ifdef WITH_INTERSECTIONS
+	__shared__ uint32_t shm_intersections[Blocks]; 
+#endif
 
 #if 1
 	// thread id within a thread block
 	uint32_t tid = (blockDim.x * threadIdx.y) + threadIdx.x;
 	// thread and filter id within the whole partition 
 	uint32_t id  = (blockDim.x * blockDim.y * blockIdx.x) + tid; 
+//	if(id>0)
+//		return;
 #else
 	uint32_t tid = (GPU_BLOCK_DIM_X * threadIdx.y) + threadIdx.x;
 
@@ -116,6 +130,12 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 #endif
 	if (tid == 0) {
 		candidate_count = 0;
+
+#ifdef WITH_INTERSECTIONS
+#pragma unroll
+		for(int i = 0; i < Blocks; i++)
+			shm_intersections[i] = intersections[blockIdx.x * Blocks + i ] ;
+#endif
 		// id of the last thread in this block:
 		// (id + GPU_BLOCK_SIZE - 1) or (fib_size - 1)
 		// whichever is smaller
@@ -163,10 +183,23 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 				}
 			}
 		}
+//		for(int i = prefix_first_non_zero; i < Blocks; i++)
+//			shm_intersections[i] = intersections[blockIdx.x * Blocks + i ] ;
 	} 
 	
 	// end for phase 1: computation of the common prefix by tid==0
 	__syncthreads();
+#if 1	
+	if (prefix_first_non_zero==Blocks && batch_size % 2 ==0)// ==PACKETS_BATCH_SIZE)
+		goto match_all ;
+#else
+	if (prefix_first_non_zero==Blocks){// ==PACKETS_BATCH_SIZE)
+		if(tid==0 && batch_size% 2 != 0)
+			printf("%d\n",batch_size);
+//			batch_size--;
+//		goto match_all ;
+	}
+#endif
 #if TIME
 	if(id==0)
 		t2=clock() ;
@@ -183,7 +216,26 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 
 	// candidate selection: we consider the prefix blocks starting
 	// from the first non-zero block
+#ifdef WITH_INTERSECTIONS
+	unsigned int prefix_end = prefix_complete_blocks;
+	if (prefix_blocks[prefix_end] != 0)
+		++prefix_end;
+	// "prefix_first_non_zero!=0" is true for 24000 blocks (for 1m queries)
+	// in case prefix_first_non_zero == Blocks, the following code is still works.
+	// it simply puts every message in the candidante_messages. 
+	// I tried to remove the atomic increament the condition stated above, but it didn't
+	// improve the code.
 
+#pragma unroll
+	for(unsigned int m = tid; m < batch_size; m += GPU_BLOCK_SIZE) {
+		for(unsigned int i = prefix_first_non_zero; i < prefix_end; ++i) 
+			if(BV_BLOCK_NOT_SUBSET(shm_intersections[i], packets[stream_id][m * Blocks + i])) 
+				goto skip_message;
+
+		candidate_messages[atomicAdd(&candidate_count, 1)] =  m;
+skip_message: ;
+	}
+#else 
 	unsigned int prefix_end = prefix_complete_blocks;
 	if (prefix_blocks[prefix_end] != 0)
 		++prefix_end;
@@ -193,6 +245,7 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 	// it simply puts every message in the candidante_messages. 
 	// I tried to remove the atomic increament the condition stated above, but it didn't
 	// improve the code.
+
 #pragma unroll
 	for(unsigned int m = tid; m < batch_size; m += GPU_BLOCK_SIZE) {
 		for(unsigned int i = prefix_first_non_zero; i < prefix_end; ++i) 
@@ -203,8 +256,10 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 		candidate_messages[atomicAdd(&candidate_count, 1)] =  m;
 skip_message: ;
 	}
+#endif 
 	// end of phase 2 (candidate selection)
 	//
+phase_three:
 	__syncthreads();
 #if TIME
 	if(id==0)
@@ -213,10 +268,11 @@ skip_message: ;
 	// 
 	// phase 3: matching candidate messages.
 	// 
+	if (candidate_count == PACKETS_BATCH_SIZE){// || (candidate_count == batch_size && candidate_count%2==0))
+		goto match_all;
+	}
 	if(candidate_count==0 || id >=fib_size)
 		return;
-	else if (candidate_count == PACKETS_BATCH_SIZE)
-		goto match_all;
 	else{
 		unsigned int prefix_end = prefix_complete_blocks;
 #if 0
@@ -239,262 +295,212 @@ candidate_no_match:
 #else
 		uint32_t d0,d1,d2,d3,d4,d5;
 		switch(prefix_end) {
-			case 0: if (Blocks < 1) break;
-						d0 = fib[id*Blocks];
-			case 1: if (Blocks < 2) break;
-						d1 = fib[id*Blocks + 1];
-			case 2: if (Blocks < 3) break;
-						d2 = fib[id*Blocks + 2];
-			case 3: if (Blocks < 4) break;
-						d3 = fib[id*Blocks + 3];
-			case 4: if (Blocks < 5) break;
-						d4 = fib[id*Blocks + 4];
-			case 5: if (Blocks < 6) break;
-						d5 = fib[id*Blocks + 5];
+			case 0: 
+				d0 = fib[id*Blocks];
+			case 1: 
+				d1 = fib[id*Blocks + 1];
+			case 2: 
+				d2 = fib[id*Blocks + 2];
+			case 3: 
+				d3 = fib[id*Blocks + 3];
+			case 4: 
+				d4 = fib[id*Blocks + 4];
+			case 5: 
+				d5 = fib[id*Blocks + 5];
 		}
 		uint8_t message; 
+		uint8_t message2; 
+		uint32_t p0,p1,p2,p3,p4,p5;
+		uint32_t p6,p7,p8,p9,p10,p11;
+
+		uint32_t * p ;
 		switch(prefix_end) {
-			case 0: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][message*Blocks + 0]))
-								goto candidate_no_match06;
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match06;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match06;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match06;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match06;
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match06;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match06:
-							continue;
-						}
-					if (Blocks == 5) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][message*Blocks + 0]))
-								goto candidate_no_match05;;
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match05;;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match05;;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match05;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match05;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match05:
-							continue;
-						}
-					if (Blocks == 4) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][message*Blocks + 0]))
-								goto candidate_no_match04;
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match04;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match04;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match04;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match04:
-							continue;
-						}
-					if (Blocks == 3) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][message*Blocks + 0]))
-								goto candidate_no_match03;
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match03;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match03;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match03:
-							continue;
-						}
-					break;
-			case 1: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match16;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match16;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match16;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match16;
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match16;
+			case 0: 
+				if (candidate_count % 2 == 1){
+						candidate_count--;
+						message = candidate_messages[candidate_count];
+						p = &(packets[stream_id][message*Blocks]);
+						p0 = *p++;
+						p1 = *p++;
+						p2 = *p++;
+						p3 = *p++;
+						p4 = *p++;
+						p5 = *p;
+						if (BV_BLOCK_NOT_SUBSET(d0, p0)) 
+							goto candidate_no_match063;
+						if (BV_BLOCK_NOT_SUBSET(d1, p1))
+							goto candidate_no_match063;
+						if (BV_BLOCK_NOT_SUBSET(d2, p2))
+							goto candidate_no_match063;
+						if (BV_BLOCK_NOT_SUBSET(d3, p3))
+							goto candidate_no_match063;
+						if (BV_BLOCK_NOT_SUBSET(d4, p4))
+							goto candidate_no_match063;
+						if (BV_BLOCK_NOT_SUBSET(d5, p5))
+							goto candidate_no_match063;
 
-							RECORD_MATCHING_FILTER(id,message);
+						RECORD_MATCHING_FILTER(id,message);
+candidate_no_match063:
+
+				}
+
+					for(unsigned int pi = 0; pi < candidate_count; pi+=2) {
+						message = candidate_messages[pi];
+						p = &(packets[stream_id][message*Blocks]);
+						p0 = *p++;
+						p1 = *p++;
+						p2 = *p++;
+						p3 = *p++;
+						p4 = *p++;
+						p5 = *p;
+						message2 = candidate_messages[pi+1];
+						p = &(packets[stream_id][message2*Blocks]);
+						p6 = *p++;
+						p7 = *p++;
+						p8 = *p++;
+						p9 = *p++;
+						p10= *p++;
+						p11= *p++;
+
+						if (BV_BLOCK_NOT_SUBSET(d0, p0)) 
+							goto candidate_no_match062;
+						if (BV_BLOCK_NOT_SUBSET(d1, p1))
+							goto candidate_no_match062;
+						if (BV_BLOCK_NOT_SUBSET(d2, p2))
+							goto candidate_no_match062;
+						if (BV_BLOCK_NOT_SUBSET(d3, p3))
+							goto candidate_no_match062;
+						if (BV_BLOCK_NOT_SUBSET(d4, p4))
+							goto candidate_no_match062;
+						if (BV_BLOCK_NOT_SUBSET(d5, p5))
+							goto candidate_no_match062;
+
+						RECORD_MATCHING_FILTER(id,message);
+candidate_no_match062:
+						if (BV_BLOCK_NOT_SUBSET(d0, p6)) 
+							goto candidate_no_match061;
+						if (BV_BLOCK_NOT_SUBSET(d1, p7))
+							goto candidate_no_match061;
+						if (BV_BLOCK_NOT_SUBSET(d2, p8))
+							goto candidate_no_match061;
+						if (BV_BLOCK_NOT_SUBSET(d3, p9))
+							goto candidate_no_match061;
+						if (BV_BLOCK_NOT_SUBSET(d4, p10))
+							goto candidate_no_match061;
+						if (BV_BLOCK_NOT_SUBSET(d5, p11))
+							goto candidate_no_match061;
+
+						RECORD_MATCHING_FILTER(id,message2);
+candidate_no_match061:
+						continue;
+
+					}
+//					for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+//						message = candidate_messages[pi];
+//						p = &(packets[stream_id][message*Blocks]);
+//						p0 = *p++;
+//						p1 = *p++;
+//						p2 = *p++;
+//						p3 = *p++;
+//						p4 = *p++;
+//						p5 = *p;
+//
+//						if (BV_BLOCK_NOT_SUBSET(d0, p0)) 
+//							goto candidate_no_match06;
+//						if (BV_BLOCK_NOT_SUBSET(d1, p1))
+//							goto candidate_no_match06;
+//						if (BV_BLOCK_NOT_SUBSET(d2, p2))
+//							goto candidate_no_match06;
+//						if (BV_BLOCK_NOT_SUBSET(d3, p3))
+//							goto candidate_no_match06;
+//						if (BV_BLOCK_NOT_SUBSET(d4, p4))
+//							goto candidate_no_match06;
+//						if (BV_BLOCK_NOT_SUBSET(d5, p5))
+//							goto candidate_no_match06;
+//
+//
+//						RECORD_MATCHING_FILTER(id,message);
+//candidate_no_match06:
+//						continue;
+//
+//					}
+				break;
+			case 1: 
+				for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+					message = candidate_messages[pi];
+					if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
+						goto candidate_no_match16;
+					if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
+						goto candidate_no_match16;
+					if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
+						goto candidate_no_match16;
+					if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
+						goto candidate_no_match16;
+					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
+						goto candidate_no_match16;
+
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match16:
-							continue;
-						}
-					if (Blocks == 5) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match15;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match15;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match15;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match15;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match15:
-							continue;
-						}
-					if (Blocks == 4) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match14;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match14;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match14;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match14:
-							continue;
-						}
-					if (Blocks == 3) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][message*Blocks + 1]))
-								goto candidate_no_match13;
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match13;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match13:
-							continue;
-						}
-					break;
+					continue;
+				}
 
-			case 2: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match26;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match26;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match26;
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match26;
-							RECORD_MATCHING_FILTER(id,message);
+				break;
+
+			case 2: 
+				for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+					message = candidate_messages[pi];
+					if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
+						goto candidate_no_match26;
+					if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
+						goto candidate_no_match26;
+					if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
+						goto candidate_no_match26;
+					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
+						goto candidate_no_match26;
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match26:
-							continue;
-						}
-					if (Blocks == 5) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match25;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match25;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match25;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match25:
-							continue;
-						}
-					if (Blocks == 4) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match24;
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match24;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match24:
-							continue;
-						}
-					if (Blocks == 3) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][message*Blocks + 2]))
-								goto candidate_no_match23;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match23:
-							continue;
-						}
-					break;
+					continue;
+				}
+				break;
 
-			case 3: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match36;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match36;
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match36;
-							RECORD_MATCHING_FILTER(id,message);
+			case 3: 
+				for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+					message = candidate_messages[pi];
+					if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
+						goto candidate_no_match36;
+					if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
+						goto candidate_no_match36;
+					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
+						goto candidate_no_match36;
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match36:
-							continue;
-						}
-					if (Blocks == 5) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match35;
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match35;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match35:
-							continue;
-						}
-					if (Blocks == 4) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][message*Blocks + 3]))
-								goto candidate_no_match34;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match34:
-							continue;
-						}
-					break;
+					continue;
+				}
+				break;
 
-			case 4: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match46;
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match46;
-							RECORD_MATCHING_FILTER(id,message);
+			case 4: 
+				for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+					message = candidate_messages[pi];
+					if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
+						goto candidate_no_match46;
+					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
+						goto candidate_no_match46;
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match46:
-							continue;
-						}
-					if (Blocks == 5) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][message*Blocks + 4]))
-								goto candidate_no_match45;
-							RECORD_MATCHING_FILTER(id,message);
-candidate_no_match45:
-							continue;
-						}
-					break;
+					continue;
+				}
+				break;
 
-			case 5: if (Blocks == 6) 
-						for(unsigned int pi = 0; pi < candidate_count; ++pi) {
-							message = candidate_messages[pi];
-							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
-								goto candidate_no_match56;
-							RECORD_MATCHING_FILTER(id,message);
+			case 5: 
+				for(unsigned int pi = 0; pi < candidate_count; ++pi) {
+					message = candidate_messages[pi];
+					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
+						goto candidate_no_match56;
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match56:
-							continue;
-						}
-					break;
+					continue;
+				}
+				break;
 		}
 #endif
 	}
@@ -525,89 +531,93 @@ match_all:
 					goto no_match;
 #else
 		uint32_t d0,d1,d2,d3,d4,d5;
-	switch(Blocks) {
-		case 6:	d5 = fib[id*Blocks + 5];
-		case 5:	d4 = fib[id*Blocks + 4];
-		case 4: d3 = fib[id*Blocks + 3];
-		case 3:	d2 = fib[id*Blocks + 2];
-		case 2: d1 = fib[id*Blocks + 1];
-		case 1:	d0 = fib[id*Blocks + 0];
-	}
+		d5 = fib[id*Blocks + 5];
+		d4 = fib[id*Blocks + 4];
+		d3 = fib[id*Blocks + 3];
+		d2 = fib[id*Blocks + 2];
+		d1 = fib[id*Blocks + 1];
+		d0 = fib[id*Blocks + 0];
 #if 1
 		uint32_t p0,p1,p2,p3,p4,p5;
-		uint32_t * p = &(packets[stream_id][0]);
-		for(unsigned int pi = 0; pi < batch_size; ++pi) {
+		uint32_t p6,p7,p8,p9,p10,p11;
+		uint32_t * p;
+
+//		if(batch_size%2 ==1){
+//			batch_size--;
+//			p = &(packets[stream_id][batch_size*6]);
+//			p0 = *p++; 
+//			p1 = *p++; 
+//			p2 = *p++; 
+//			p3 = *p++; 
+//			p4 = *p++; 
+//			p5 = p++; 
+//
+////			p0 = packets[stream_id][batch_size*6];
+////			p1 = packets[stream_id][batch_size*6+1];
+////			p2 = packets[stream_id][batch_size*6+2];
+////			p3 = packets[stream_id][batch_size*6+3];
+////			p4 = packets[stream_id][batch_size*6+4];
+////			p5 = packets[stream_id][batch_size*6+5];
+//			if (BV_BLOCK_NOT_SUBSET(d0, p0))
+//				goto next;
+//			if (BV_BLOCK_NOT_SUBSET(d1, p1))
+//				goto next;
+//			if (BV_BLOCK_NOT_SUBSET(d2, p2))
+//				goto next;
+//			if (BV_BLOCK_NOT_SUBSET(d3, p3))
+//				goto next;
+//			if (BV_BLOCK_NOT_SUBSET(d4, p4))
+//				goto next;
+//			if (BV_BLOCK_NOT_SUBSET(d5, p5))
+//				goto next;
+//			RECORD_MATCHING_FILTER(id, batch_size);
+//
+//		}
+//next:
+		p = &(packets[stream_id][0]);
+		for(unsigned int pi = 0; pi < batch_size; pi+=2) {
 			p0 =*p++;
-			if(Blocks==6){
-				p1 = *p++;
-				p2 = *p++;
-				p3 = *p++;
-				p4 = *p++;
-				p5 = *p++;
-			}
-			if(Blocks==5){
-				p1 = *p++;
-				p2 = *p++;
-				p3 = *p++;
-				p4 = *p++;
-			}
-			if(Blocks==4){
-				p1 = *p++;
-				p2 = *p++;
-				p3 = *p++;
-			}
-			if(Blocks==3){
-				p1 = *p++;
-				p2 = *p++;
-			}
+			p1 = *p++;
+			p2 = *p++;
+			p3 = *p++;
+			p4 = *p++;
+			p5 = *p++;
+			p6 = *p++;
+			p7 = *p++;
+			p8 = *p++;
+			p9 = *p++;
+			p10= *p++;
+			p11= *p++;
 
-			switch(Blocks){
-				case 6: 	
-					if (BV_BLOCK_NOT_SUBSET(d0, p0))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d1, p1))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d2, p2))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d3, p3))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d4, p4))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d5, p5))
-						continue;
-					break;
-				case 5: 	
-					if (BV_BLOCK_NOT_SUBSET(d0, p0))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d1, p1))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d2, p2))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d3, p3))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d4, p4))
-						continue;
-					break;
-				case 4: 	
-					if (BV_BLOCK_NOT_SUBSET(d0, p0))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d1, p1))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d2, p2))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d3, p3))
-						continue;
-					break;
-				case 3: 	
-					if (BV_BLOCK_NOT_SUBSET(d0, p0))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d1, p1))
-						continue;
-					if (BV_BLOCK_NOT_SUBSET(d2, p2))
-						continue;
-					break;
-			}
+			if (BV_BLOCK_NOT_SUBSET(d0, p0))
+				goto next_msg;
+			if (BV_BLOCK_NOT_SUBSET(d1, p1))
+				goto next_msg;
+			if (BV_BLOCK_NOT_SUBSET(d2, p2))
+				goto next_msg;
+			if (BV_BLOCK_NOT_SUBSET(d3, p3))
+				goto next_msg;
+			if (BV_BLOCK_NOT_SUBSET(d4, p4))
+				goto next_msg;
+			if (BV_BLOCK_NOT_SUBSET(d5, p5))
+				goto next_msg;
 
+			RECORD_MATCHING_FILTER(id,pi);
+next_msg:
+			if (BV_BLOCK_NOT_SUBSET(d0, p6))
+				continue;
+			if (BV_BLOCK_NOT_SUBSET(d1, p7))
+				continue;
+			if (BV_BLOCK_NOT_SUBSET(d2, p8))
+				continue;
+			if (BV_BLOCK_NOT_SUBSET(d3, p9))
+				continue;
+			if (BV_BLOCK_NOT_SUBSET(d4, p10))
+				continue;
+			if (BV_BLOCK_NOT_SUBSET(d5, p11))
+				continue;
+			RECORD_MATCHING_FILTER(id, pi+1);
+		}
 #else
 
 		for(unsigned int pi = 0; pi < batch_size; ++pi) {
@@ -657,17 +667,18 @@ match_all:
 						continue;
 					break;
 			}
-#endif
-#endif
-			RECORD_MATCHING_FILTER(id,pi);
+//			RECORD_MATCHING_FILTER(id,pi);
 
 no_match: ;
 		}
+#endif
+#endif
+
 #if TIME
-		if(id==0){
-			t4=clock(); 
-			printf("%u c= %u %u %u %u\n",fib_size ,candidate_count, (t2-t1), (t3-t2), (t4-t3));
-		}
+//		if(id==0){
+//			t4=clock(); 
+//			printf("%u c= %u %u %u %u\n",fib_size ,candidate_count, (t2-t1), (t3-t2), (t4-t3));
+//		}
 #endif
 
 	}
@@ -731,65 +742,145 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 		RECORD_MATCHING_FILTER(id, pi);
 	}
 #else 
-	uint32_t p0,p1,p2,p3,p4,p5;
-	uint32_t * p = &(packets[stream_id][0]);
-#if 0
-#else 
-	for(unsigned int pi = 0; pi < batch_size; ++pi) {
-		p0 =*p++;
-		if(Blocks==6){
-			p1 = *p++;
-			p2 = *p++;
-			p3 = *p++;
-			p4 = *p++;
-			p5 = *p++;
-		}
-		if(Blocks==5){
-			p1 = *p++;
-			p2 = *p++;
-			p3 = *p++;
-			p4 = *p++;
-		}
-		if(Blocks==4){
-			p1 = *p++;
-			p2 = *p++;
-			p3 = *p++;
-		}
-		if(Blocks==3){
-			p1 = *p++;
-			p2 = *p++;
-		}
-		if(Blocks==2)
-			p1 = *p++;
-		
+	
+	if(batch_size==256){
+		uint32_t p0,p1,p2,p3,p4,p5;
+		uint32_t p6,p7,p8,p9,p10,p11;
+		uint32_t * p = &(packets[stream_id][0]);
+		for(unsigned int pi = 0; pi < batch_size; pi+=2) {
+			p0 =*p++;
+			if(Blocks==6){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+				p5 = *p++;
+				p6 = *p++;
+				p7 = *p++;
+				p8 = *p++;
+				p9 = *p++;
+				p10= *p++;
+				p11= *p++;
+			}
+			if(Blocks==5){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+			}
+			if(Blocks==4){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+			}
+			if(Blocks==3){
+				p1 = *p++;
+				p2 = *p++;
+			}
+			if(Blocks==2)
+				p1 = *p++;
 
-		if (BV_BLOCK_NOT_SUBSET(d0, p0))
-			continue;
-		if (Blocks > 1)
-			if (BV_BLOCK_NOT_SUBSET(d1, p1))
-				continue;
-		if (Blocks > 2)
-			if (BV_BLOCK_NOT_SUBSET(d2, p2))
-				continue;
-		if (Blocks > 3)
-			if (BV_BLOCK_NOT_SUBSET(d3, p3))
-				continue;
-		if (Blocks > 4)
-			if (BV_BLOCK_NOT_SUBSET(d4, p4))
-				continue;
-		if (Blocks > 5)
-			if (BV_BLOCK_NOT_SUBSET(d5, p5))
-				continue;
+			if (BV_BLOCK_NOT_SUBSET(d0, p0))
+				goto next_msg;
+			if (Blocks > 1)
+				if (BV_BLOCK_NOT_SUBSET(d1, p1))
+					goto next_msg;
+			if (Blocks > 2)
+				if (BV_BLOCK_NOT_SUBSET(d2, p2))
+					goto next_msg;
+			if (Blocks > 3)
+				if (BV_BLOCK_NOT_SUBSET(d3, p3))
+					goto next_msg;
+			if (Blocks > 4)
+				if (BV_BLOCK_NOT_SUBSET(d4, p4))
+					goto next_msg;
+			if (Blocks > 5)
+				if (BV_BLOCK_NOT_SUBSET(d5, p5))
+					goto next_msg;
 
-		RECORD_MATCHING_FILTER(id, pi);
+			RECORD_MATCHING_FILTER(id, pi);
+next_msg:
+
+			if (BV_BLOCK_NOT_SUBSET(d0, p6))
+				continue;
+			if (Blocks > 1)
+				if (BV_BLOCK_NOT_SUBSET(d1, p7))
+					continue;
+			if (Blocks > 2)
+				if (BV_BLOCK_NOT_SUBSET(d2, p8))
+					continue;
+			if (Blocks > 3)
+				if (BV_BLOCK_NOT_SUBSET(d3, p9))
+					continue;
+			if (Blocks > 4)
+				if (BV_BLOCK_NOT_SUBSET(d4, p10))
+					continue;
+			if (Blocks > 5)
+				if (BV_BLOCK_NOT_SUBSET(d5, p11))
+					continue;
+
+			RECORD_MATCHING_FILTER(id, pi+1);
+		}
 	}
-#endif
+	else {
+		uint32_t p0,p1,p2,p3,p4,p5;
+		uint32_t * p = &(packets[stream_id][0]);
+		for(unsigned int pi = 0; pi < batch_size; ++pi) {
+			p0 =*p++;
+			if(Blocks==6){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+				p5 = *p++;
+			}
+			if(Blocks==5){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+				p4 = *p++;
+			}
+			if(Blocks==4){
+				p1 = *p++;
+				p2 = *p++;
+				p3 = *p++;
+			}
+			if(Blocks==3){
+				p1 = *p++;
+				p2 = *p++;
+			}
+			if(Blocks==2)
+				p1 = *p++;
+
+
+			if (BV_BLOCK_NOT_SUBSET(d0, p0))
+				continue;
+			if (Blocks > 1)
+				if (BV_BLOCK_NOT_SUBSET(d1, p1))
+					continue;
+			if (Blocks > 2)
+				if (BV_BLOCK_NOT_SUBSET(d2, p2))
+					continue;
+			if (Blocks > 3)
+				if (BV_BLOCK_NOT_SUBSET(d3, p3))
+					continue;
+			if (Blocks > 4)
+				if (BV_BLOCK_NOT_SUBSET(d4, p4))
+					continue;
+			if (Blocks > 5)
+				if (BV_BLOCK_NOT_SUBSET(d5, p5))
+					continue;
+
+			RECORD_MATCHING_FILTER(id, pi);
+		}
+
+	}
 #endif
 }
 
 void gpu::initialize() {
-	//ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
-	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferShared));
+	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
+	//ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferShared));
 	ABORT_ON_ERROR(cudaSetDevice(0));
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 	ABORT_ON_ERROR(cudaThreadSynchronize());
@@ -845,14 +936,9 @@ void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, u
 	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, size * INTERFACES * sizeof(ifx_result_t), cudaMemcpyDeviceToHost));
 }
 
-// this function probably doesn't do what it is supposed to do!
-void gpu::async_get_ack(uint32_t * ack, unsigned int stream_id){
-	ABORT_ON_ERROR(cudaMemcpyFromSymbolAsync((void*)ack, output_ready, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost, streams[stream_id]));
-}
-
 void gpu::synchronize_device() {
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
-	ABORT_ON_ERROR(cudaThreadSynchronize());
+//	ABORT_ON_ERROR(cudaThreadSynchronize());
 }
 
 void gpu::synchronize_stream(unsigned int stream) {
@@ -868,7 +954,7 @@ void * gpu::allocate_host_pinned_generic(unsigned int size) {
 static const dim3 BLOCK_DIMS(GPU_BLOCK_DIM_X, GPU_BLOCK_DIM_Y);
 
 #if PROFILE
-static const int stopCounter=50 ; 
+static const int stopCounter=55 ; 
 sig_atomic_t kernelCounter=0 ;
 #endif
 
@@ -877,12 +963,14 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 					 uint16_t * query_ti_table, unsigned int batch_size, 
 					 result_t * results, 
 					 unsigned int stream,
-					 unsigned char skip_blocks) {
+					 unsigned char skip_blocks,
+					 uint32_t * intersections){
 
 	unsigned int gridsize = fib_size/GPU_BLOCK_SIZE;
 	if ((fib_size % GPU_BLOCK_SIZE) != 0)
 		++gridsize;
-
+	
+	//std::cout << std::endl;
 #if PROFILE
 	kernelCounter++;
 	if(kernelCounter==1)
@@ -915,33 +1003,39 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 
 #else
 	case 0:
-		three_phase_matching<6> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+		three_phase_matching <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 		break;
 
 	case 1:
-		three_phase_matching<5> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+//		three_phase_matching<5> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+//			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 		break;
 
 	case 2:
-		three_phase_matching<4> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+//		three_phase_matching<4> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+//			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 		break;
 
 	case 3:
-		three_phase_matching<3> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+//		three_phase_matching<3> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+//			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 		break;
 #endif
 	case 4: 	
 		one_phase_matching<2> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>> 
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+//		three_phase_matching<2> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+//			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
+
 		break;
 
 	case 5: 	
 		one_phase_matching<1> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>> 
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream);
+//		three_phase_matching<1> <<<gridsize, BLOCK_DIMS, 0, streams[stream] >>>
+//			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
+
 		break;
 
 	}
@@ -963,6 +1057,7 @@ void gpu::shutdown() {
 	// TODO: deallocate 
 	for(unsigned int i = 0; i < GPU_STREAMS; ++i)
 		ABORT_ON_ERROR(cudaStreamDestroy(streams[i]));
+//	cudaDeviceSynchronize();
 	cudaDeviceReset();
 }
 

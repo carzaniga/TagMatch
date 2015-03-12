@@ -157,7 +157,7 @@ atomic<batch *> batch_pool::head(nullptr);
 class partition_queue {
 	// primary information:
 	// 
-	unsigned int partition_id;
+	 unsigned int partition_id;
 	atomic<unsigned int> tail; // one-past the last element
 	batch * b;				   // packet buffer
 
@@ -199,6 +199,7 @@ public:
 		tail = 0;
 		if (!b)
 			b = batch_pool::get();
+
 #ifdef WITH_FRONTEND_STATISTICS
 		max_latency = std::chrono::milliseconds(0);
 		flush_count = 0;
@@ -338,8 +339,9 @@ void partition_queue::enqueue(packet * p) noexcept {
 #endif
 		remove_from_pending_pq_list();
 		tail.store(0, std::memory_order_release);
-		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
-		batch_pool::put(bx);
+		batch *previousBatch;
+		previousBatch = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
+		if (previousBatch != NULL) batch_pool::put(previousBatch);
 	} else  {
 		tail.store(t, std::memory_order_release);
 		if (t == 1) {
@@ -366,19 +368,28 @@ void partition_queue::flush() noexcept {
 #endif
 	remove_from_pending_pq_list();
 	tail.store(0, std::memory_order_release);
-	back_end::process_batch(partition_id, bx->packets, bx_size);
-	batch_pool::put(bx);
+	batch *previousBatch;
+	previousBatch = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
+	if (previousBatch != NULL) batch_pool::put(previousBatch);
 }
 
 template<unsigned int Size>
 class prefix_queue_pair : public partition_queue {
 public:
-	bitvector<Size> p;
 
+#if 1//NEW_PARTIIONING
+	filter_t common_bits ;     // it holds common bits of all filters in this partition
+#else
+	bitvector<Size> p;
+#endif
 public:
 	void initialize(unsigned int id, const block_t * pb) {
 		partition_queue::initialize(id);
+#if 1//NEW_PARTIIONING
+		common_bits = back_end::get_cbits(id) ;
+#else
 		p.assign(pb);
+#endif
 	}
 };
 
@@ -499,7 +510,7 @@ static tmp_prefix_pos_descr tmp_pp[192];
 // 
 void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
     const block_t * b = f.begin();
-
+#if 0
     if (*b) {
 		if (n <= 64) {
 			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
@@ -517,6 +528,25 @@ void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) 
     } else if (*(++b)) {
 		tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
     }
+#else
+    if (*b) {
+		if (n <= 64) {
+			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
+		} else if (n <= 128) {
+			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
+		} else {
+			tmp_pp[leftmost_bit(*b)].p192.emplace_back(id, f);
+		}
+    } else if (*(++b)) {
+		if (n <= 64) {
+			tmp_pp[64 + leftmost_bit(*b)].p64.emplace_back(id, f);
+		} else {
+			tmp_pp[64+ leftmost_bit(*b)].p128.emplace_back(id, f);
+		}
+    } else if (*(++b)) {
+		tmp_pp[128+leftmost_bit(*b)].p64.emplace_back(id, f);
+	}
+#endif
 }
 
 // This is how we compile the real FIB from the temporary FIB
@@ -572,10 +602,10 @@ static void compile_fib() {
 	}
 
 	for(unsigned int i = 128; i < 192; ++i) {
-		pp2[i - 128].p64_begin = p64_table + p64_i;
+		pp3[i - 128].p64_begin = p64_table + p64_i;
 		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
-		pp2[i - 128].p64_end = p64_table + p64_i;
+		pp3[i - 128].p64_end = p64_table + p64_i;
 		tmp_pp[i].clear();
 	}
 }
@@ -614,14 +644,71 @@ static void match(packet * pkt) {
 	if (!use_identity_permutation) {
 		apply_permutation(pkt->filter);
 	}
-
 	const block_t * b = pkt->filter.begin();
 
+#if 1 //NEW_PARTIIONING
+	if (*b) {
+		block_t curr_block = *b;
+//		std::cout<<"wwww " ;
+		do {
+			int m = leftmost_bit(curr_block);
+//			std::cout<<" w:" << m ;
+			p1_container & c = pp1[m];
+
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
+				if (q->common_bits.subset_of(pkt->filter)) 
+					q->enqueue(pkt);
+
+			for(queue128 * q = c.p128_begin; q != c.p128_end; ++q){
+				if (q->common_bits.subset_of(pkt->filter)){ 
+					q->enqueue(pkt);
+				}
+			}
+			for(queue192 * q = c.p192_begin; q != c.p192_end; ++q) 
+				if (q->common_bits.subset_of(pkt->filter)) 
+					q->enqueue(pkt);
+
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
+
+	} if (*(++b)) {
+		block_t curr_block = *b;
+		do {
+			int m = leftmost_bit(curr_block);
+			p2_container & c = pp2[m];
+
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){ 
+				if (q->common_bits.subset_of(pkt->filter)) 
+					q->enqueue(pkt);
+			}
+
+			for(queue128 * q = c.p128_begin; q != c.p128_end; ++q){ 
+				if (q->common_bits.subset_of(pkt->filter)) 
+					q->enqueue(pkt);
+			}
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
+
+	} if (*(++b)) {
+		block_t curr_block = *b;
+//		std::cout<<"xxxx " ;
+		do {
+			int m = leftmost_bit(curr_block);
+//			std::cout<<" x:" << m ;
+			p3_container & c = pp3[m];
+
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
+				if (q->common_bits.subset_of(pkt->filter)) 
+					q->enqueue(pkt);
+
+			curr_block ^= (BLOCK_ONE << m);
+		} while (curr_block != 0);
+	}
+#else 
     if (*b) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-
 			p1_container & c = pp1[m];
 
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
@@ -639,7 +726,8 @@ static void match(packet * pkt) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 			
-    } else if (*(++b)) {
+    } 
+	if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
@@ -656,7 +744,7 @@ static void match(packet * pkt) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 
-    } else if (*(++b)) {
+    } if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
@@ -669,8 +757,9 @@ static void match(packet * pkt) {
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
     }
+#endif
 
-    pkt->frontend_done();
+	pkt->frontend_done();
 }
 
 // FRONT-END EXECUTION THREADS
@@ -891,6 +980,8 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
+
+
 	for(thread * t : thread_pool) {
 		t->join();
 		delete(t);
@@ -898,6 +989,13 @@ void front_end::stop() {
 
 	thread_pool.clear();
 
+	//Why does s<GPU_STREAMS fail? Souldn't I have GPU_STREAMS stream handlers?
+	for (int s=0; s<GPU_STREAMS; s++){ 
+		batch * p = (batch *)back_end::flush_stream();
+		if(p==0)
+			continue;
+		batch_pool::put(p) ;
+		}
 	processing_state = FE_INITIAL;;
 }
 

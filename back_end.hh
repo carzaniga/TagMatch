@@ -18,9 +18,11 @@ public:
 						   std::vector<tree_interface_pair>::const_iterator begin,
 						   std::vector<tree_interface_pair>::const_iterator end);
 	static void start();
-	static void process_batch(unsigned int part, packet ** batch, unsigned int batch_size);
+	static void * process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr);
+	static void * flush_stream();
 	static void stop();
 	static void clear();
+	static filter_t get_cbits(unsigned int id);
 
 	static size_t bytesize();
 

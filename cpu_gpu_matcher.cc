@@ -41,9 +41,11 @@ static int read_prefixes(const char * fname, bool binary_format) {
 			front_end::add_prefix(p.partition, p.filter, p.length);
 			back_end::add_partition(p.partition, p.filter, p.length);
 			++res;
+//			cout<< (int)p.partition << " " << (int)p.length << endl;
 		}
 	} else {
 		while(p.read_ascii(is)) {
+//			std::cout<<(int) p.length << std::endl;
 			front_end::add_prefix(p.partition, p.filter, p.length);
 			back_end::add_partition(p.partition, p.filter, p.length);
 			++res;
