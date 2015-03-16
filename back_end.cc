@@ -477,7 +477,7 @@ void *res = NULL;
 //	}
 #if COMBO
 
-	if (dev_partitions[part].size <5000){
+	if (dev_partitions[part].size <1000){
 		const f_descr_vector & filters = tmp_fib[part];
 //		std::cout <<" " << filters.size() << std::endl; 
 		for(const filter_descr & fd : filters){ 
@@ -514,6 +514,17 @@ void *res = NULL;
 	uint32_t * curr_p_buf = sh->host_queries[sh->flip];
 //	std::cout << part <<" "<< (int)blocks << std::endl;
 #if 1
+#if 0
+	for(unsigned int i = 0; i < batch_size; ++i) 
+		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
+	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
+
+	for(unsigned int i = 0; i < batch_size; ++i) 
+		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
+			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
+
+	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
+#else
 	for(unsigned int i = 0; i < batch_size; ++i) {
 //		batch[i]->filter.copy_into_uint32_array(curr_p_buf);
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
@@ -521,6 +532,11 @@ void *res = NULL;
 //			*curr_p_buf++ = batch[i]->filter.unsafe_uint32_value(j);
 		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
 	}
+	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
+	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
+
+
+#endif
 #else 
 	int min = 0 ;
 	for(unsigned int i = 0; i < batch_size; ++i) {
@@ -531,9 +547,6 @@ void *res = NULL;
 		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
 	}
 #endif 
-	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
-	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
-
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
 					dev_ti_table, dev_partitions[part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 

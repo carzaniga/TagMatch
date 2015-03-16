@@ -530,6 +530,88 @@ match_all:
 				if (BV_BLOCK_NOT_SUBSET(d[i], packets[stream_id][pi*Blocks + i]))
 					goto no_match;
 #else
+#if 1
+			unsigned int prefix_end = prefix_complete_blocks;
+			if(prefix_end!=0){
+				uint32_t d1,d2,d3,d4,d5;
+				switch(prefix_end) {
+					case 1: 
+						d1 = fib[id*Blocks + 1];
+					case 2: 
+						d2 = fib[id*Blocks + 2];
+					case 3: 
+						d3 = fib[id*Blocks + 3];
+					case 4: 
+						d4 = fib[id*Blocks + 4];
+					case 5: 
+						d5 = fib[id*Blocks + 5];
+				}
+				switch(prefix_end) {
+					case 1: 
+						for(unsigned int pi = 0; pi < batch_size; ++pi) {
+							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][pi*Blocks + 1]))
+								goto candidate_no_match16A;
+							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][pi*Blocks + 2]))
+								goto candidate_no_match16A;
+							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
+								goto candidate_no_match16A;
+							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
+								goto candidate_no_match16A;
+							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
+								goto candidate_no_match16A;
+							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match16A:
+						}
+						break;
+					case 2: 
+						for(unsigned int pi = 0; pi < batch_size; ++pi) {
+							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][pi*Blocks + 2]))
+								goto candidate_no_match26A;
+							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
+								goto candidate_no_match26A;
+							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
+								goto candidate_no_match26A;
+							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
+								goto candidate_no_match26A;
+							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match26A:
+						}
+						break;
+					case 3: 
+						for(unsigned int pi = 0; pi < batch_size; ++pi) {
+							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
+								goto candidate_no_match36A;
+							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
+								goto candidate_no_match36A;
+							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
+								goto candidate_no_match36A;
+							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match36A:
+						}
+						break;
+					case 4: 
+						for(unsigned int pi = 0; pi < batch_size ; ++pi) {
+							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
+								goto candidate_no_match46A;
+							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
+								goto candidate_no_match46A;
+							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match46A:
+						}
+						break;
+					case 5: 
+						for(unsigned int pi = 0; pi < batch_size; ++pi) {
+							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
+								goto candidate_no_match56A;
+							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match56A:
+						}
+						break;
+				}
+				return ;
+			}
+
+#endif
 		uint32_t d0,d1,d2,d3,d4,d5;
 		d5 = fib[id*Blocks + 5];
 		d4 = fib[id*Blocks + 4];
