@@ -5,7 +5,7 @@ ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS = $(CFLAGS_prof) 
 AM_CXXFLAGS = -pthread -std=c++0x $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
-NVCCFLAGS = -O3 -lineinfo --ptxas-options="-v"
+NVCCFLAGS = -arch sm_50 -O3 -lineinfo --ptxas-options="-v"
 
 #
 # CUDA build variables

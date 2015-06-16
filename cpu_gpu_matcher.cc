@@ -349,7 +349,7 @@ int main(int argc, const char * argv[]) {
 				if (this_pid_printed)
 					cout << endl;
 			} else {
-				cout << "incomplete" << endl;
+				cout << "packet=" << pid << " incomplete" << endl;
             }
         }
     }

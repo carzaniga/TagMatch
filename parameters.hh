@@ -16,6 +16,8 @@
 
 #define NEW_PARTIIONING 1
 
+#define COALESCED_READS
+
 #define INTERFACES				256U
 
 #define DEFAULT_THREAD_COUNT	5U
