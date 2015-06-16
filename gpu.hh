@@ -6,7 +6,7 @@
 #include "parameters.hh"
 
 #define GPU_MSG_BLOCKS 6
-#define GPU_STREAMS  8  
+#define GPU_STREAMS 8 
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."
@@ -22,9 +22,9 @@ typedef uint16_t ifx_result_t;
 
 struct result_t {
 	uint32_t count;
+//	volatile bool done;
 	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES]; // is this enough? I guess not
 	//uint16_t pairs[PACKETS_BATCH_SIZE][INTERFACES]; // is this enough? I guess not
-	volatile bool done;
 };
 
 //struct packet_t {
@@ -67,15 +67,16 @@ public:
 	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream);
 	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
-	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int stream);
-
+	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int size, unsigned int stream);
+	static void syncOnResults(unsigned int stream);		
 	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 							unsigned int size);
 
 	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
 						   uint16_t * dev_ti_table, unsigned int * ti_table_indexes, 
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
-						   result_t * dev_results,
+						   result_t * dev_results_count,
+						   result_t * dev_results_data,
 						   unsigned int stream,
 						   unsigned char blocks,
 						   uint32_t * intersections);

@@ -5,7 +5,8 @@ ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS = $(CFLAGS_prof) 
 AM_CXXFLAGS = -pthread -std=c++0x $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
-NVCCFLAGS = -O3 -lineinfo --ptxas-options="-v"
+NVCCFLAGS = -arch sm_52 -O3 -lineinfo --ptxas-options="-v"
+NVCC = /usr/local/cuda-7.0/bin/nvcc
 
 #
 # CUDA build variables
@@ -40,7 +41,8 @@ cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh
 			front_end.cc front_end.hh back_end.cc back_end.hh \
 			gpu.cu 
 
-cpu_gpu_matcher_LDFLAGS = -lcudart
+#cpu_gpu_matcher_LDFLAGS = -lcudart
+cpu_gpu_matcher_LDFLAGS = -L/usr/local/cuda-7.0/lib64 -lcudart
 else
 ##
 ## this can only work with --disable-backend
