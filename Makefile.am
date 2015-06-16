@@ -39,7 +39,8 @@ cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh
 			front_end.cc front_end.hh back_end.cc back_end.hh \
 			gpu.cu 
 
-cpu_gpu_matcher_LDFLAGS = -lcudart
+#cpu_gpu_matcher_LDFLAGS = -lcudart
+cpu_gpu_matcher_LDFLAGS = -L/usr/local/cuda-7.0/lib64 -lcudart
 else
 ##
 ## this can only work with --disable-backend
@@ -49,7 +50,7 @@ cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh
 			front_end.cc front_end.hh back_end.cc back_end.hh
 endif
 
-test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh
+test_matcher_SOURCES = test_matcher.cc parameters.hh packet.cc fib.cc io_util.hh
 
 split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
 

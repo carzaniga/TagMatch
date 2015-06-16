@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <thread>
 #include <chrono>
+#include <climits>
 
 #include <iomanip>
 #include <iostream>
@@ -157,7 +158,7 @@ atomic<batch *> batch_pool::head(nullptr);
 class partition_queue {
 	// primary information:
 	// 
-	unsigned int partition_id;
+	 unsigned int partition_id;
 	atomic<unsigned int> tail; // one-past the last element
 	batch * b;				   // packet buffer
 
@@ -199,6 +200,7 @@ public:
 		tail = 0;
 		if (!b)
 			b = batch_pool::get();
+
 #ifdef WITH_FRONTEND_STATISTICS
 		max_latency = std::chrono::milliseconds(0);
 		flush_count = 0;
@@ -338,8 +340,8 @@ void partition_queue::enqueue(packet * p) noexcept {
 #endif
 		remove_from_pending_pq_list();
 		tail.store(0, std::memory_order_release);
-		back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE);
-		batch_pool::put(bx);
+		bx = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
+		if (bx != NULL) batch_pool::put(bx);
 	} else  {
 		tail.store(t, std::memory_order_release);
 		if (t == 1) {
@@ -366,31 +368,28 @@ void partition_queue::flush() noexcept {
 #endif
 	remove_from_pending_pq_list();
 	tail.store(0, std::memory_order_release);
-	back_end::process_batch(partition_id, bx->packets, bx_size);
-	batch_pool::put(bx);
+	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
+	if (bx != NULL) batch_pool::put(bx);
 }
 
 template<unsigned int Size>
 class prefix_queue_pair : public partition_queue {
 public:
-	bitvector<Size> p;
 
+	filter_t common_bits ;     // it holds common bits of all filters in this partition
 public:
 	void initialize(unsigned int id, const block_t * pb) {
 		partition_queue::initialize(id);
-		p.assign(pb);
+		common_bits = back_end::get_cbits(id) ;
 	}
 };
 
 typedef prefix_queue_pair<64> queue64;
-typedef prefix_queue_pair<128> queue128;
-typedef prefix_queue_pair<192> queue192;
-
 // 
 // container of prefixes whose leftmost 1-bit is in the 3rd 64-bit
 // block.
 // 
-class p3_container {
+class p1_container {
 public:
     // Since this is the third of three blocks, it may only contain
     // prefixes of up to 64 bits.  
@@ -407,64 +406,15 @@ public:
 		return os;
 	}
 };
-
-// 
-// container of prefixes whose leftmost 1-bit is in the 2nd 64-bit
-// block.
-// 
-class p2_container : public p3_container {
-public:
-    // Since this is the second of three blocks, it may contain
-    // prefixes of up to 64 bits (inherited from p3_container) and
-    // prefixes of up to 128 bits.
-    //
-	// We store the prefixes in a contiguous section of the global
-	// p128_table.
-    //
-	queue128 * p128_begin;
-	queue128 * p128_end;
-
-	ostream & print_statistics(ostream & os) {
-		for(queue128 * i = p128_begin; i != p128_end; ++i)
-			i->print_statistics(os);
-		return p3_container::print_statistics(os);
-	}
-};
-
-// 
-// container of prefixes whose leftmost 1-bit is in the 1st 64-bit
-// block.
-// 
-class p1_container : public p2_container {
-public:
-    // Since this is the second of three blocks, it may contain
-    // prefixes of up to 64 and 128 bits (inherited from p3_container
-    // and p2_container) plus prefixes of up to 192 bits.
-	// 
-	// We store the prefixes in a contiguous section of the global
-	// p192_table.
-    //
-	queue192 * p192_begin;
-	queue192 * p192_end;
-
-	ostream & print_statistics(ostream & os) {
-		for(queue192 * i = p192_begin; i != p192_end; ++i)
-			i->print_statistics(os);
-		return p2_container::print_statistics(os);
-	}
-};
-
 //
 // We store all the queue_prefix pairs in three compact tables.  This
 // should improve memory-access times.
 // 
 static queue64 * p64_table = nullptr;
-static queue128 * p128_table = nullptr;
-static queue192 * p192_table = nullptr;
 
 static p1_container pp1[64];
-static p2_container pp2[64];
-static p3_container pp3[64];
+static p1_container pp2[64];
+static p1_container pp3[64];
 
 //
 // this is the temporary front-end FIB 
@@ -481,15 +431,11 @@ public:
 class tmp_prefix_pos_descr {
 public:
 	vector<tmp_prefix_descr> p64;
-	vector<tmp_prefix_descr> p128;
-	vector<tmp_prefix_descr> p192;
 
-	tmp_prefix_pos_descr() : p64(), p128(), p192() {};
+	tmp_prefix_pos_descr() : p64() {};
 	
 	void clear() {
 		p64.clear();
-		p128.clear();
-		p192.clear();
 	}
 };
 
@@ -498,47 +444,54 @@ static tmp_prefix_pos_descr tmp_pp[192];
 // This is how we compile the temporary FIB
 // 
 void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
-    const block_t * b = f.begin();
+	int index = -1;
+#if 0
+	for (int i=0; i< 192; i++ ){
+		if( f[i]==1){
+			index = i;
+			break;
+		}
+	}
+#endif
 
-    if (*b) {
-		if (n <= 64) {
-			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
-		} else if (n <= 128) {
-			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
-		} else {
-			tmp_pp[leftmost_bit(*b)].p192.emplace_back(id, f);
+#if 1
+	unsigned int min = UINT_MAX; 
+	for (int i=0; i< 192; i++ ){
+		if( f[i]==1){
+//			Here I find the least crowded array to store the new one partition.
+			if(tmp_pp[i].p64.size() < min){
+				min = tmp_pp[i].p64.size() ;
+				index = i;
+			}
 		}
-    } else if (*(++b)) {
-		if (n <= 64) {
-			tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
-		} else {
-			tmp_pp[leftmost_bit(*b)].p128.emplace_back(id, f);
+	}
+#else
+	int max = 0; 
+	for (int i=0; i< 192; i++ ){
+		if( f[i]==1){
+//			Here I find the least crowded array to store the new one partition.
+			if(tmp_pp[i].p64.size() >= max){
+				max = tmp_pp[i].p64.size() ;
+				index = i;
+			}
 		}
-    } else if (*(++b)) {
-		tmp_pp[leftmost_bit(*b)].p64.emplace_back(id, f);
-    }
+	}
+#endif
+	tmp_pp[index].p64.emplace_back(id,f) ;
 }
 
 // This is how we compile the real FIB from the temporary FIB
 // 
 static void compile_fib() {
 	unsigned int p64_size = 0;
-	unsigned int p128_size = 0;
-	unsigned int p192_size = 0;
 
 	for(unsigned int i = 0; i < 192; ++i) {
 		p64_size += tmp_pp[i].p64.size();
-		p128_size += tmp_pp[i].p128.size();
-		p192_size += tmp_pp[i].p192.size();
 	}
 
 	p64_table = new queue64[p64_size];
-	p128_table = new queue128[p128_size];
-	p192_table = new queue192[p192_size];
 
 	unsigned int p64_i = 0;
-	unsigned int p128_i = 0;
-	unsigned int p192_i = 0;
 
 	for(unsigned int i = 0; i < 64; ++i) {
 		pp1[i].p64_begin = p64_table + p64_i;
@@ -546,15 +499,6 @@ static void compile_fib() {
 			p64_table[p64_i++].initialize(d.id, d.filter.begin());
 		pp1[i].p64_end = p64_table + p64_i;
 
-		pp1[i].p128_begin = p128_table + p128_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p128) 
-			p128_table[p128_i++].initialize(d.id, d.filter.begin());
-		pp1[i].p128_end = p128_table + p128_i;
-
-		pp1[i].p192_begin = p192_table + p192_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p192) 
-			p192_table[p192_i++].initialize(d.id, d.filter.begin());
-		pp1[i].p192_end = p192_table + p192_i;
 		tmp_pp[i].clear();
 	}
 
@@ -564,18 +508,14 @@ static void compile_fib() {
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 1);
 		pp2[i - 64].p64_end = p64_table + p64_i;
 
-		pp2[i - 64].p128_begin = p128_table + p128_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p128) 
-			p128_table[p128_i++].initialize(d.id, d.filter.begin() + 1);
-		pp2[i - 64].p128_end = p128_table + p128_i;
 		tmp_pp[i].clear();
 	}
 
 	for(unsigned int i = 128; i < 192; ++i) {
-		pp2[i - 128].p64_begin = p64_table + p64_i;
+		pp3[i - 128].p64_begin = p64_table + p64_i;
 		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
-		pp2[i - 128].p64_end = p64_table + p64_i;
+		pp3[i - 128].p64_end = p64_table + p64_i;
 		tmp_pp[i].clear();
 	}
 }
@@ -611,66 +551,53 @@ static void apply_permutation(filter_t & f) {
 // This is the main matching function
 // 
 static void match(packet * pkt) {
-	if (!use_identity_permutation) {
-		apply_permutation(pkt->filter);
-	}
-
+//	if (!use_identity_permutation) {
+//		apply_permutation(pkt->filter);
+//	}
 	const block_t * b = pkt->filter.begin();
 
-    if (*b) {
+	if (*b) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-
 			p1_container & c = pp1[m];
 
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
-				if (q->p.subset_of(b)) 
-					q->enqueue(pkt);
-
-			for(queue128 * q = c.p128_begin; q != c.p128_end; ++q) 
-				if (q->p.subset_of(b)) 
-					q->enqueue(pkt);
-
-			for(queue192 * q = c.p192_begin; q != c.p192_end; ++q) 
-				if (q->p.subset_of(b)) 
+				if (q->common_bits.subset_of(pkt->filter)) 
 					q->enqueue(pkt);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
-			
-    } else if (*(++b)) {
+
+	} if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-			p2_container & c = pp2[m];
+			p1_container & c = pp2[m];
 
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
-				if (q->p.subset_of(b)) 
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){ 
+				if (q->common_bits.subset_of(pkt->filter)) 
 					q->enqueue(pkt);
-
-			for(queue128 * q = c.p128_begin; q != c.p128_end; ++q) 
-				if (q->p.subset_of(b)) 
-					q->enqueue(pkt);
+			}
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 
-    } else if (*(++b)) {
+	} if (*(++b)) {
 		block_t curr_block = *b;
 		do {
 			int m = leftmost_bit(curr_block);
-			p3_container & c = pp3[m];
+			p1_container & c = pp3[m];
 
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
-				if (q->p.subset_of(b)) 
+				if (q->common_bits.subset_of(pkt->filter)) 
 					q->enqueue(pkt);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
-    }
+	}
 
-    pkt->frontend_done();
+	pkt->frontend_done();
 }
 
 // FRONT-END EXECUTION THREADS
@@ -711,7 +638,7 @@ union job {
 	partition_queue * q;
 };
 
-static const size_t JOB_QUEUE_SIZE = 1024; // must be a power of 2 for efficiency
+static const size_t JOB_QUEUE_SIZE = 1024*1024; // must be a power of 2 for efficiency
 static job job_queue[JOB_QUEUE_SIZE];
 
 // However, we must still maintain two separate pairs of indexes
@@ -865,20 +792,29 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
+	//Flush all streams but one, that will be used for the FE_FLUSHING stage 
+	/*
+	for (int s=0; s<GPU_STREAMS-1; s++){ 
+		batch * p = (batch *)back_end::flush_stream();
+		if(p==0)
+			continue;
+		batch_pool::put(p) ;
+	}
+	
+	back_end::release_stream_handles();	
+		
+	for (int s=0; s<GPU_STREAMS-1; s++){ 
+		batch * p = (batch *)back_end::second_flush_stream();
+		if(p==0)
+			continue;
+		batch_pool::put(p) ;
+	}
+*/
 	for(unsigned int j = 0; j < 64; ++j) {
 		for(queue64 * i = pp1[j].p64_begin; i != pp1[j].p64_end; ++i)
 			enqueue_flush_job(&(*i));
 
-		for(queue128 * i = pp1[j].p128_begin; i != pp1[j].p128_end; ++i) 
-			enqueue_flush_job(&(*i));
-
-		for(queue192 * i = pp1[j].p192_begin; i != pp1[j].p192_end; ++i) 
-			enqueue_flush_job(&(*i));
-
 		for(queue64 * i = pp2[j].p64_begin; i != pp2[j].p64_end; ++i) 
-			enqueue_flush_job(&(*i));
-
-		for(queue128 * i = pp2[j].p128_begin; i != pp2[j].p128_end; ++i) 
 			enqueue_flush_job(&(*i));
 
 		for(queue64 * i = pp3[j].p64_begin; i != pp3[j].p64_end; ++i) 
@@ -891,12 +827,37 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
+
 	for(thread * t : thread_pool) {
 		t->join();
 		delete(t);
 	}
 
 	thread_pool.clear();
+/*	
+	batch * p = (batch *)back_end::flush_stream();
+	if(p!=0)
+		batch_pool::put(p) ;
+	back_end::release_stream_handles(GPU_STREAMS-1);
+	p = (batch *)back_end::second_flush_stream();
+	if(p!=0)
+		batch_pool::put(p) ;
+		*/
+	for (int s=0; s<GPU_STREAMS; s++){ 
+		batch * p = (batch *)back_end::flush_stream();
+		if(p==0)
+			continue;
+		batch_pool::put(p) ;
+	}
+	
+	back_end::release_stream_handles();	
+		
+	for (int s=0; s<GPU_STREAMS; s++){ 
+		batch * p = (batch *)back_end::second_flush_stream();
+		if(p==0)
+			continue;
+		batch_pool::put(p) ;
+	}
 
 	processing_state = FE_INITIAL;;
 }
@@ -905,14 +866,6 @@ void front_end::clear() {
 	if (p64_table) {
 		delete[](p64_table);
 		p64_table = nullptr;
-	}
-	if (p128_table) {
-		delete[](p128_table);
-		p128_table = nullptr;
-	}
-	if (p192_table) {
-		delete[](p192_table);
-		p192_table = nullptr;
 	}
 	batch_pool::clear();
 	use_identity_permutation = true;

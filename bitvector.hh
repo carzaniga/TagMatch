@@ -137,6 +137,33 @@ public:
 			}
 		}
     }
+//    bitvector(const std::string & p, int prefix_len) {
+//		//I set to zero all the bits of the filter that are in the prefix.
+//		//I do this because later in the kernel, I can avoid checking 
+//		//a message against a common prefix that is all zeroes.
+//		for (int i = 0; i < BLOCK_COUNT; ++i)
+//			b[i] = 0;
+//
+//		assert(p.size() <= Size);
+//
+//		// see the layout specification above
+//		//
+//		block_t mask = BLOCK_ONE;
+//		int i = 0;
+//		int k = -1; 
+//		for(std::string::const_iterator c = p.begin(); c != p.end(); ++c) {
+//			k++ ;
+//			if (*c == '1' && k >= prefix_len)
+//				b[i] |= mask;
+//
+//			mask <<= 1;
+//			if (mask == 0) {
+//				mask = BLOCK_ONE;
+//				if (++i == BLOCK_COUNT)
+//					return;
+//			}
+//		}
+//    }
 
 	bitvector() {};
 
@@ -180,13 +207,18 @@ public:
 		return reinterpret_cast<const uint32_t *>(b) + (Size / 32);
 	}
 
+	uint32_t unsafe_uint32_value(unsigned int i) const {
+//		return reinterpret_cast<const uint32_t>(b + i);
+		return ((int32_t *)( b+i/2) )[i%2];
+	}
+
 	uint32_t uint32_value(unsigned int i) const {
 		return (i % 2 == 1) ? (b[i/2] >> 32) : (b[i/2] & 0xffffffffULL);
 	}
 
 	void copy_into_uint32_array(uint32_t * x) const {
-		for(int i = 0; i < BLOCK_SIZE; ++i) {
-			*x++ = b[i] & 0xffffffff;
+		for(int i = 0; i < BLOCK_COUNT; ++i) {
+			*x++ = b[i] & 0xffffffffUll;
 			*x++ = b[i] >> 32;
 		}
 	}
@@ -204,6 +236,11 @@ public:
 	void clear() {
 		for(int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = 0;
+	}
+
+	void fill() {
+		for(int i = 0; i < BLOCK_COUNT; ++i)
+			b[i] = 0xFFFFFFFFFFFFFFFF;
 	}
 
 	void set_bit(unsigned int pos) {

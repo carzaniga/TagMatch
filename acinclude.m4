@@ -406,7 +406,7 @@ __global__ void test_kernel(unsigned int * p, unsigned int size) {
     __syncthreads();    
 }
 EOF
-    if $NVCC -c conftest.cu -o conftest.o $NVCCFLAGS > /dev/null 2>&1 && test -r conftest.o; then
+    if $NVCC $NVCCFLAGS -c conftest.cu -o conftest.o > cuda_nvcc_test.out 2>&1 && test -r conftest.o; then
         working_nvcc=yes
     fi
     rm -f conftest.cu conftest.o

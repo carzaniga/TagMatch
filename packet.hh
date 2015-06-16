@@ -160,9 +160,9 @@ private:
 	// this should be faster
 	// 
 #ifdef WITH_ATOMIC_OUTPUT
-	std::atomic<unsigned char> output[INTERFACES]; 
+	std::atomic<unsigned char> output[INTERFACES] = {0}; 
 #else    
-	unsigned char output[INTERFACES];
+	unsigned char output[INTERFACES] = {0};
 #endif
 public:
 	packet(const filter_t f, uint16_t t, uint16_t i)

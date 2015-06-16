@@ -8,7 +8,7 @@
 #include <iostream>
 
 #include "packet.hh"
-
+#include "gpu.hh"
 /// add a prefix f of length n to the front end FIB
 /// 
 class front_end {
