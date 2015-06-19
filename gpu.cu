@@ -1033,16 +1033,11 @@ next_msg:
 
 void gpu::initialize() {
 	cudaDeviceReset() ; 
-<<<<<<< HEAD
 	// we use cudaDeviceSetCacheConfig(cudaFuncCachePreferL1) but
 	// another option would be to use
 	// cudaDeviceSetCacheConfig(cudaFuncCachePreferShared).
 	// cudaFuncCachePreferL1 seems to perform better.
 	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
-=======
-	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
-	//ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferShared));
->>>>>>> FETCH_HEAD
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 	ABORT_ON_ERROR(cudaThreadSynchronize());
 	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {

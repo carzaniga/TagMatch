@@ -263,9 +263,11 @@ filter_t back_end::get_cbits(unsigned int id){
 	return dev_partitions[id].common_bits;
 }
 
+#if 0
 static bool compare_filters_decreasing(const filter_descr & d1, const filter_descr & d2) {
 	return d2.filter < d1.filter;
 }
+#endif
 
 static void compile_fibs() {
 	// we first compute the total number of partitions

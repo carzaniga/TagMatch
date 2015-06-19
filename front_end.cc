@@ -532,22 +532,6 @@ void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new
 	bit_permutation[old_pos] = new_pos;
 }
 
-static void apply_permutation(filter_t & f) {
-	filter_t f_tmp;
-	f_tmp.clear();
-	unsigned int offset = 0;			
-	for(const block_t * b = f.begin(); b != f.end(); ++b) {
-		block_t curr_block = *b;
-		while (curr_block != 0) {
-			int m = leftmost_bit(curr_block);
-			f_tmp.set_bit(bit_permutation[offset + m]);
-			curr_block ^= (BLOCK_ONE << m);
-		}
-		offset += 64;
-	}
-	f.assign(f_tmp.begin());
-}
-
 // This is the main matching function
 // 
 static void match(packet * pkt) {
