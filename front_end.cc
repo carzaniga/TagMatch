@@ -535,9 +535,6 @@ void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new
 // This is the main matching function
 // 
 static void match(packet * pkt) {
-//	if (!use_identity_permutation) {
-//		apply_permutation(pkt->filter);
-//	}
 	const block_t * b = pkt->filter.begin();
 
 	if (*b) {
@@ -776,24 +773,6 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
-	//Flush all streams but one, that will be used for the FE_FLUSHING stage 
-	/*
-	for (int s=0; s<GPU_STREAMS-1; s++){ 
-		batch * p = (batch *)back_end::flush_stream();
-		if(p==0)
-			continue;
-		batch_pool::put(p) ;
-	}
-	
-	back_end::release_stream_handles();	
-		
-	for (int s=0; s<GPU_STREAMS-1; s++){ 
-		batch * p = (batch *)back_end::second_flush_stream();
-		if(p==0)
-			continue;
-		batch_pool::put(p) ;
-	}
-*/
 	for(unsigned int j = 0; j < 64; ++j) {
 		for(queue64 * i = pp1[j].p64_begin; i != pp1[j].p64_end; ++i)
 			enqueue_flush_job(&(*i));
@@ -818,15 +797,7 @@ void front_end::stop() {
 	}
 
 	thread_pool.clear();
-/*	
-	batch * p = (batch *)back_end::flush_stream();
-	if(p!=0)
-		batch_pool::put(p) ;
-	back_end::release_stream_handles(GPU_STREAMS-1);
-	p = (batch *)back_end::second_flush_stream();
-	if(p!=0)
-		batch_pool::put(p) ;
-		*/
+
 	for (int s=0; s<GPU_STREAMS; s++){ 
 		batch * p = (batch *)back_end::flush_stream();
 		if(p==0)
