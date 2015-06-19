@@ -190,8 +190,6 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 				}
 			}
 		}
-//		for(int i = prefix_first_non_zero; i < Blocks; i++)
-//			shm_intersections[i] = intersections[blockIdx.x * Blocks + i ] ;
 	} 
 	
 	// end for phase 1: computation of the common prefix by tid==0
@@ -201,8 +199,8 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 	// Normally the batch_size is equal to PACKETS_BATCH_SIZE, but when
 	// are in the flushing mode and we flush half-full queues, then
 	
-	if (prefix_first_non_zero==Blocks)
-		goto match_all; // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< FROM HERE
+	if (prefix_first_non_zero==Blocks && batch_size % 2 == 0)
+		goto match_all; 
 #else
 	if (prefix_first_non_zero==Blocks){
 		if(tid==0 && batch_size% 2 != 0)
@@ -1035,11 +1033,16 @@ next_msg:
 
 void gpu::initialize() {
 	cudaDeviceReset() ; 
+<<<<<<< HEAD
 	// we use cudaDeviceSetCacheConfig(cudaFuncCachePreferL1) but
 	// another option would be to use
 	// cudaDeviceSetCacheConfig(cudaFuncCachePreferShared).
 	// cudaFuncCachePreferL1 seems to perform better.
 	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
+=======
+	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
+	//ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferShared));
+>>>>>>> FETCH_HEAD
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 	ABORT_ON_ERROR(cudaThreadSynchronize());
 	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
@@ -1089,7 +1092,7 @@ void gpu::async_set_zero(void * dev_array, unsigned int size, unsigned int strea
 
 void gpu::async_get_results(result_t * host_results, result_t * dev_results, 
 							unsigned int size, unsigned int stream) {
-	ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, /*sizeof(bool) + sizeof(uint32_t) + size*sizeof(uint16_t)*/sizeof(result_t)-(sizeof(uint16_t)*(PACKETS_BATCH_SIZE*INTERFACES-size)), cudaMemcpyDeviceToHost, streams[stream]));
+	ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, sizeof(result_t)-(sizeof(uint16_t)*(PACKETS_BATCH_SIZE*INTERFACES-size)), cudaMemcpyDeviceToHost, streams[stream]));
 	ABORT_ON_ERROR(cudaEventRecord(copiedBack[stream], streams[stream]));
 }
 
@@ -1103,7 +1106,6 @@ void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, u
 
 void gpu::synchronize_device() {
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
-//	ABORT_ON_ERROR(cudaThreadSynchronize());
 }
 
 void gpu::synchronize_stream(unsigned int stream) {
@@ -1115,8 +1117,6 @@ void * gpu::allocate_host_pinned_generic(unsigned int size) {
 	ABORT_ON_ERROR(cudaMallocHost(&host_array_pinned, size));
 	return host_array_pinned;
 }
-
-//static const dim3 GPU_BLOCK_SIZE(GPU_BLOCK_DIM_X, GPU_BLOCK_DIM_Y);
 
 #if PROFILE
 static const int stopCounter=55 ; 
@@ -1136,7 +1136,6 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 	if ((fib_size % GPU_BLOCK_SIZE) != 0)
 		++gridsize;
 	
-	//std::cout << std::endl;
 #if PROFILE
 	kernelCounter++;
 	if(kernelCounter==1)
@@ -1171,6 +1170,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 	case 0:
 		three_phase_matching <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //		three_phase_matching <<<1, 1, 0, streams[stream] >>>
+
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream, intersections);
 		break;
 
@@ -1224,7 +1224,7 @@ void gpu::shutdown() {
 	// TODO: deallocate 
 	for(unsigned int i = 0; i < GPU_STREAMS; ++i)
 		ABORT_ON_ERROR(cudaStreamDestroy(streams[i]));
-//	cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
 	cudaDeviceReset();
 }
 

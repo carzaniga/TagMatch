@@ -194,8 +194,8 @@
 		dev_results[1] = gpu::allocate<result_t>(1);
 		gpu::async_set_zero(dev_results[0], sizeof(result_t),0);
 		gpu::async_set_zero(dev_results[1], sizeof(result_t),0);
-		last_batch = second_last_batch = NULL;
-		last_batch_ptr = second_last_batch_ptr = NULL;
+		last_batch = second_last_batch = nullptr;
+		last_batch_ptr = second_last_batch_ptr = nullptr;
 		last_batch_size = second_last_batch_size = 0;
 	}
 
@@ -227,16 +227,6 @@ static atomic<unsigned char> free_stream_handles;
 
 static stream_handle * allocate_stream_handle() {
 	unsigned char sp = free_stream_handles;
-	do {
-		while (sp == STREAM_HANDLES_NULL) 
-			sp = free_stream_handles.load(std::memory_order_acquire);
-	} while (!free_stream_handles.compare_exchange_weak(sp, stream_handles[sp].next));
-
-	return stream_handles + sp;
-}
-
-static stream_handle * allocate_stream_handle(unsigned char s) {
-	unsigned char sp = s;
 	do {
 		while (sp == STREAM_HANDLES_NULL) 
 			sp = free_stream_handles.load(std::memory_order_acquire);
@@ -415,15 +405,6 @@ static void compile_fibs() {
 					intersections[j]= 0xFFFFFFFF ;
 			}
 		}
-#if 0
-		std::cout << part << " " ; 
-		for(unsigned int i = 0 ; i < GPU_FILTER_WORDS; ++i)
-			std::cout << partition_common_bits[i] << " " ; 
-		std::cout << std::endl;
-		for(const uint64_t * i = cbits.begin64(); i< cbits.end64(); i++) 
-			std::cout << *i << " " ; 
-		std::cout << std::endl;
-#endif
 		if(counter % GPU_BLOCK_SIZE != 0)
 			for(unsigned int i = full_blocks ; i < GPU_FILTER_WORDS; ++i)
 				*block_intersections_f++ = intersections[i- full_blocks]; 		
@@ -436,21 +417,9 @@ static void compile_fibs() {
 
 		dev_partitions[part].common_bits = cbits; 
 
-#if 0
-		if(part == 854 ){
-			std::cout<<endl;
-			cbits.write_ascii(std::cout);
-			std::cout<<endl;
-		}
-//		std::cout<< " " <<dev_partitions[part].size << std::endl ;
-#endif 
-//		std::cout<<"p "<<(int) part << " " ;
-//		cbits.write_ascii(std::cout);
-//		std::cout<< " " <<dev_partitions[part].size << std::endl ;
 	}
 
 	dev_ti_table = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
-//	std::cout<<std::endl<<  "host_ti_table_size " << host_ti_table_size << std::endl;
 
 	delete[](host_rep);
 	delete[](host_ti_table_indexes);
@@ -463,42 +432,35 @@ static void compile_fibs() {
 }
 #endif
 
+
+// This is called at the end of the computation, to extract results
+// from the second last iterations of the process_batch loop It does
+// NOT release the stream handler, because it forces the front_end to
+// loop on all the streams available
+// 
 void* back_end::flush_stream()
 {
-	void *res = NULL;
-    //Wrong, but may approximate the real time needed
-    //stream_handle * sh = allocate_stream_handle(streamId);//This now fails! stream_handles + streamId;
-    stream_handle * sh = allocate_stream_handle();//This now fails! stream_handles + streamId;
-//	  gpu::synchronize_device();
-	  //gpu::synchronize_stream(sh->stream);
-		gpu::syncOnResults(sh->stream);
-if (sh->second_last_batch != NULL) {
+	void *res = nullptr;
+    stream_handle * sh = allocate_stream_handle();
+	// Wait for the data to be copied
+	gpu::syncOnResults(sh->stream);
+	if (sh->second_last_batch != nullptr) {
 	  res = sh->second_last_batch_ptr;
-	  //gpu::synchronize_device();
-	/*while(!sh->host_results[sh->flip]->done){
-	}
-	sh->host_results[sh->flip]->done = false;
-	sh->host_results[!sh->flip]->done = false;
-	*///std::cout << "Flushing " << sh->host_results[!sh->flip]->count << std::endl;
+	  
 	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
 		sh->second_last_batch[sh->host_results[sh->flip]->pairs[i]>>8]->set_output(sh->host_results[sh->flip]->pairs[i] & 0xff);
 	  }
 	  for(unsigned int i=0; i< sh->second_last_batch_size; i++)
 		sh->second_last_batch[i]->partition_done();
-  }
-	  gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream);
-	  //gpu::async_set_zero(sh->dev_results[!sh->flip], sizeof(uint32_t), sh->stream);
-	//release_stream_handle(sh);
-	//std::cout << "Copying " << sh->host_results[sh->flip]->count << std::endl;
-  	  return res;
+  	}
+	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream);
+	return res;
 }
 
-void back_end::release_stream_handles(unsigned char handle)
-{
-		stream_handle * sh = stream_handles + handle;
-		release_stream_handle(sh);
-}
 
+// This is used by the front_end to release stream handlers when
+// moving from the first stage of the final flushing to the second
+//
 void back_end::release_stream_handles()
 {
 	for (unsigned char i=0; i<GPU_STREAMS; i++) {
@@ -507,49 +469,38 @@ void back_end::release_stream_handles()
 	}
 }
 
+// This is called at the end of the computation, to extract results
+// from the last iterations of the process_batch loop.  It does NOT
+// release the stream handler, because it forces the front_end to loop
+// on all the streams available
+// 
 void* back_end::second_flush_stream()
 {
-	void *res = NULL;
-    //stream_handle * sh = allocate_stream_handle(streamId);//This now fails! stream_handles + streamId;
-    stream_handle * sh = allocate_stream_handle();//This now fails! stream_handles + streamId;
-if (sh->last_batch != NULL) {
-	  //gpu::synchronize_device();
-	  res = sh->last_batch_ptr;
-	  //gpu::synchronize_stream(sh->stream);
-	/*while(!sh->host_results[!sh->flip]->done){
-	}
-	sh->host_results[!sh->flip]->done = false;
-	*///std::cout << "Flushing " << sh->host_results[sh->flip]->count << std::endl;
-
+	void *res = nullptr;
+    stream_handle * sh = allocate_stream_handle();
+	if (sh->last_batch != nullptr) {
+		res = sh->last_batch_ptr;
 		gpu::syncOnResults(sh->stream);
-	  for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
-		sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
-	  }
-	  for(unsigned int i=0; i< sh->last_batch_size; i++)
-		sh->last_batch[i]->partition_done();
-  }
-	//release_stream_handle(sh);
-  	  return res;
+	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
+			sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
+	  	}
+	  	for(unsigned int i=0; i< sh->last_batch_size; i++)
+			sh->last_batch[i]->partition_done();
+  	}
+	return res;
 }
 
 void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr) {
-void *res = NULL;
+	void *res = nullptr;
 
-//	std::cout<< std::endl << "part = " << part << std::endl;
-//		return batch_ptr; 
 #ifndef BACK_END_IS_VOID
-//	if(dev_partitions[part].size>=20000){
-//		for(unsigned int i=0; i< batch_size; i++)
-//			batch[i]->partition_done();
-//		return;
-//	}
-#if COMBO
 
-	if (dev_partitions[part].size < COMBO_SIZE){
+// If the partition is small, compute it entirely on the CPU
+// 
+#if COMBO
+	if (dev_partitions[part].size < COMBO_SIZE) {
 		const f_descr_vector & filters = tmp_fib[part];
-//		std::cout <<" " << filters.size() << std::endl; 
 		for(const filter_descr & fd : filters){ 
-		//	fd.filter.write_ascii(std::cout);
 			for(unsigned int i = 0; i < batch_size; ++i) 
 				if (fd.filter.subset_of(batch[i]->filter)){
 					for(const tree_interface_pair & tip : fd.ti_pairs)
@@ -563,61 +514,30 @@ void *res = NULL;
 		return batch_ptr; 
 	}
 #endif
-//	filter_t cbits = get_cbits(part);
-//	cbits.write_ascii(std::cout);
-	
-//std::cout<< part << " " << batch_size <<  std::endl;
 
 	stream_handle * sh = allocate_stream_handle();
 	uint8_t blocks = prefix_block_lengths[part];
 
+	/*
+	 * Flip the buffers for the staged computation to avoid overwriting
+	 */
+	sh->flip = !sh->flip;
+	uint32_t * curr_p_buf = sh->host_queries[sh->flip];
+	
 	// We first copy every packet (filter plus tree-interface pair)
 	// over to the device.  To do that we first assemble the whole
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
-	// 
-//	sh->mutex->lock();
 
-	sh->flip = !sh->flip;
-	//if (sh->last_batch != NULL)
-	  //gpu::synchronize_stream(sh->stream);
-	uint32_t * curr_p_buf = sh->host_queries[sh->flip];
-//	std::cout << part <<" "<< (int)blocks << std::endl;
-#if 1
-#if 0
-	for(unsigned int i = 0; i < batch_size; ++i) 
-		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
-	gpu::async_copy(sh->host_query_ti_table, sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
-
-	for(unsigned int i = 0; i < batch_size; ++i) 
-		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
-			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-
-	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
-#else
 	for(unsigned int i = 0; i < batch_size; ++i) {
-//		batch[i]->filter.copy_into_uint32_array(curr_p_buf);
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-//			*curr_p_buf++ = batch[i]->filter.unsafe_uint32_value(j);
 		sh->host_query_ti_table[sh->flip][i] = batch[i]->ti_pair.get_uint16_value();
 	}
 	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
 	gpu::async_copy(sh->host_query_ti_table[sh->flip], sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
 
 
-#endif
-#else 
-	int min = 0 ;
-	for(unsigned int i = 0; i < batch_size; ++i) {
-		if (batch[i]->filter > batch[min]->filter)
-			min=i ;
-		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
-			*curr_p_buf++ = batch[min]->filter.uint32_value(j);
-		sh->host_query_ti_table[sh->flip][i] = batch[i]->ti_pair.get_uint16_value();
-	}
-#endif 
-	//gpu::synchronize_stream(sh->stream);
 	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
 					dev_ti_table, dev_partitions[part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
@@ -625,60 +545,42 @@ void *res = NULL;
 					sh->dev_results[!sh->flip],
 					sh->stream, blocks,
 					dev_partitions[part].intersections);
-	//gpu::synchronize_stream(sh->stream);
-//	sh->mutex->unlock();
-#if 0
-	gpu::synchronize_stream(sh->stream);
-#else
-//	while(!sh->host_results->done){
-//	}
-//	sh->host_results->done = false;
-	// this is to get an ack from kernel when transfer of the results to cpu is done.
-	// The code is not finalized yet.
-#endif
-//	std::cout << "batch_size= "<< batch_size << " pid= " << part << " ,result count is: " << sh->host_results->count << std::endl ;
-	//std::cout << "Round " << sh->flip << std::endl;
-	if (sh->second_last_batch != NULL) {
+	
+	// If the second last batch is set, then we have some results to
+	// check from that computation
+	//
+	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
-	  	//gpu::synchronize_stream(sh->stream);
-
-		/*
-		while(!sh->host_results[!sh->flip]->done){
-		}
-		sh->host_results[!sh->flip]->done = false;
-*/	  //gpu::synchronize_device();
 		gpu::syncOnResults(sh->stream);
-		//std::cout<<(int)  sh->host_results[sh->flip]->count << std::endl;
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
-
-
-//			std::cout << "mid= "<<(int)(sh->host_results->pairs[i]>>8) << " tid= " << (int)(sh->host_results->pairs[i] & 0xff) << std::endl ;
-	//		std::cout << "mid= "<<(int)(sh->host_results->pairs[i]>>8) << " tid= " << (int)(sh->host_results->pairs[i] & 0xff) << std::endl ;
 			sh->second_last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
-	#if 0
+#if 0
 			// this is where we could check whether the processing of
 			// message batch[i] is complete, in which case we could
 			// release whatever resources are associated with the packet
 			//
 			if (batch[i]->is_matching_complete())
 				deallocate_packet(batch[i]);
-	#endif
+#endif
 		}
 		for(unsigned int i=0; i< sh->second_last_batch_size; i++)
 			sh->second_last_batch[i]->partition_done();
 	}
-	//std::cout << "Copying back " << sh->host_results[!sh->flip]->count << std::endl;
-	else if (sh->second_last_batch == NULL && sh->last_batch!=NULL) {
-	  	//gpu::synchronize_stream(sh->stream);
-//	  gpu::synchronize_device();
+	// If we are at the 2nd cycle, synchronize on the results from the
+	// previous iteration, so that the counter for the results to be
+	// copied hereafter is correct
+	//
+	else if (sh->second_last_batch == nullptr && sh->last_batch != nullptr) {
 		gpu::syncOnResults(sh->stream);
-		/*while(!sh->host_results[!sh->flip]->done){
-		}
-		sh->host_results[!sh->flip]->done = false;
-*/	}
+	}
 	gpu::async_get_results(sh->host_results[sh->flip], sh->dev_results[sh->flip],sh->host_results[!sh->flip]->count, sh->stream);
 	gpu::async_set_zero(sh->dev_results[sh->flip], sizeof(uint32_t), sh->stream);
 
+
+    // Update the info about the staged computation; drop the second
+    // last iteration and store the info about the current iteration
+    // for the next cycles
+	// 
 	sh->second_last_batch = sh->last_batch;
 	sh->second_last_batch_size = sh->last_batch_size;
 	sh->second_last_batch_ptr = sh->last_batch_ptr;
@@ -689,6 +591,7 @@ void *res = NULL;
 
 	release_stream_handle(sh);
 #else //back_end_is_void 
+
 #ifndef NO_FRONTEND_OUTPUT_LOOP
     // if the backend is disabled we still loop through the output
 	// array.  We do that to get a more accurate performance
@@ -700,6 +603,10 @@ void *res = NULL;
 			batch[i]->set_output(j);
 		batch[i]->partition_done();
 #if 0
+		// this is where we could check whether the processing of
+		// message batch[i] is complete, in which case we could
+		// release whatever resources are associated with the packet
+		//
 		if (batch[i]->is_matching_complete())
 			deallocate_packet(batch[i]);
 #endif
@@ -707,8 +614,7 @@ void *res = NULL;
 	}
 #endif
 #endif
-//std::cout<< "." << std::endl ;
-return res;
+	return res;
 }
 
 static size_t back_end_memory = 0;

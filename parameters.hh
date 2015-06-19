@@ -16,7 +16,14 @@
 
 #define NEW_PARTIIONING 1
 
-//#define COALESCED_READS
+// COALESCED_READS lays out the data so that each thread reads from a
+// consecutive address so as to obtain higher memory throughput.  In
+// practice this does not seem to be that effective.  So, we exclude
+// it by default.
+// 
+#if 0
+#define COALESCED_READS
+#endif
 
 #define INTERFACES				256U
 

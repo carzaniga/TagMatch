@@ -22,7 +22,6 @@ public:
 	static void * second_flush_stream();
 	static void * flush_stream();
 	static void release_stream_handles();
-	static void release_stream_handles(unsigned char handle);
 	static void stop();
 	static void clear();
 	static filter_t get_cbits(unsigned int id);

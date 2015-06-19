@@ -6,7 +6,7 @@
 #include "parameters.hh"
 
 #define GPU_MSG_BLOCKS 6
-#define GPU_STREAMS 8 
+#define GPU_STREAMS 8
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."
