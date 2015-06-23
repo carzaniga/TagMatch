@@ -160,6 +160,7 @@ class partition_queue {
 	// 
 	 unsigned int partition_id;
 	atomic<unsigned int> tail; // one-past the last element
+	atomic<unsigned int> written; // number of elements actually written in the queue
 	batch * b;				   // packet buffer
 
 	// statistics and timing information
@@ -187,7 +188,7 @@ class partition_queue {
 
 public:
 	partition_queue() noexcept
-		: partition_id(0), tail(0), b(nullptr),
+		: partition_id(0), tail(0), written(0), b(nullptr),
 #ifdef WITH_FRONTEND_STATISTICS
 		  max_latency(std::chrono::milliseconds(0)),
 		  flush_count(0), enqueue_count(0),
@@ -198,6 +199,7 @@ public:
     void initialize(unsigned int id) noexcept {
 		partition_id = id;
 		tail = 0;
+		written = 0;
 		if (!b)
 			b = batch_pool::get();
 
@@ -325,26 +327,31 @@ void partition_queue::enqueue(packet * p) noexcept {
 	do {
 		while (t == PACKETS_BATCH_SIZE)
 			t = tail.load(std::memory_order_acquire);
-	} while(!tail.compare_exchange_weak(t, PACKETS_BATCH_SIZE));
+	} while(!tail.compare_exchange_weak(t, t + 1));
 
 #ifdef WITH_FRONTEND_STATISTICS
 	enqueue_count += 1;
 #endif
 	b->packets[t] = p;
-	++t;
-	if (t == PACKETS_BATCH_SIZE) {
+	++written;
+	if (t + 1 == PACKETS_BATCH_SIZE) {
 		batch * bx = b;
+		while(written.load(std::memory_order_acquire) < PACKETS_BATCH_SIZE)
+			; // we loop waiting until every thread that acquired some
+			  // (good) position in the queue, even earlier position
+			  // than this one, actually completes the writing in the
+			  // queue
 		b = batch_pool::get();
 #ifdef WITH_FRONTEND_STATISTICS
 		update_flush_statistics();
 #endif
 		remove_from_pending_pq_list();
+		written.store(0, std::memory_order_release);
 		tail.store(0, std::memory_order_release);
 		bx = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
 		if (bx != NULL) batch_pool::put(bx);
 	} else  {
-		tail.store(t, std::memory_order_release);
-		if (t == 1) {
+		if (t == 0) {
 			first_enqueue_time = high_resolution_clock::now();
 			add_to_pending_pq_list();
 		}
@@ -362,11 +369,16 @@ void partition_queue::flush() noexcept {
 	} while(!tail.compare_exchange_weak(bx_size, PACKETS_BATCH_SIZE));
 
 	batch * bx = b;
+	while(written.load(std::memory_order_acquire) < bx_size)
+		; // we loop waiting until every thread that acquired some
+	      // (good) position in the queue, even earlier position than
+	      // this one, actually completes the writing in the queue
 	b = batch_pool::get();
 #ifdef WITH_FRONTEND_STATISTICS
 	update_flush_statistics();
 #endif
 	remove_from_pending_pq_list();
+	written.store(0, std::memory_order_release);
 	tail.store(0, std::memory_order_release);
 	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
 	if (bx != NULL) batch_pool::put(bx);
