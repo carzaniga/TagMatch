@@ -33,8 +33,8 @@
 		}																\
 	} while (0)
 
-cudaStream_t streams[GPU_STREAMS];
-cudaEvent_t copiedBack[GPU_STREAMS];
+cudaStream_t streams[GPU_NUM][GPU_STREAMS];
+cudaEvent_t copiedBack[GPU_NUM][GPU_STREAMS];
 
 __align__(128) __constant__ __device__
 uint32_t packets[GPU_STREAMS][PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
@@ -100,12 +100,15 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 	uint32_t tid = threadIdx.x;
 	// thread and filter id within the whole partition 
 	uint32_t id  = (blockDim.x * blockIdx.x) + tid; 
+//	if(id>0)
+//		return;
 #else
 	uint32_t tid = threadIdx.x;
+
 	uint32_t id  = (GPU_BLOCK_SIZE * blockIdx.x) + tid; 
 #endif
 	// local register image of prefix_block_count
-	// unsigned int prefix_first_n on_zero;
+	// unsigned int prefix_first_non_zero;
 
 	// it is faster to check if current block is the last block only
 	// in tid==0 rather than check it at the begining of every
@@ -190,26 +193,26 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 				}
 			}
 		}
+//		for(int i = prefix_first_non_zero; i < Blocks; i++)
+//			shm_intersections[i] = intersections[blockIdx.x * Blocks + i ] ;
 	} 
 	
 	// end for phase 1: computation of the common prefix by tid==0
 	__syncthreads();
 #if 1	
-	// If we can not filter anything, we have to match everything.
-	// Normally the batch_size is equal to PACKETS_BATCH_SIZE, but when
-	// are in the flushing mode and we flush half-full queues, then
-	
-	if (prefix_first_non_zero==Blocks && batch_size % 2 == 0)
-		goto match_all; 
+	if (prefix_first_non_zero==Blocks && batch_size % 2 ==0)// ==PACKETS_BATCH_SIZE)
+		goto match_all ;
 #else
-	if (prefix_first_non_zero==Blocks){
+	if (prefix_first_non_zero==Blocks){// ==PACKETS_BATCH_SIZE)
 		if(tid==0 && batch_size% 2 != 0)
 			printf("%d\n",batch_size);
+//			batch_size--;
+//		goto match_all ;
 	}
 #endif
 #if TIME
-	if (id==0)
-		t2=clock();
+	if(id==0)
+		t2=clock() ;
 #endif
 
 	// start of phase 2: candidate selection, performed by all threads
@@ -223,7 +226,6 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 
 	// candidate selection: we consider the prefix blocks starting
 	// from the first non-zero block
-	{
 #ifdef WITH_INTERSECTIONS
 	unsigned int prefix_end = prefix_complete_blocks;
 	if (prefix_blocks[prefix_end] != 0)
@@ -265,11 +267,9 @@ skip_message: ;
 skip_message: ;
 	}
 #endif 
-	}
 	// end of phase 2 (candidate selection)
 	//
-
-    // phase_three:
+phase_three:
 	__syncthreads();
 #if TIME
 	if(id==0)
@@ -342,11 +342,10 @@ candidate_no_match:
 		uint32_t p6,p7,p8,p9,p10,p11;
 
 		uint32_t * p ;
-		uint8_t c_count;
 		switch(prefix_end) {
 			case 0: 
 #if 1
-				c_count = candidate_count; 
+				uint8_t c_count = candidate_count; 
 				if (candidate_count % 2 == 1){
 						c_count = candidate_count - 1;
 						message = candidate_messages[c_count];
@@ -372,7 +371,7 @@ candidate_no_match:
 
 						RECORD_MATCHING_FILTER(id,message);
 candidate_no_match063:
-						;
+
 				}
 
 				for(unsigned int pi = 0; pi < c_count; pi+=2) {
@@ -554,7 +553,6 @@ match_all:
 		return ;
 	else {
 #if 0
-		// this is a simple and navie implementation for match_all section.
 		uint32_t d[Blocks];
 		for(int i = prefix_end; i < Blocks; ++i)
 #ifdef COALESCED_READS
@@ -596,61 +594,65 @@ match_all:
 						d5 = fib[id*Blocks + 5];
 #endif
 				}
-
 				switch(prefix_end) {
 					case 1: 
 						for(unsigned int pi = 0; pi < batch_size; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][pi*Blocks + 1]))
-								continue;
+								goto candidate_no_match16A;
 							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][pi*Blocks + 2]))
-								continue;
+								goto candidate_no_match16A;
 							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
-								continue;
+								goto candidate_no_match16A;
 							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
-								continue;
+								goto candidate_no_match16A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-								continue;
+								goto candidate_no_match16A;
 							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match16A:
 						}
 						break;
 					case 2: 
 						for(unsigned int pi = 0; pi < batch_size; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][pi*Blocks + 2]))
-								continue;
+								goto candidate_no_match26A;
 							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
-								continue;
+								goto candidate_no_match26A;
 							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
-								continue;
+								goto candidate_no_match26A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-								continue;
+								goto candidate_no_match26A;
 							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match26A:
 						}
 						break;
 					case 3: 
 						for(unsigned int pi = 0; pi < batch_size; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
-								continue;
+								goto candidate_no_match36A;
 							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
-								continue;
+								goto candidate_no_match36A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-								continue;
+								goto candidate_no_match36A;
 							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match36A:
 						}
 						break;
 					case 4: 
 						for(unsigned int pi = 0; pi < batch_size ; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
-								continue;
+								goto candidate_no_match46A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-								continue;
+								goto candidate_no_match46A;
 							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match46A:
 						}
 						break;
 					case 5: 
 						for(unsigned int pi = 0; pi < batch_size; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-								continue;
+								goto candidate_no_match56A;
 							RECORD_MATCHING_FILTER(id,pi);
+candidate_no_match56A:
 						}
 						break;
 				}
@@ -658,9 +660,6 @@ match_all:
 			}
 
 #endif
-// important: if the previous #if is true, we never reach this section of the code:
-// Therefore I should modify the line 203 of the code accordingly.
-
 		uint32_t d0,d1,d2,d3,d4,d5;
 #ifdef COALESCED_READS
 		d5 = fib[id+fib_size * 5];
@@ -1032,27 +1031,39 @@ next_msg:
 }
 
 void gpu::initialize() {
-	cudaDeviceReset() ; 
-	// we use cudaDeviceSetCacheConfig(cudaFuncCachePreferL1) but
-	// another option would be to use
-	// cudaDeviceSetCacheConfig(cudaFuncCachePreferShared).
-	// cudaFuncCachePreferL1 seems to perform better.
-	ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
-	ABORT_ON_ERROR(cudaDeviceSynchronize());
-	ABORT_ON_ERROR(cudaThreadSynchronize());
-	for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
-		ABORT_ON_ERROR(cudaStreamCreate(streams + i));
-		ABORT_ON_ERROR(cudaEventCreateWithFlags(&copiedBack[i], cudaEventDisableTiming));
+	for (int g = 0; g < GPU_NUM; g++) {
+		cudaSetDevice(g);
+		cudaDeviceReset() ; 
+		ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
+		//ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferShared));
+		ABORT_ON_ERROR(cudaDeviceSynchronize());
+		ABORT_ON_ERROR(cudaThreadSynchronize());
+		for(unsigned int i = 0; i < GPU_STREAMS; ++i) {
+			ABORT_ON_ERROR(cudaStreamCreate(streams[g] + i));
+			ABORT_ON_ERROR(cudaEventCreateWithFlags(&copiedBack[g][i], cudaEventDisableTiming));
+		}
 	}
 }
 
-void gpu::mem_info(gpu_mem_info * mi) {
-	ABORT_ON_ERROR(cudaDeviceSynchronize());
-	ABORT_ON_ERROR(cudaMemGetInfo(&(mi->free), &(mi->total)));
+void gpu::set_device(unsigned int dev) {
+	ABORT_ON_ERROR(cudaSetDevice(dev));
 }
 
-void gpu::async_copy_packets(unsigned int * host_packets, unsigned int size , unsigned int stream) {
-	ABORT_ON_ERROR(cudaMemcpyToSymbolAsync(packets, host_packets, size*sizeof(unsigned int), stream*PACKETS_BATCH_SIZE*GPU_FILTER_WORDS*sizeof(unsigned int), cudaMemcpyHostToDevice, streams[stream]));
+void gpu::mem_info(gpu_mem_info * mi) {
+	gpu_mem_info temp;
+	mi->free = 0;
+	mi->total = 0;
+	for (int i = 0; i < GPU_NUM; i++) {
+		ABORT_ON_ERROR(cudaSetDevice(i));
+		ABORT_ON_ERROR(cudaDeviceSynchronize());
+		ABORT_ON_ERROR(cudaMemGetInfo(&(temp.free), &(temp.total)));
+		mi->free += temp.free;
+		mi->total += temp.total;
+	}
+}
+
+void gpu::async_copy_packets(unsigned int * host_packets, unsigned int size , unsigned int stream, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaMemcpyToSymbolAsync(packets, host_packets, size*sizeof(unsigned int), stream*PACKETS_BATCH_SIZE*GPU_FILTER_WORDS*sizeof(unsigned int), cudaMemcpyHostToDevice, streams[gpu][stream]));
 }
 
 // allocates memory for a table on the device of the given byte size
@@ -1074,25 +1085,25 @@ void * gpu::allocate_and_copy_generic(void * host_table, unsigned int size) {
 	return dev_table; 
 }
 
-void gpu::async_copy(void * host_src, void * dev_dst, unsigned int size, unsigned int stream_id) {
-	ABORT_ON_ERROR(cudaMemcpyAsync(dev_dst, host_src, size, cudaMemcpyHostToDevice, streams[stream_id]));
+void gpu::async_copy(void * host_src, void * dev_dst, unsigned int size, unsigned int stream_id, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaMemcpyAsync(dev_dst, host_src, size, cudaMemcpyHostToDevice, streams[gpu][stream_id]));
 }
 
  // this is useful for clearing the dev_res (interfaces) to 0 before
  // calling the kernel
-void gpu::async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id) {
-	ABORT_ON_ERROR(cudaMemsetAsync(dev_array, 0, size, streams[stream_id]));
+void gpu::async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaMemsetAsync(dev_array, 0, size, streams[gpu][stream_id]));
 }
 
 
 void gpu::async_get_results(result_t * host_results, result_t * dev_results, 
-							unsigned int size, unsigned int stream) {
-	ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, sizeof(result_t)-(sizeof(uint16_t)*(PACKETS_BATCH_SIZE*INTERFACES-size)), cudaMemcpyDeviceToHost, streams[stream]));
-	ABORT_ON_ERROR(cudaEventRecord(copiedBack[stream], streams[stream]));
+							unsigned int size, unsigned int stream, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, sizeof(result_t)-(sizeof(uint16_t)*(PACKETS_BATCH_SIZE*INTERFACES-size)), cudaMemcpyDeviceToHost, streams[gpu][stream]));
+	ABORT_ON_ERROR(cudaEventRecord(copiedBack[gpu][stream], streams[gpu][stream]));
 }
 
-void gpu::syncOnResults(unsigned int stream) {
-	ABORT_ON_ERROR(cudaEventSynchronize(copiedBack[stream]));
+void gpu::syncOnResults(unsigned int stream, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaEventSynchronize(copiedBack[gpu][stream]));
 }
 
 void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, unsigned int size) {
@@ -1103,8 +1114,8 @@ void gpu::synchronize_device() {
 	ABORT_ON_ERROR(cudaDeviceSynchronize());
 }
 
-void gpu::synchronize_stream(unsigned int stream) {
-	ABORT_ON_ERROR(cudaStreamSynchronize(streams[stream]));
+void gpu::synchronize_stream(unsigned int stream, unsigned int gpu) {
+	ABORT_ON_ERROR(cudaStreamSynchronize(streams[gpu][stream]));
 }
 
 void * gpu::allocate_host_pinned_generic(unsigned int size) {
@@ -1112,6 +1123,7 @@ void * gpu::allocate_host_pinned_generic(unsigned int size) {
 	ABORT_ON_ERROR(cudaMallocHost(&host_array_pinned, size));
 	return host_array_pinned;
 }
+
 
 #if PROFILE
 static const int stopCounter=55 ; 
@@ -1123,7 +1135,8 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 					 uint16_t * query_ti_table, unsigned int batch_size, 
 					 result_t * results_count, 
 					 result_t * results_data,
-					 unsigned int stream,
+					 unsigned int stream, 
+					 unsigned int gpu,
 					 unsigned char skip_blocks,
 					 uint32_t * intersections){
 
@@ -1163,9 +1176,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 
 #else
 	case 0:
-		three_phase_matching <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
-//		three_phase_matching <<<1, 1, 0, streams[stream] >>>
-
+		three_phase_matching <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>>
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream, intersections);
 		break;
 
@@ -1185,7 +1196,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 		break;
 #endif
 	case 4: 	
-		one_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>> 
+		one_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
@@ -1193,7 +1204,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 		break;
 
 	case 5: 	
-		one_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>> 
+		one_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
 			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
@@ -1216,11 +1227,13 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 }
 
 void gpu::shutdown() {
-	// TODO: deallocate 
-	for(unsigned int i = 0; i < GPU_STREAMS; ++i)
-		ABORT_ON_ERROR(cudaStreamDestroy(streams[i]));
-	cudaDeviceSynchronize();
-	cudaDeviceReset();
+	for (int i = 0; i < GPU_NUM; i++) {
+		ABORT_ON_ERROR(cudaSetDevice(i));
+		for(unsigned int j = 0; j < GPU_STREAMS; ++j)
+			ABORT_ON_ERROR(cudaStreamDestroy(streams[i][j]));
+		cudaDeviceSynchronize();
+		cudaDeviceReset();
+	}
 }
 
 void gpu::release_memory(void * p) {

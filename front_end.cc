@@ -36,6 +36,7 @@ using std::chrono::duration;
 using std::chrono::duration_cast;
 using std::ostream;
 
+
 // ***DESIGN OF THE FORWARDING TABLE***
 //
 // The FIB maps a filter prefix to a queue.
@@ -810,7 +811,7 @@ void front_end::stop() {
 
 	thread_pool.clear();
 
-	for (int s=0; s<GPU_STREAMS; s++){ 
+	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
 		batch * p = (batch *)back_end::flush_stream();
 		if(p==0)
 			continue;
@@ -819,7 +820,7 @@ void front_end::stop() {
 	
 	back_end::release_stream_handles();	
 		
-	for (int s=0; s<GPU_STREAMS; s++){ 
+	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
 		batch * p = (batch *)back_end::second_flush_stream();
 		if(p==0)
 			continue;

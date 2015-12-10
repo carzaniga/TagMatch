@@ -6,7 +6,8 @@
 #include "parameters.hh"
 
 #define GPU_MSG_BLOCKS 6
-#define GPU_STREAMS 8
+#define GPU_STREAMS 10
+#define GPU_NUM 2
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."
@@ -42,6 +43,7 @@ class gpu {
 public:
 	static void initialize();
 	static void mem_info(gpu_mem_info *);
+	static void set_device(unsigned int dev);
 
 	template<typename T>
 	static T * allocate(unsigned int size) {
@@ -64,11 +66,11 @@ public:
 	static void release_memory(void * p);
 	static void release_pinned_memory(void * p);
 
-	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream);
-	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream);
-	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id);
-	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int size, unsigned int stream);
-	static void syncOnResults(unsigned int stream);		
+	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream, unsigned int gpu);
+	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream, unsigned int gpu);
+	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id, unsigned int gpu);
+	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int size, unsigned int stream, unsigned int gpu);
+	static void syncOnResults(unsigned int stream, unsigned int gpu);		
 	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 							unsigned int size);
 
@@ -77,11 +79,12 @@ public:
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
 						   result_t * dev_results_count,
 						   result_t * dev_results_data,
-						   unsigned int stream,
+						   unsigned int stream, 
+						   unsigned int gpu,
 						   unsigned char blocks,
 						   uint32_t * intersections);
 
-	static void synchronize_stream(unsigned int stream);
+	static void synchronize_stream(unsigned int stream, unsigned int gpu);
 	static void synchronize_device();
 	static void shutdown();
 };

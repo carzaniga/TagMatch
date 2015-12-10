@@ -126,13 +126,13 @@
 #ifndef BACK_END_IS_VOID
 	// we have a descriptor for each partition
 	// 
-	static part_descr * dev_partitions = nullptr;
+	static part_descr * dev_partitions[GPU_NUM];
 	static unsigned int dev_partitions_size = 0;
 
 	// plus a global array of tree-interface pairs.  This is a single
 	// array for all filters in all partitions.
 	// 
-	static uint16_t * dev_ti_table = nullptr; 
+	static uint16_t * dev_ti_table[GPU_NUM]; 
 
 	// The back end maintains a set of stream handles.  These are
 	// primarily buffers we use to transfer data to and from the GPU for
@@ -150,6 +150,7 @@
 		// stream identifier shared with the GPU
 		//
 		unsigned int stream;
+		unsigned int gpu;
 
 		packet ** last_batch, ** second_last_batch;
 		unsigned int last_batch_size, second_last_batch_size;
@@ -170,9 +171,12 @@
 		result_t * dev_results[2];
 
 		void initialize(unsigned int s, unsigned int n) {
-			stream = s;
+			stream = s / GPU_NUM;
+			gpu = s % GPU_NUM;
 	//		mutex = mu+ s;
 			next = n;
+			
+			gpu::set_device(gpu);
 
 			host_query_ti_table[0] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
 			host_query_ti_table[1] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
@@ -192,8 +196,8 @@
 		//dev_results = gpu::allocate<ifx_result_t>(PACKETS_BATCH_SIZE*INTERFACES);
 		dev_results[0] = gpu::allocate<result_t>(1);
 		dev_results[1] = gpu::allocate<result_t>(1);
-		gpu::async_set_zero(dev_results[0], sizeof(result_t),0);
-		gpu::async_set_zero(dev_results[1], sizeof(result_t),0);
+		gpu::async_set_zero(dev_results[0], sizeof(result_t),0,gpu);
+		gpu::async_set_zero(dev_results[1], sizeof(result_t),0,gpu);
 		last_batch = second_last_batch = nullptr;
 		last_batch_ptr = second_last_batch_ptr = nullptr;
 		last_batch_size = second_last_batch_size = 0;
@@ -221,7 +225,7 @@
 static const unsigned char STREAM_HANDLES_NULL = 0xff;
 static const unsigned char STREAM_HANDLES_MULTIPLIER = 1;
 
-static stream_handle stream_handles[GPU_STREAMS * STREAM_HANDLES_MULTIPLIER];
+static stream_handle stream_handles[GPU_NUM * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER];
 
 static atomic<unsigned char> free_stream_handles;
 
@@ -246,21 +250,21 @@ static void initialize_stream_handlers() {
 	// this is supposed to execute atomically
 	// 
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for(unsigned int i = 0; i < GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
-		stream_handles[i].initialize(i % GPU_STREAMS,free_stream_handles);
+	for(unsigned int i = 0; i < GPU_NUM * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
+		stream_handles[i].initialize(i,free_stream_handles);
 		free_stream_handles = i;
 	}
 }
 
 static void destroy_stream_handlers() {
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for(unsigned int i = 0; i < GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
+	for(unsigned int i = 0; i < GPU_NUM * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
 		stream_handles[i].destroy();
 	}
 }
 
 filter_t back_end::get_cbits(unsigned int id){
-	return dev_partitions[id].common_bits;
+	return dev_partitions[0][id].common_bits;
 }
 
 #if 0
@@ -302,7 +306,8 @@ static void compile_fibs() {
 	// since we only need to know the number of partitions, instead of
 	// dev_partitions_size we could have a simple counter in the
 	// previous for loop.
-	dev_partitions = new part_descr[dev_partitions_size];
+	for (int i = 0; i < GPU_NUM; i++)
+		dev_partitions[i] = new part_descr[dev_partitions_size];
 
 	// local buffers to hold the temporary host-side of the fibs
 	// 
@@ -334,15 +339,16 @@ static void compile_fibs() {
 #else
 		const f_descr_vector & filters = pf.second;
 #endif
-		dev_partitions[part].size = filters.size();
+		for (int i = 0; i < GPU_NUM; i++)
+			dev_partitions[i][part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
 		unsigned int * ti_index = host_ti_table_indexes;
 		unsigned int * block_intersections_f  = block_intersections;
 		unsigned int full_blocks = prefix_block_lengths[part];
-		int blocks_in_partition = dev_partitions[part].size / (GPU_BLOCK_SIZE) ;
+		int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
 
-		if (dev_partitions[part].size % GPU_BLOCK_SIZE != 0)
+		if (dev_partitions[0][part].size % GPU_BLOCK_SIZE != 0)
 			blocks_in_partition++ ;
 //		blocks_in_partition*= (GPU_FILTER_WORDS - full_blocks) ;
 		int counter=0; 
@@ -382,7 +388,7 @@ static void compile_fibs() {
 			// 
 			for(unsigned int i = full_blocks; i < GPU_FILTER_WORDS; ++i){
 #ifdef COALESCED_READS
-				host_rep_f[dev_partitions[part].size * (i-full_blocks) + counter] = (fd.filter.uint32_value(i));
+				host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (fd.filter.uint32_value(i));
 #else
 				*host_rep_f++ = (fd.filter.uint32_value(i));
 #endif
@@ -397,7 +403,7 @@ static void compile_fibs() {
 #endif
 			counter++ ;
 			if(counter % GPU_BLOCK_SIZE == 0){
-//				printf("p_size=%u, ints= ", dev_partitions[part].size) ;
+//				//printf("p_size=%u, ints= ", dev_partitions[part].size) ;
 				for(unsigned int i = full_blocks ; i < GPU_FILTER_WORDS; ++i){
 					*block_intersections_f++ = intersections[i- full_blocks]; 
 //					printf("%u ",intersections[i- full_blocks]) ;	
@@ -410,19 +416,23 @@ static void compile_fibs() {
 		if(counter % GPU_BLOCK_SIZE != 0)
 			for(unsigned int i = full_blocks ; i < GPU_FILTER_WORDS; ++i)
 				*block_intersections_f++ = intersections[i- full_blocks]; 		
-
-		dev_partitions[part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[part].size * (GPU_FILTER_WORDS - full_blocks) );
-
-		dev_partitions[part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[part].size);
 		
-		dev_partitions[part].intersections = gpu::allocate_and_copy<uint32_t>(block_intersections, blocks_in_partition * (GPU_FILTER_WORDS - full_blocks));
+		for (int i = 0; i < GPU_NUM; i++) {
+			gpu::set_device(i);
+			dev_partitions[i][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[i][part].size * (GPU_FILTER_WORDS - full_blocks) );
 
-		dev_partitions[part].common_bits = cbits; 
+			dev_partitions[i][part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[i][part].size);
+		
+			dev_partitions[i][part].intersections = gpu::allocate_and_copy<uint32_t>(block_intersections, blocks_in_partition * (GPU_FILTER_WORDS - full_blocks));
 
+			dev_partitions[i][part].common_bits = cbits; 
+		}
 	}
 
-	dev_ti_table = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
-
+		for (int i = 0; i < GPU_NUM; i++) { 
+			gpu::set_device(i);
+			dev_ti_table[i] = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
+	}
 	delete[](host_rep);
 	delete[](host_ti_table_indexes);
 	delete[](host_ti_table);
@@ -444,8 +454,9 @@ void* back_end::flush_stream()
 {
 	void *res = nullptr;
     stream_handle * sh = allocate_stream_handle();
-	// Wait for the data to be copied
-	gpu::syncOnResults(sh->stream);
+	gpu::set_device(sh->gpu);
+	//Wait for the data to be copied
+	gpu::syncOnResults(sh->stream, sh->gpu);
 	if (sh->second_last_batch != nullptr) {
 	  res = sh->second_last_batch_ptr;
 	  
@@ -455,7 +466,7 @@ void* back_end::flush_stream()
 	  for(unsigned int i=0; i< sh->second_last_batch_size; i++)
 		sh->second_last_batch[i]->partition_done();
   	}
-	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream);
+	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream, sh->gpu);
 	return res;
 }
 
@@ -465,7 +476,7 @@ void* back_end::flush_stream()
 //
 void back_end::release_stream_handles()
 {
-	for (unsigned char i=0; i<GPU_STREAMS; i++) {
+	for (unsigned char i=0; i<GPU_NUM * GPU_STREAMS; i++) {
 		stream_handle * sh = stream_handles + i;
 		release_stream_handle(sh);
 	}
@@ -480,9 +491,10 @@ void* back_end::second_flush_stream()
 {
 	void *res = nullptr;
     stream_handle * sh = allocate_stream_handle();
+	gpu::set_device(sh->gpu);
 	if (sh->last_batch != nullptr) {
 		res = sh->last_batch_ptr;
-		gpu::syncOnResults(sh->stream);
+		gpu::syncOnResults(sh->stream, sh->gpu);
 	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
 	  	}
@@ -500,7 +512,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 // If the partition is small, compute it entirely on the CPU
 // 
 #if COMBO
-	if (dev_partitions[part].size < COMBO_SIZE) {
+	if (dev_partitions[0][part].size < COMBO_SIZE){
 		const f_descr_vector & filters = tmp_fib[part];
 		for(const filter_descr & fd : filters){ 
 			for(unsigned int i = 0; i < batch_size; ++i) 
@@ -516,10 +528,8 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 		return batch_ptr; 
 	}
 #endif
-
 	stream_handle * sh = allocate_stream_handle();
 	uint8_t blocks = prefix_block_lengths[part];
-
 	/*
 	 * Flip the buffers for the staged computation to avoid overwriting
 	 */
@@ -536,24 +546,24 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
 		sh->host_query_ti_table[sh->flip][i] = batch[i]->ti_pair.get_uint16_value();
 	}
-	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream);
-	gpu::async_copy(sh->host_query_ti_table[sh->flip], sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream);
+	gpu::set_device(sh->gpu);
+	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
+	gpu::async_copy(sh->host_query_ti_table[sh->flip], sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream, sh->gpu);
 
 
-	gpu::run_kernel(dev_partitions[part].fib, dev_partitions[part].size, 
-					dev_ti_table, dev_partitions[part].ti_indexes, 
+	gpu::run_kernel(dev_partitions[sh->gpu][part].fib, dev_partitions[sh->gpu][part].size, 
+					dev_ti_table[sh->gpu], dev_partitions[sh->gpu][part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
 					sh->dev_results[sh->flip],
 					sh->dev_results[!sh->flip],
-					sh->stream, blocks,
-					dev_partitions[part].intersections);
-	
+					sh->stream, sh->gpu, blocks,
+					dev_partitions[sh->gpu][part].intersections);
 	// If the second last batch is set, then we have some results to
 	// check from that computation
 	//
 	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
-		gpu::syncOnResults(sh->stream);
+		gpu::syncOnResults(sh->stream, sh->gpu);
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			sh->second_last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
 #if 0
@@ -573,13 +583,13 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	// copied hereafter is correct
 	//
 	else if (sh->second_last_batch == nullptr && sh->last_batch != nullptr) {
-		gpu::syncOnResults(sh->stream);
+		gpu::syncOnResults(sh->stream, sh->gpu);
 	}
-	gpu::async_get_results(sh->host_results[sh->flip], sh->dev_results[sh->flip],sh->host_results[!sh->flip]->count, sh->stream);
-	gpu::async_set_zero(sh->dev_results[sh->flip], sizeof(uint32_t), sh->stream);
 
-
-    // Update the info about the staged computation; drop the second
+	gpu::async_get_results(sh->host_results[sh->flip], sh->dev_results[sh->flip],sh->host_results[!sh->flip]->count, sh->stream, sh->gpu);
+	gpu::async_set_zero(sh->dev_results[sh->flip], sizeof(uint32_t), sh->stream, sh->gpu);
+    
+	// Update the info about the staged computation; drop the second
     // last iteration and store the info about the current iteration
     // for the next cycles
 	// 
@@ -590,7 +600,6 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	sh->last_batch = batch;
 	sh->last_batch_size = batch_size;
 	sh->last_batch_ptr = batch_ptr;
-
 	release_stream_handle(sh);
 #else //back_end_is_void 
 
@@ -633,7 +642,10 @@ void back_end::start() {
 	back_end_memory = mi.free;
 	initialize_stream_handlers();
 	compile_fibs();
-	gpu::synchronize_device();
+	for (int i = 0; i < GPU_NUM; i++) {
+		gpu::set_device(i);
+		gpu::synchronize_device();
+	}
 	gpu::mem_info(&mi);
 	back_end_memory -= mi.free;
 #endif
@@ -647,16 +659,18 @@ void back_end::stop() {
 
 void back_end::clear() {
 #ifndef BACK_END_IS_VOID
-	if (dev_partitions) {
-		for(unsigned int i = 0; i < dev_partitions_size; ++i)
-			dev_partitions[i].clear();
-		delete[](dev_partitions);
-		dev_partitions = nullptr;
-		dev_partitions_size = 0;
-	}
-	if (dev_ti_table) {
-		gpu::release_memory(dev_ti_table);
-		dev_ti_table = nullptr;
+	for (int i = 0; i < GPU_NUM; i++) {
+		if (dev_ti_table[i]) {
+			gpu::release_memory(dev_ti_table[i]);
+			dev_ti_table[i] = nullptr;
+		}
+		if (dev_partitions[i]) {
+			for(unsigned int j = 0; j < dev_partitions_size; ++j)
+				dev_partitions[i][j].clear();
+			delete[](dev_partitions[i]);
+			//dev_partitions = nullptr;
+			dev_partitions_size = 0;
+		}
 	}
 	destroy_stream_handlers();
 	gpu::shutdown();
