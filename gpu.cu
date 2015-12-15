@@ -53,12 +53,18 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 }
 #endif
 
+#ifndef TWITTER
 #define RECORD_MATCHING_FILTER(id,msg)															\
 	for(unsigned int i = ti_table[ti_indexes[id]]; i > 0; --i) {								\
 		uint16_t ti_xor = query_ti_table[(msg)] ^ ti_table[ti_indexes[id] + i];					\
 		if ((ti_xor < (0x0001 << 13)) && (ti_xor != 0))											\
 			results_data->pairs[atomicAdd(&(results_count->count), 1)] = (msg)<<8 | ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3)) ;\
 	}
+#else
+#define RECORD_MATCHING_FILTER(id)															\
+if (results_count->count < (PACKETS_BATCH_SIZE * INTERFACES) - 1 )\
+	                  results_data->pairs[atomicAdd(&(results_count->count), 1)] = id ;
+#endif
 
 //#define RECORD_MATCHING_FILTER(id,msg)															\
 	for(unsigned int i = ti_table[ti_indexes[id]]; i > 0; --i) {								\
@@ -70,7 +76,12 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 __global__ void 
 //__launch_bounds__(256, 8)
 three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size, 
-									 const uint16_t * __restrict__ ti_table, const unsigned int * __restrict__ ti_indexes,  
+#ifndef TWITTER
+									 const uint16_t * __restrict__ ti_table, 
+#else
+									 const uint32_t * __restrict__ ti_table, 
+#endif
+									 const unsigned int * __restrict__ ti_indexes,  
 									 const uint16_t * __restrict__ query_ti_table ,  unsigned int batch_size, 
 									 result_t * results_count,
 									 result_t * results_data,
@@ -368,8 +379,11 @@ candidate_no_match:
 							goto candidate_no_match063;
 						if (BV_BLOCK_NOT_SUBSET(d5, p5))
 							goto candidate_no_match063;
-
+#ifndef TWITTER
 						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match063:
 
 				}
@@ -405,7 +419,11 @@ candidate_no_match063:
 					if (BV_BLOCK_NOT_SUBSET(d5, p5))
 						goto candidate_no_match062;
 
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match062:
 					if (BV_BLOCK_NOT_SUBSET(d0, p6)) 
 						goto candidate_no_match061;
@@ -420,7 +438,11 @@ candidate_no_match062:
 					if (BV_BLOCK_NOT_SUBSET(d5, p11))
 						goto candidate_no_match061;
 
-					RECORD_MATCHING_FILTER(id,message2);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message2);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match061:
 					continue;
 
@@ -471,7 +493,11 @@ candidate_no_match06:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match16;
 
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match16:
 					continue;
 				}
@@ -488,7 +514,11 @@ candidate_no_match16:
 						goto candidate_no_match26;
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match26;
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match26:
 					continue;
 				}
@@ -503,7 +533,11 @@ candidate_no_match26:
 						goto candidate_no_match36;
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match36;
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match36:
 					continue;
 				}
@@ -516,7 +550,11 @@ candidate_no_match36:
 						goto candidate_no_match46;
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match46;
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match46:
 					continue;
 				}
@@ -527,7 +565,11 @@ candidate_no_match46:
 					message = candidate_messages[pi];
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match56;
-					RECORD_MATCHING_FILTER(id,message);
+#ifndef TWITTER
+						RECORD_MATCHING_FILTER(id,message);
+#else
+						RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match56:
 					continue;
 				}
@@ -607,7 +649,11 @@ match_all:
 								goto candidate_no_match16A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match16A;
+#ifndef TWITTER
 							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match16A:
 						}
 						break;
@@ -621,7 +667,11 @@ candidate_no_match16A:
 								goto candidate_no_match26A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match26A;
+#ifndef TWITTER
 							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match26A:
 						}
 						break;
@@ -633,7 +683,11 @@ candidate_no_match26A:
 								goto candidate_no_match36A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match36A;
+#ifndef TWITTER
 							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match36A:
 						}
 						break;
@@ -643,7 +697,11 @@ candidate_no_match36A:
 								goto candidate_no_match46A;
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match46A;
+#ifndef TWITTER
 							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match46A:
 						}
 						break;
@@ -651,7 +709,11 @@ candidate_no_match46A:
 						for(unsigned int pi = 0; pi < batch_size; ++pi) {
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match56A;
+#ifndef TWITTER
 							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 candidate_no_match56A:
 						}
 						break;
@@ -741,7 +803,11 @@ candidate_no_match56A:
 			if (BV_BLOCK_NOT_SUBSET(d5, p5))
 				goto next_msg;
 
-			RECORD_MATCHING_FILTER(id,pi);
+#ifndef TWITTER
+							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 next_msg:
 			if (BV_BLOCK_NOT_SUBSET(d0, p6))
 				continue;
@@ -755,7 +821,11 @@ next_msg:
 				continue;
 			if (BV_BLOCK_NOT_SUBSET(d5, p11))
 				continue;
-			RECORD_MATCHING_FILTER(id, pi+1);
+#ifndef TWITTER
+							RECORD_MATCHING_FILTER(id,pi+1);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 		}
 #else
 
@@ -825,7 +895,12 @@ no_match: ;
 
 template <unsigned int Blocks>
 __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size, 
-								   uint16_t * ti_table, unsigned int * ti_indexes,  
+#ifndef TWITTER 
+								   uint16_t * ti_table, 
+#else
+								   uint32_t * ti_table, 
+#endif
+								   unsigned int * ti_indexes,  
 								   uint16_t * query_ti_table ,  unsigned int batch_size, 
 								   result_t * results_count,
 								   result_t * results_data,
@@ -950,7 +1025,11 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 				if (BV_BLOCK_NOT_SUBSET(d5, p5))
 					goto next_msg;
 
-			RECORD_MATCHING_FILTER(id, pi);
+#ifndef TWITTER
+							RECORD_MATCHING_FILTER(id,pi);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 next_msg:
 
 			if (BV_BLOCK_NOT_SUBSET(d0, p6))
@@ -971,7 +1050,11 @@ next_msg:
 				if (BV_BLOCK_NOT_SUBSET(d5, p11))
 					continue;
 
-			RECORD_MATCHING_FILTER(id, pi+1);
+#ifndef TWITTER
+							RECORD_MATCHING_FILTER(id,pi+1);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 		}
 	}
 	else {
@@ -1023,7 +1106,11 @@ next_msg:
 				if (BV_BLOCK_NOT_SUBSET(d5, p5))
 					continue;
 
-			RECORD_MATCHING_FILTER(id, pi);
+#ifndef TWITTER
+							RECORD_MATCHING_FILTER(id,pi+1);
+#else
+							RECORD_MATCHING_FILTER(id);
+#endif
 		}
 
 	}
@@ -1131,7 +1218,12 @@ sig_atomic_t kernelCounter=0 ;
 #endif
 
 void gpu::run_kernel(uint32_t * fib, unsigned int fib_size, 
-					 uint16_t * ti_table, unsigned int * ti_indexes, 
+#ifndef TWITTER
+					 uint16_t * ti_table, 
+#else
+					 uint32_t * ti_table, 
+#endif
+					 unsigned int * ti_indexes, 
 					 uint16_t * query_ti_table, unsigned int batch_size, 
 					 result_t * results_count, 
 					 result_t * results_data,

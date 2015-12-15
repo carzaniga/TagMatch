@@ -132,8 +132,11 @@
 	// plus a global array of tree-interface pairs.  This is a single
 	// array for all filters in all partitions.
 	// 
+#ifndef TWITTER
 	static uint16_t * dev_ti_table[GPU_NUM]; 
-
+#else
+	static uint32_t * dev_ti_table[GPU_NUM]; 
+#endif
 	// The back end maintains a set of stream handles.  These are
 	// primarily buffers we use to transfer data to and from the GPU for
 	// matching.
@@ -285,7 +288,11 @@ static void compile_fibs() {
 	// array is the largest partition id plus one.
 	// 
 	dev_partitions_size = 0;
+#ifndef TWITTER
 	unsigned int host_ti_table_size = 0;
+#else
+	uint64_t host_ti_table_size = 0;
+#endif
 	unsigned int total_filters = 0;
 	unsigned int max = 0;
 
@@ -311,11 +318,16 @@ static void compile_fibs() {
 
 	// local buffers to hold the temporary host-side of the fibs
 	// 
+#ifndef TWITTER
 	uint16_t * host_ti_table = new uint16_t[host_ti_table_size];
+	unsigned int ti_table_curr_pos = 0;
+#else
+	uint32_t * host_ti_table = new uint32_t[host_ti_table_size];
+	uint64_t ti_table_curr_pos = 0;
+#endif
 	uint32_t * host_rep = new uint32_t[max * GPU_FILTER_WORDS];
 	uint32_t * host_ti_table_indexes = new uint32_t[total_filters];
 
-	unsigned int ti_table_curr_pos = 0;
 
 	int intersection_max_size = (max / (GPU_BLOCK_SIZE)); 
 	if (max % (GPU_BLOCK_SIZE) !=0)
@@ -343,7 +355,9 @@ static void compile_fibs() {
 			dev_partitions[i][part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
+#ifndef TWITTER
 		unsigned int * ti_index = host_ti_table_indexes;
+#endif
 		unsigned int * block_intersections_f  = block_intersections;
 		unsigned int full_blocks = prefix_block_lengths[part];
 		int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
@@ -371,8 +385,9 @@ static void compile_fibs() {
 			filter_t ff = fd.filter;
 			ff ^= cbits ;
 #endif
+#ifndef TWITTER
 			*ti_index++ = ti_table_curr_pos;
-
+#endif
 			// we then store the *size* of the tiff table for this fib
 			// entry in that position in the global table.
 			//
@@ -381,8 +396,11 @@ static void compile_fibs() {
 			// following position
 			// 
 			for(const tree_interface_pair & tip : fd.ti_pairs)
+#ifndef TWITTER
 				host_ti_table[ti_table_curr_pos++] = tip.get_uint16_value();
-
+#else
+				host_ti_table[ti_table_curr_pos++] = tip.interface();
+#endif
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			// 
@@ -431,7 +449,11 @@ static void compile_fibs() {
 
 		for (int i = 0; i < GPU_NUM; i++) { 
 			gpu::set_device(i);
+#ifndef TWITTER
 			dev_ti_table[i] = gpu::allocate_and_copy<uint16_t>(host_ti_table, host_ti_table_size);
+#else
+			dev_ti_table[i] = gpu::allocate_and_copy<uint32_t>(host_ti_table, host_ti_table_size);
+#endif
 	}
 	delete[](host_rep);
 	delete[](host_ti_table_indexes);
@@ -461,7 +483,9 @@ void* back_end::flush_stream()
 	  res = sh->second_last_batch_ptr;
 	  
 	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
+#ifndef TWITTER
 		sh->second_last_batch[sh->host_results[sh->flip]->pairs[i]>>8]->set_output(sh->host_results[sh->flip]->pairs[i] & 0xff);
+#endif
 	  }
 	  for(unsigned int i=0; i< sh->second_last_batch_size; i++)
 		sh->second_last_batch[i]->partition_done();
@@ -496,8 +520,10 @@ void* back_end::second_flush_stream()
 		res = sh->last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
 	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
+#ifndef TWITTER
 			sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
-	  	}
+#endif
+		}
 	  	for(unsigned int i=0; i< sh->last_batch_size; i++)
 			sh->last_batch[i]->partition_done();
   	}
@@ -518,8 +544,14 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 			for(unsigned int i = 0; i < batch_size; ++i) 
 				if (fd.filter.subset_of(batch[i]->filter)){
 					for(const tree_interface_pair & tip : fd.ti_pairs)
+#ifndef TWITTER
 						if (batch[i]->ti_pair.tree() == tip.tree() && batch[i]->ti_pair.interface() != tip.interface())
 							batch[i]->set_output(tip.interface());
+#else
+						if (batch[i]->ti_pair.interface() != tip.interface()) {
+							//What??
+						}
+#endif
 				}
 		}
 
@@ -544,12 +576,15 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
+#ifndef TWITTER
 		sh->host_query_ti_table[sh->flip][i] = batch[i]->ti_pair.get_uint16_value();
+#endif
 	}
 	gpu::set_device(sh->gpu);
 	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
+#ifndef TWITTER
 	gpu::async_copy(sh->host_query_ti_table[sh->flip], sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream, sh->gpu);
-
+#endif
 
 	gpu::run_kernel(dev_partitions[sh->gpu][part].fib, dev_partitions[sh->gpu][part].size, 
 					dev_ti_table[sh->gpu], dev_partitions[sh->gpu][part].ti_indexes, 
@@ -565,7 +600,9 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 		res = sh->second_last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
+#ifndef TWITTER
 			sh->second_last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
+#endif
 #if 0
 			// this is where we could check whether the processing of
 			// message batch[i] is complete, in which case we could
@@ -611,7 +648,9 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	// worst case, where we set ALL output interfaces.
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(unsigned int j = 0; j < INTERFACES; ++j) 
+#ifndef TWITTER
 			batch[i]->set_output(j);
+#endif
 		batch[i]->partition_done();
 #if 0
 		// this is where we could check whether the processing of

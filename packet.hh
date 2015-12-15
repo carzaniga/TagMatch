@@ -16,12 +16,14 @@
 #include "bitvector.hh"
 #include "io_util.hh"
 
+#ifndef TWITTER
 /** interface identifier */ 
 typedef uint16_t interface_t;
-
 /** tree identifier */ 
 typedef uint16_t tree_t;
-
+#else
+typedef uint32_t interface_t;
+#endif
 /** tree--interface pair */ 
 class tree_interface_pair {
 // 
@@ -29,34 +31,33 @@ class tree_interface_pair {
 //   1. the router has at most 2^13 = 8192 interfaces
 //   2. the are at most 2^3 = 8 trees
 //
+#ifndef TWITTER
 	uint16_t value;
+#else
+	uint32_t value;
+#endif
 
 public:
+#ifndef TWITTER
 	static const unsigned int TREE_OFFSET = 13;
 	static const uint16_t IFX_MASK = (0xFFFF >> (16 - TREE_OFFSET));
+#endif
 
 	tree_interface_pair()
 		: value(0) {};
 	
+	tree_interface_pair(const tree_interface_pair & p)
+		: value(p.value) {};
+#ifndef TWITTER
 	tree_interface_pair(tree_t t, interface_t ifx)
 		: value((t << TREE_OFFSET) | (ifx & IFX_MASK)) {};
 	
-	tree_interface_pair(const tree_interface_pair & p)
-		: value(p.value) {};
-	
-	bool operator < (const tree_interface_pair &x) const {
-		return value < x.value;
-	}
-	bool operator == (const tree_interface_pair & rhs) const {
-		return value == rhs.value;
-	}
 	bool equals(tree_t t, interface_t ifx) const {
 		return (value == ((t << TREE_OFFSET) | (ifx & IFX_MASK)));
 	}
 	uint16_t get_uint16_value() const {
 		return value;
 	}
-
 	uint16_t tree() const {
 		return value >> TREE_OFFSET;;
 	}
@@ -68,9 +69,39 @@ public:
 	static uint16_t tree(uint16_t value) {
 		return value >> TREE_OFFSET;;
 	}
-
 	static uint16_t interface(uint16_t value) {
 		return value & IFX_MASK;
+	}
+#else
+	tree_interface_pair(interface_t ifx) {
+		value =ifx  ;
+	}
+
+	bool equals(interface_t ifx) const {
+		return value == ifx ;
+	}
+	uint32_t get_uint32_value() const {
+		return value;
+	}
+	//is this cast correct?
+	uint32_t interface() const {
+		return value;
+	}
+	//     static uint16_t tree(uint16_t value) {
+	//     +//             return value >> TREE_OFFSET;;
+	//     +//     }
+	//     +//
+	//     +//     static uint16_t interface(uint16_t value) {
+	//     +//             return value & IFX_MASK;
+	//     +//     }
+	//
+#endif
+	
+	bool operator < (const tree_interface_pair &x) const {
+		return value < x.value;
+	}
+	bool operator == (const tree_interface_pair & rhs) const {
+		return value == rhs.value;
 	}
 
 	std::ostream & write_binary(std::ostream & output) const {
@@ -82,14 +113,25 @@ public:
 	}
 
 	std::ostream & write_ascii(std::ostream & output) const {
+#ifndef TWITTER
 		return output << tree() << ' ' << interface();
+#else
+		return output << interface();
+#endif
 	}
 
 	std::istream & read_ascii(std::istream & input) {
+#ifndef TWITTER
 		uint16_t t;
 		uint16_t i;
 		if (input >> t >> i)
 			value = ((t << TREE_OFFSET) | (i & IFX_MASK));
+#else
+		uint32_t i;
+		if (input >> i) {
+			value = i ;
+		}
+#endif
 		return input;
 	}
 };
@@ -111,11 +153,19 @@ public:
 
 	network_packet() : filter(), ti_pair() {};
 
+#ifndef TWITTER
 	network_packet(const filter_t f, tree_t t, interface_t i)
 		: filter(f), ti_pair(t,i) {};
 
 	network_packet(const std::string & f, tree_t t, interface_t i)
 		: filter(f), ti_pair(t,i) {};
+#else
+	network_packet(const filter_t f, interface_t i)
+		: filter(f), ti_pair(i) {};
+
+	network_packet(const std::string & f, interface_t i)
+		: filter(f), ti_pair(i) {};
+#endif
 
 	network_packet(const network_packet & p) 
 		: filter(p.filter), ti_pair(p.ti_pair) {};
@@ -158,13 +208,22 @@ private:
 	// Array of flags (0/1) when a flag is set then we have a match on
 	// the corresponding interface.  We could use a bit vector but
 	// this should be faster
-	// 
+	//
+#ifndef TWITTER
 #ifdef WITH_ATOMIC_OUTPUT
 	std::atomic<unsigned char> output[INTERFACES] = {0}; 
 #else    
 	unsigned char output[INTERFACES] = {0};
 #endif
+#else
+#ifdef WITH_ATOMIC_OUTPUT
+	std::atomic<unsigned char> output[INTERFACES]; 
+#else    
+	unsigned char output[INTERFACES];
+#endif
+#endif
 public:
+#ifndef TWITTER
 	packet(const filter_t f, uint16_t t, uint16_t i)
 		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
 	};
@@ -172,6 +231,15 @@ public:
 	packet(const std::string & f, uint16_t t, uint16_t i)
 		: network_packet(f, t, i), state(FrontEnd), pending_partitions(0) {
 	};
+#else
+	packet(const filter_t f, uint32_t i)
+		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+	};
+
+	packet(const std::string & f, uint32_t i)
+		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+	};
+#endif
 
 	packet(const packet & p) 
 		: network_packet(p), state(FrontEnd), pending_partitions(0) {
