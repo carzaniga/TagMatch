@@ -91,20 +91,12 @@ static unsigned int read_queries(vector<packet> & packets, string fname, bool bi
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-#ifndef TWITTER
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
-#else
 			packets.emplace_back(p.filter, p.ti_pair.interface());
-#endif
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-#ifndef TWITTER
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
-#else
 			packets.emplace_back(p.filter, p.ti_pair.interface());
-#endif
 			++res;
 		}
 	}

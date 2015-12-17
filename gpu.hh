@@ -23,11 +23,7 @@ typedef uint16_t ifx_result_t;
 
 struct result_t {
 	uint32_t count;
-#ifndef TWITTER
-	uint16_t pairs[PACKETS_BATCH_SIZE * INTERFACES]; // is this enough? I guess not
-#else
 	uint32_t pairs[PACKETS_BATCH_SIZE * INTERFACES]; // is this enough? I guess not
-#endif
 };
 
 //struct packet_t {
@@ -77,11 +73,7 @@ public:
 							unsigned int size);
 
 	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
-#ifndef TWITTER
-						   uint16_t * dev_ti_table, 
-#else
 						   uint32_t * dev_ti_table, 
-#endif
 						   unsigned int * ti_table_indexes, 
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 
 						   result_t * dev_results_count,

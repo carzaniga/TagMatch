@@ -1,8 +1,6 @@
 #ifndef PARAMETERS_HH_INCLUDED
 #define PARAMETERS_HH_INCLUDED
 
-#define TWITTER
-
 #define GPU_BLOCK_DIM_X			32 
 #define GPU_BLOCK_DIM_Y			8 
 
