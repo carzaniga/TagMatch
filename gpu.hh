@@ -23,7 +23,7 @@ typedef uint16_t ifx_result_t;
 
 struct result_t {
 	uint32_t count;
-	uint32_t pairs[PACKETS_BATCH_SIZE * INTERFACES]; // is this enough? I guess not
+	uint32_t pairs[MAX_MATCHES+MAX_MATCHES/4]; // is this enough? I guess not
 };
 
 //struct packet_t {

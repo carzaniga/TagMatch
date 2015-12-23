@@ -1,6 +1,7 @@
 #ifndef PARAMETERS_HH_INCLUDED
 #define PARAMETERS_HH_INCLUDED
 
+
 #define GPU_BLOCK_DIM_X			32 
 #define GPU_BLOCK_DIM_Y			8 
 
@@ -13,6 +14,8 @@
 // now to MULTIPLIER has to be 1 because our output result_t only supports messageIDs of up to 256
 #define MULTIPLIER 1 // DO NOT change this value! 
 #define PACKETS_BATCH_SIZE (MULTIPLIER * GPU_BLOCK_SIZE) 
+#define MAX_MATCHES_PP 128
+#define MAX_MATCHES MAX_MATCHES_PP * PACKETS_BATCH_SIZE
 
 #define NEW_PARTIIONING 1
 
@@ -25,7 +28,7 @@
 #define COALESCED_READS
 #endif
 
-#define INTERFACES				256U
+#define INTERFACES				1U
 
 #define DEFAULT_THREAD_COUNT	5U
 

@@ -162,7 +162,7 @@
 		// 
 		bool flip;
 		uint32_t * host_queries[2];
-		uint16_t * host_query_ti_table[2];
+		//uint16_t * host_query_ti_table[2];
 		result_t * host_results[2];
 
 		// PACKETS_BATCH_SIZE * INTERFACES
@@ -177,8 +177,8 @@
 			
 			gpu::set_device(gpu);
 
-			host_query_ti_table[0] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
-			host_query_ti_table[1] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
+			//host_query_ti_table[0] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
+			//host_query_ti_table[1] = gpu::allocate_host_pinned<uint16_t>(PACKETS_BATCH_SIZE);
 			host_queries[0] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
 			host_queries[1] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
 					
@@ -203,8 +203,8 @@
 	}
 
 	void destroy() {
-		gpu::release_pinned_memory(host_query_ti_table[0]);
-		gpu::release_pinned_memory(host_query_ti_table[1]);
+		//gpu::release_pinned_memory(host_query_ti_table[0]);
+		//gpu::release_pinned_memory(host_query_ti_table[1]);
 		gpu::release_pinned_memory(host_queries[0]);
 		gpu::release_pinned_memory(host_queries[1]);
 		gpu::release_pinned_memory(host_results[0]);
@@ -457,6 +457,10 @@ void* back_end::flush_stream()
 	  
 	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
 		//sh->second_last_batch[sh->host_results[sh->flip]->pairs[i]>>8]->set_output(sh->host_results[sh->flip]->pairs[i] & 0xff);
+			unsigned char pkt = (sh->host_results[sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
+			uint32_t id = sh->host_results[sh->flip]->pairs[5*(i/4)+1+(i%4)];
+			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
+			sh->second_last_batch[pkt]->set_matched_subscription(id);
 	  }
 	  for(unsigned int i=0; i< sh->second_last_batch_size; i++)
 		sh->second_last_batch[i]->partition_done();
@@ -492,6 +496,10 @@ void* back_end::second_flush_stream()
 		gpu::syncOnResults(sh->stream, sh->gpu);
 	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			//sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
+			unsigned char pkt = (sh->host_results[!sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
+			uint32_t id = sh->host_results[!sh->flip]->pairs[5*(i/4)+1+i%4];
+			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
+			sh->second_last_batch[pkt]->set_matched_subscription(id);
 		}
 	  	for(unsigned int i=0; i< sh->last_batch_size; i++)
 			sh->last_batch[i]->partition_done();
@@ -559,8 +567,11 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
-		std::cout << sh->host_results[sh->flip]->count << std::endl;
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
+			unsigned char pkt = (sh->host_results[!sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
+			uint32_t id = sh->host_results[!sh->flip]->pairs[5*(i/4)+1+(i%4)];
+			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
+			sh->second_last_batch[pkt]->set_matched_subscription(id);
 			//sh->second_last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
 #if 0
 			// this is where we could check whether the processing of
@@ -583,7 +594,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	}
 
 	gpu::async_get_results(sh->host_results[sh->flip], sh->dev_results[sh->flip],sh->host_results[!sh->flip]->count, sh->stream, sh->gpu);
-	gpu::async_set_zero(sh->dev_results[sh->flip], sizeof(uint32_t), sh->stream, sh->gpu);
+	gpu::async_set_zero(sh->dev_results[sh->flip], sizeof(result_t) /* sizeof(uint32_t)*((1+1/4)*(sh->host_results[!sh->flip]->count)+1)*/, sh->stream, sh->gpu);
     
 	// Update the info about the staged computation; drop the second
     // last iteration and store the info about the current iteration

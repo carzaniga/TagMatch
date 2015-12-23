@@ -16,7 +16,6 @@
 #include "bitvector.hh"
 #include "io_util.hh"
 
-#define MAX_MATCHES 64
 typedef uint32_t interface_t;
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -155,7 +154,7 @@ private:
 #else   
 	unsigned char output[INTERFACES];
 	int mcount = 0;
-	uint32_t matched_subscriptions[MAX_MATCHES];
+	uint32_t matched_subscriptions[MAX_MATCHES_PP];
 #endif
 public:
 	packet(const filter_t f, uint32_t i)
@@ -223,8 +222,16 @@ public:
 	}
 
 	void set_matched_subscription(uint32_t sub) {
-		if (mcount < MAX_MATCHES)
+		if (mcount < MAX_MATCHES_PP)
 			matched_subscriptions[mcount++] = sub;
+	}
+
+	uint32_t get_matches_count() {
+		return mcount;
+	}
+
+	uint32_t get_match(uint32_t i) {
+		return matched_subscriptions[i];
 	}
 
 	void reset_output(unsigned int ifx) {

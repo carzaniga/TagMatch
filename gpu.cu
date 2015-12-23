@@ -53,9 +53,12 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 }
 #endif
 
-#define RECORD_MATCHING_FILTER(id)															\
-if (results_count->count < (PACKETS_BATCH_SIZE * INTERFACES) - 1 )\
-	                  results_data->pairs[atomicAdd(&(results_count->count), 1)] = id ;
+#define RECORD_MATCHING_FILTER(id,msg)\
+_count = atomicAdd(&(results_count->count), 1);\
+if (_count < MAX_MATCHES) {\
+	                  atomicAdd(&results_data->pairs[5*(_count/4)], ((uint32_t)msg << (8 * (_count % 4))));\
+	                  results_data->pairs[5*(_count/4)+1+(_count%4)] = id;\
+}
 
 //#define RECORD_MATCHING_FILTER(id,msg)															\
 	for(unsigned int i = ti_table[ti_indexes[id]]; i > 0; --i) {								\
@@ -125,6 +128,7 @@ three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size,
 		results_data->done=true;
 	}
 */
+	int _count;
 #endif
 #if TIME
 	uint32_t t1=0,t2=0,t3=0,t4=0 ;
@@ -367,7 +371,7 @@ candidate_no_match:
 						if (BV_BLOCK_NOT_SUBSET(d5, p5))
 							goto candidate_no_match063;
 
-						RECORD_MATCHING_FILTER(id);
+						RECORD_MATCHING_FILTER(id,message);
 candidate_no_match063:
 
 				}
@@ -403,7 +407,7 @@ candidate_no_match063:
 					if (BV_BLOCK_NOT_SUBSET(d5, p5))
 						goto candidate_no_match062;
 
-						RECORD_MATCHING_FILTER(id);
+						RECORD_MATCHING_FILTER(id,message);
 candidate_no_match062:
 					if (BV_BLOCK_NOT_SUBSET(d0, p6)) 
 						goto candidate_no_match061;
@@ -418,7 +422,7 @@ candidate_no_match062:
 					if (BV_BLOCK_NOT_SUBSET(d5, p11))
 						goto candidate_no_match061;
 
-						RECORD_MATCHING_FILTER(id);
+						RECORD_MATCHING_FILTER(id,message2);
 candidate_no_match061:
 					continue;
 
@@ -469,7 +473,7 @@ candidate_no_match06:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match16;
 
-						RECORD_MATCHING_FILTER(id);
+						RECORD_MATCHING_FILTER(id,message);
 candidate_no_match16:
 					continue;
 				}
@@ -487,7 +491,7 @@ candidate_no_match16:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match26;
 						
-					RECORD_MATCHING_FILTER(id);
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match26:
 					continue;
 				}
@@ -503,7 +507,7 @@ candidate_no_match26:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match36;
 						
-					RECORD_MATCHING_FILTER(id);
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match36:
 					continue;
 				}
@@ -517,7 +521,7 @@ candidate_no_match36:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match46;
 
-					RECORD_MATCHING_FILTER(id);
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match46:
 					continue;
 				}
@@ -529,7 +533,7 @@ candidate_no_match46:
 					if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][message*Blocks + 5]))
 						goto candidate_no_match56;
 						
-					RECORD_MATCHING_FILTER(id);
+					RECORD_MATCHING_FILTER(id,message);
 candidate_no_match56:
 					continue;
 				}
@@ -610,7 +614,7 @@ match_all:
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match16A;
 
-							RECORD_MATCHING_FILTER(id);
+							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match16A:
 						}
 						break;
@@ -625,7 +629,7 @@ candidate_no_match16A:
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match26A;
 
-							RECORD_MATCHING_FILTER(id);
+							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match26A:
 						}
 						break;
@@ -638,7 +642,7 @@ candidate_no_match26A:
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match36A;
 							
-							RECORD_MATCHING_FILTER(id);
+							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match36A:
 						}
 						break;
@@ -649,7 +653,7 @@ candidate_no_match36A:
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match46A;
 
-							RECORD_MATCHING_FILTER(id);
+							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match46A:
 						}
 						break;
@@ -658,7 +662,7 @@ candidate_no_match46A:
 							if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
 								goto candidate_no_match56A;
 
-							RECORD_MATCHING_FILTER(id);
+							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match56A:
 						}
 						break;
@@ -748,7 +752,7 @@ candidate_no_match56A:
 			if (BV_BLOCK_NOT_SUBSET(d5, p5))
 				goto next_msg;
 
-			RECORD_MATCHING_FILTER(id);
+			RECORD_MATCHING_FILTER(id,pi);
 next_msg:
 			if (BV_BLOCK_NOT_SUBSET(d0, p6))
 				continue;
@@ -763,7 +767,7 @@ next_msg:
 			if (BV_BLOCK_NOT_SUBSET(d5, p11))
 				continue;
 		
-			RECORD_MATCHING_FILTER(id);
+			RECORD_MATCHING_FILTER(id,pi+1);
 		}
 #else
 
@@ -842,7 +846,7 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 
 	uint32_t id = (blockDim.x * blockIdx.x) + threadIdx.x;
 
-
+int _count;
 	if(id >= fib_size)
 		return;
 
@@ -959,7 +963,7 @@ __global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size,
 				if (BV_BLOCK_NOT_SUBSET(d5, p5))
 					goto next_msg;
 
-			RECORD_MATCHING_FILTER(id);
+			RECORD_MATCHING_FILTER(id,pi);
 next_msg:
 
 			if (BV_BLOCK_NOT_SUBSET(d0, p6))
@@ -980,7 +984,7 @@ next_msg:
 				if (BV_BLOCK_NOT_SUBSET(d5, p11))
 					continue;
 
-			RECORD_MATCHING_FILTER(id);
+			RECORD_MATCHING_FILTER(id,pi+1);
 		}
 	}
 	else {
@@ -1032,7 +1036,7 @@ next_msg:
 				if (BV_BLOCK_NOT_SUBSET(d5, p5))
 					continue;
 
-			RECORD_MATCHING_FILTER(id);
+			RECORD_MATCHING_FILTER(id,pi);
 		}
 
 	}
@@ -1107,7 +1111,11 @@ void gpu::async_set_zero(void * dev_array, unsigned int size, unsigned int strea
 
 void gpu::async_get_results(result_t * host_results, result_t * dev_results, 
 							unsigned int size, unsigned int stream, unsigned int gpu) {
-	ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, sizeof(result_t)-(sizeof(uint16_t)*(PACKETS_BATCH_SIZE*INTERFACES-size)), cudaMemcpyDeviceToHost, streams[gpu][stream]));
+	// count + size * uint32 ids + floor(size/4) uint32 for msg ids
+	if (size > 0) 
+		ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, /*sizeof(result_t)*/ sizeof(uint32_t)*(1+size+(1+(size-1)/4)), cudaMemcpyDeviceToHost, streams[gpu][stream]));
+	else
+		ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, /*sizeof(result_t)*/ sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[gpu][stream]));
 	ABORT_ON_ERROR(cudaEventRecord(copiedBack[gpu][stream], streams[gpu][stream]));
 }
 

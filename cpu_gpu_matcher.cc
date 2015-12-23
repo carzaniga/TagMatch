@@ -337,13 +337,12 @@ int main(int argc, const char * argv[]) {
 		for(unsigned int pid = 0; pid < packets.size(); ++pid) {
 			bool this_pid_printed = false;
 			if (packets[pid].is_matching_complete()) {
-				for(unsigned i = 0; i < INTERFACES; ++i) { 
-					if (packets[pid].get_output(i)) {
-						if (!this_pid_printed) {
+				for(unsigned i = 0; i < packets[pid].get_matches_count(); ++i) { 
+					if (packets[pid].get_matches_count()) {
+						if (i==0)
 							cout << "packet=" << pid; 
-							this_pid_printed = true;
-						}
-						cout << ' ' << i;
+						this_pid_printed = true;
+						cout << ' ' << packets[pid].get_match(i);
 					}
 				}
 				if (this_pid_printed)
