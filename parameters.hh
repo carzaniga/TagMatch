@@ -14,6 +14,8 @@
 // now to MULTIPLIER has to be 1 because our output result_t only supports messageIDs of up to 256
 #define MULTIPLIER 1 // DO NOT change this value! 
 #define PACKETS_BATCH_SIZE (MULTIPLIER * GPU_BLOCK_SIZE) 
+//This represents the maximum number of matches that can be produced for a single packet.
+//In case there are more results, the list is truncated
 #define MAX_MATCHES_PP 128
 #define MAX_MATCHES MAX_MATCHES_PP * PACKETS_BATCH_SIZE
 

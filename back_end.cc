@@ -42,32 +42,48 @@
 	// we store filters on the gpu using 32-bit blocks.
 	// 
 	static const unsigned int BACKEND_BLOCK_SIZE = (GPU_WORD_SIZE * CHAR_BIT);
-
+	uint32_t absolute_id = 0;
+	uint32_t cleared = 0;
+	uint32_t pre = 0, post = 0, maxF = 0, minF = 310000;
 	// TEMPORARY FIB
 	// 
 	typedef vector<tree_interface_pair> ti_vector;
 
 	struct filter_descr {
 		filter_t filter;
-		ti_vector ti_pairs;
-
+		uint32_t id;
 		filter_descr(const filter_t & f,
-					 ti_vector::const_iterator begin,
-					 ti_vector::const_iterator end)
-			: filter(f), ti_pairs(begin, end) {};
+					 uint32_t i)
+			: filter(f), id(i) {
+			};
+	};
+	
+	struct filter_descr_users {
+		ti_vector ti_pairs; //TODO: to be deleted?
+		filter_descr_users(ti_vector::const_iterator begin,
+					 ti_vector::const_iterator end
+					 )
+			: ti_pairs(begin, end) {
+			};
 	};
 
 	typedef vector<filter_descr> f_descr_vector;
 	typedef map<unsigned int, f_descr_vector > tmp_fib_map;
 
 	static tmp_fib_map tmp_fib;
+	
+	typedef vector<filter_descr_users> f_descr_vector_users;
+	typedef map<unsigned int, f_descr_vector_users > tmp_fib_map_users;
+
+	static tmp_fib_map_users tmp_fib_users;
 
 	void back_end::add_filter(unsigned int part, const filter_t & f, 
 							  ti_vector::const_iterator begin,
 							  ti_vector::const_iterator end) {
 		// we simply add this filter to our temporary table
 		// 
-		tmp_fib[part].emplace_back(f, begin, end);
+		tmp_fib[part].emplace_back(f, absolute_id++);
+		tmp_fib_users[part].emplace_back(begin, end);
 	}
 
 	vector<uint8_t> prefix_block_lengths;
@@ -96,6 +112,7 @@
 		// with this partition.
 		//
 		uint32_t * fib;
+		uint32_t * fib_ids;
 
 		// maps each filter in the partition into the index in
 		// dev_ti_table that holds the tree-interface table for that
@@ -106,7 +123,7 @@
 		uint32_t * intersections ;
 		filter_t common_bits ;     // it holds common bits of all filters in this partition
 	//	part_descr(): size(0), fib(0), ti_indexes(0) {};
-		part_descr(): size(0), fib(0), ti_indexes(0), intersections(0) {};
+		part_descr(): size(0), fib(0), fib_ids(0), ti_indexes(0), intersections(0) {};
 
 		void clear() {
 			size = 0;
@@ -115,10 +132,15 @@
 				gpu::release_memory(fib);
 				fib = nullptr;
 			}
-
+			
 			if (ti_indexes) {
 				gpu::release_memory(ti_indexes);
 				ti_indexes = nullptr;
+			}
+
+			if (fib_ids) {
+				gpu::release_memory(fib_ids);
+				fib_ids = nullptr;
 			}
 		}
 	};
@@ -168,6 +190,8 @@
 		// PACKETS_BATCH_SIZE * INTERFACES
 		uint16_t * dev_query_ti_table;
 		result_t * dev_results[2];
+		uint32_t last_partition;
+		uint32_t second_last_partition;
 
 		void initialize(unsigned int s, unsigned int n) {
 			stream = s / GPU_NUM;
@@ -291,6 +315,7 @@ static void compile_fibs() {
 	for(auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
 		unsigned int part_id_plus_one = pf.first + 1;
 		const f_descr_vector & filters = pf.second;
+		const f_descr_vector_users & users = tmp_fib_users[pf.first];
 
 		if(max < filters.size())
 			max = filters.size();
@@ -299,8 +324,8 @@ static void compile_fibs() {
 			dev_partitions_size = part_id_plus_one;
 
 		total_filters += filters.size();
-		for(const filter_descr & fd : filters)
-			host_ti_table_size += fd.ti_pairs.size() + 1;
+		for(const filter_descr_users & fdu : users)
+			host_ti_table_size += fdu.ti_pairs.size() + 1;
 	}
 	// since we only need to know the number of partitions, instead of
 	// dev_partitions_size we could have a simple counter in the
@@ -313,11 +338,12 @@ static void compile_fibs() {
 	uint32_t * host_ti_table = new uint32_t[host_ti_table_size];
 	uint64_t ti_table_curr_pos = 0;
 	uint32_t * host_rep = new uint32_t[max * GPU_FILTER_WORDS];
+	uint32_t * host_rep_ids = new uint32_t[max];
 	uint32_t * host_ti_table_indexes = new uint32_t[total_filters];
 
 
 	int intersection_max_size = (max / (GPU_BLOCK_SIZE)); 
-	if (max % (GPU_BLOCK_SIZE) !=0)
+	if (max % GPU_BLOCK_SIZE !=0)
 		intersection_max_size++ ;	
 	uint32_t * block_intersections = new uint32_t [intersection_max_size * GPU_FILTER_WORDS];
 	uint32_t intersections [GPU_FILTER_WORDS] ;
@@ -335,6 +361,7 @@ static void compile_fibs() {
 		unsigned int part = pf.first;
 #if 1
 		f_descr_vector & filters = pf.second;
+		f_descr_vector_users & users = tmp_fib_users[pf.first];
 #else
 		const f_descr_vector & filters = pf.second;
 #endif
@@ -342,6 +369,7 @@ static void compile_fibs() {
 			dev_partitions[i][part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
+		unsigned int * host_rep_ids_f = host_rep_ids;
 		unsigned int * block_intersections_f  = block_intersections;
 		unsigned int full_blocks = prefix_block_lengths[part];
 		int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
@@ -361,7 +389,15 @@ static void compile_fibs() {
 		}
 //		std::sort(filters.begin(), filters.end(), compare_filters_decreasing) ; 
 		//for(const filter_descr & fd : filters) {
-		for(const filter_descr & fd : filters) {
+		for(const filter_descr_users & fd : users) {
+			host_ti_table[ti_table_curr_pos++] = fd.ti_pairs.size();
+			// and then we copy the table itself starting from the
+			// following position
+			// 
+			for(const tree_interface_pair & tip : fd.ti_pairs)
+				host_ti_table[ti_table_curr_pos++] = tip.interface();
+		}
+			for(const filter_descr & fd : filters) {
 //			cbits &= fd.filter ;
 			// we now store the index in the global tiff table for this fib entry
 			// 
@@ -372,12 +408,6 @@ static void compile_fibs() {
 			// we then store the *size* of the tiff table for this fib
 			// entry in that position in the global table.
 			//
-			host_ti_table[ti_table_curr_pos++] = fd.ti_pairs.size();
-			// and then we copy the table itself starting from the
-			// following position
-			// 
-			for(const tree_interface_pair & tip : fd.ti_pairs)
-				host_ti_table[ti_table_curr_pos++] = tip.interface();
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			// 
@@ -392,6 +422,11 @@ static void compile_fibs() {
 //				intersections[i- full_blocks] = (intersections[i- full_blocks] & ff.uint32_value(i)) ;
 				//partition_common_bits[i- full_blocks] = (partition_common_bits[i- full_blocks] & fd.filter.uint32_value(i)) ;
 			}
+#ifdef COALESCED_READS
+				host_rep_ids_f[counter] = fd.id;
+#else
+				*host_rep_ids_f++ = fd.id;
+#endif
 #if 0
 			for(unsigned int i = 0; i < GPU_FILTER_WORDS; ++i)
 				partition_common_bits[i] = (partition_common_bits[i] & fd.filter.uint32_value(i)) ;
@@ -415,6 +450,7 @@ static void compile_fibs() {
 		for (int i = 0; i < GPU_NUM; i++) {
 			gpu::set_device(i);
 			dev_partitions[i][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[i][part].size * (GPU_FILTER_WORDS - full_blocks) );
+			dev_partitions[i][part].fib_ids = gpu::allocate_and_copy<uint32_t>(host_rep_ids, dev_partitions[i][part].size);
 
 			dev_partitions[i][part].ti_indexes = gpu::allocate_and_copy<uint32_t>(host_ti_table_indexes, dev_partitions[i][part].size);
 		
@@ -429,13 +465,11 @@ static void compile_fibs() {
 			dev_ti_table[i] = gpu::allocate_and_copy<uint32_t>(host_ti_table, host_ti_table_size);
 	}
 	delete[](host_rep);
+	delete[](host_rep_ids);
 	delete[](host_ti_table_indexes);
 	delete[](host_ti_table);
 	delete[](block_intersections) ;
-#if COMBO
-#else 
 	tmp_fib.clear();
-#endif 
 }
 #endif
 
@@ -454,16 +488,29 @@ void* back_end::flush_stream()
 	gpu::syncOnResults(sh->stream, sh->gpu);
 	if (sh->second_last_batch != nullptr) {
 	  res = sh->second_last_batch_ptr;
-	  
-	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
-		//sh->second_last_batch[sh->host_results[sh->flip]->pairs[i]>>8]->set_output(sh->host_results[sh->flip]->pairs[i] & 0xff);
+	  assert(sh->host_results[sh->flip]->count <= MAX_MATCHES); 
+	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count && i<MAX_MATCHES; ++i) {
 			unsigned char pkt = (sh->host_results[sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
 			uint32_t id = sh->host_results[sh->flip]->pairs[5*(i/4)+1+(i%4)];
-			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
-			sh->second_last_batch[pkt]->set_matched_subscription(id);
+			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
+			sh->second_last_batch[pkt]->lock_mtx();	
+			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) { 
+				sh->second_last_batch[pkt]->add_output_user(filter.ti_pairs[i].get_uint32_value());
+			}
+			sh->second_last_batch[pkt]->unlock_mtx();	
 	  }
-	  for(unsigned int i=0; i< sh->second_last_batch_size; i++)
-		sh->second_last_batch[i]->partition_done();
+	  for(unsigned int i=0; i< sh->second_last_batch_size; i++) {
+			sh->second_last_batch[i]->partition_done();
+			if (sh->second_last_batch[i]->is_matching_complete()) {
+				sh->second_last_batch[i]->clear();
+				cleared++;
+				pre += sh->second_last_batch[i]->getpre();
+				post += sh->second_last_batch[i]->getpost();
+				if (sh->second_last_batch[i]->getpre() > maxF) maxF = sh->second_last_batch[i]->getpre();
+				if (sh->second_last_batch[i]->getpre() < minF) minF = sh->second_last_batch[i]->getpre();
+				if (cleared%65536==0) std::cout << "\rCleared: " << cleared << std::flush;
+			}
+	  }
   	}
 	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream, sh->gpu);
 	return res;
@@ -494,15 +541,29 @@ void* back_end::second_flush_stream()
 	if (sh->last_batch != nullptr) {
 		res = sh->last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
-	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
-			//sh->last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
+	 	assert(sh->host_results[sh->flip]->count <= MAX_MATCHES); 
+	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count && i<MAX_MATCHES; ++i) {
 			unsigned char pkt = (sh->host_results[!sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
 			uint32_t id = sh->host_results[!sh->flip]->pairs[5*(i/4)+1+i%4];
 			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
-			sh->second_last_batch[pkt]->set_matched_subscription(id);
+			const filter_descr_users & filter = tmp_fib_users[sh->last_partition][id];
+			sh->last_batch[pkt]->lock_mtx();	
+			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
+				sh->last_batch[pkt]->add_output_user(filter.ti_pairs[i].get_uint32_value());
+			sh->last_batch[pkt]->unlock_mtx();	
 		}
-	  	for(unsigned int i=0; i< sh->last_batch_size; i++)
+	  	for(unsigned int i=0; i< sh->last_batch_size; i++) {
 			sh->last_batch[i]->partition_done();
+			if (sh->last_batch[i]->is_matching_complete()) {
+				sh->last_batch[i]->clear();
+				cleared++;
+				pre += sh->last_batch[i]->getpre();
+				post += sh->last_batch[i]->getpost();
+				if (sh->last_batch[i]->getpre() > maxF) maxF = sh->last_batch[i]->getpre();
+				if (sh->last_batch[i]->getpre() < minF) minF = sh->last_batch[i]->getpre();
+				if (cleared%65536==0) std::cout << "\rCleared: " << cleared << std::flush;
+			}
+		}
   	}
 	return res;
 }
@@ -548,13 +609,12 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-		//sh->host_query_ti_table[sh->flip][i] = batch[i]->ti_pair.get_uint16_value();
 	}
 	gpu::set_device(sh->gpu);
 	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
-	//gpu::async_copy(sh->host_query_ti_table[sh->flip], sh->dev_query_ti_table, batch_size*sizeof(uint16_t), sh->stream, sh->gpu);
 
-	gpu::run_kernel(dev_partitions[sh->gpu][part].fib, dev_partitions[sh->gpu][part].size, 
+	gpu::run_kernel(dev_partitions[sh->gpu][part].fib, dev_partitions[sh->gpu][part].fib_ids, 
+					dev_partitions[sh->gpu][part].size, 
 					dev_ti_table[sh->gpu], dev_partitions[sh->gpu][part].ti_indexes, 
 					sh->dev_query_ti_table, batch_size, 
 					sh->dev_results[sh->flip],
@@ -567,12 +627,15 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
-		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
+	 	assert(sh->host_results[sh->flip]->count <= MAX_MATCHES); 
+		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count && i<MAX_MATCHES; ++i) {
 			unsigned char pkt = (sh->host_results[!sh->flip]->pairs[5*(i/4)] >> (8*(i%4)));
 			uint32_t id = sh->host_results[!sh->flip]->pairs[5*(i/4)+1+(i%4)];
-			//std::cout << "(" << i << "):" << (uint16_t)pkt << " matched " << id << std::endl;
-			sh->second_last_batch[pkt]->set_matched_subscription(id);
-			//sh->second_last_batch[sh->host_results[!sh->flip]->pairs[i]>>8]->set_output(sh->host_results[!sh->flip]->pairs[i] & 0xff);
+			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
+			sh->second_last_batch[pkt]->lock_mtx();	
+			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
+				sh->second_last_batch[pkt]->add_output_user(filter.ti_pairs[i].get_uint32_value());
+			sh->second_last_batch[pkt]->unlock_mtx();	
 #if 0
 			// this is where we could check whether the processing of
 			// message batch[i] is complete, in which case we could
@@ -582,8 +645,18 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 				deallocate_packet(batch[i]);
 #endif
 		}
-		for(unsigned int i=0; i< sh->second_last_batch_size; i++)
+		for(unsigned int i=0; i< sh->second_last_batch_size; i++) {
 			sh->second_last_batch[i]->partition_done();
+			if (sh->second_last_batch[i]->is_matching_complete()) {
+				sh->second_last_batch[i]->clear();
+				cleared++;
+				pre += sh->second_last_batch[i]->getpre();
+				post += sh->second_last_batch[i]->getpost();
+				if (sh->second_last_batch[i]->getpre() > maxF) maxF = sh->second_last_batch[i]->getpre();
+				if (sh->second_last_batch[i]->getpre() < minF) minF = sh->second_last_batch[i]->getpre();
+				if (cleared%65536==0) std::cout << "\rCleared: " << cleared << std::flush;
+			}
+		}
 	}
 	// If we are at the 2nd cycle, synchronize on the results from the
 	// previous iteration, so that the counter for the results to be
@@ -607,6 +680,10 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	sh->last_batch = batch;
 	sh->last_batch_size = batch_size;
 	sh->last_batch_ptr = batch_ptr;
+
+	sh->second_last_partition = sh->last_partition; 
+	sh->last_partition = part;
+
 	release_stream_handle(sh);
 #else //back_end_is_void 
 
@@ -617,8 +694,6 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	// for the extraction of the results.  Here we use the absolute
 	// worst case, where we set ALL output interfaces.
 	for(unsigned int i = 0; i < batch_size; ++i) {
-		for(unsigned int j = 0; j < INTERFACES; ++j) 
-			//batch[i]->set_output(j);
 		batch[i]->partition_done();
 #if 0
 		// this is where we could check whether the processing of
@@ -682,4 +757,9 @@ void back_end::clear() {
 	destroy_stream_handlers();
 	gpu::shutdown();
 #endif
+	std::cout << "Pre: " << pre / 4000000 << std::endl;
+	std::cout << "Post: " << post / 4000000 << std::endl;
+	std::cout << "Max: " << maxF << std::endl;
+	std::cout << "Min: " << minF << std::endl;
+
 }

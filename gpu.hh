@@ -72,7 +72,7 @@ public:
 	static void get_results(ifx_result_t * host_results, ifx_result_t * dev_results, 
 							unsigned int size);
 
-	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
+	static void run_kernel(uint32_t * fib, uint32_t * fib_ids, unsigned int fib_size, 
 						   uint32_t * dev_ti_table, 
 						   unsigned int * ti_table_indexes, 
 						   uint16_t * dev_query_ti_table, unsigned int batch_size, 

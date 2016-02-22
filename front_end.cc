@@ -827,7 +827,7 @@ void front_end::stop() {
 		batch_pool::put(p) ;
 	}
 
-	processing_state = FE_INITIAL;;
+	processing_state = FE_INITIAL;
 }
 
 void front_end::clear() {

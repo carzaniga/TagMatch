@@ -303,7 +303,7 @@ int main(int argc, const char * argv[]) {
 		cout << "\t\t" << std::setw(10) 
 			 << back_end::bytesize()/(1024*1024) << "MB back-end FIB" << endl;
 #endif
-		cout << "Matching packets with " << thread_count << " threads..." << std::flush;
+		cout << "Matching packets with " << thread_count << " threads and " << GPU_NUM << " gpus..." << std::flush;
 	}
 
 	front_end::start(thread_count);
@@ -332,18 +332,19 @@ int main(int argc, const char * argv[]) {
 
 	back_end::clear();
 	front_end::clear();
+	
 
 	if (print_matching_results) {
 		for(unsigned int pid = 0; pid < packets.size(); ++pid) {
 			bool this_pid_printed = false;
 			if (packets[pid].is_matching_complete()) {
-				for(unsigned i = 0; i < packets[pid].get_matches_count(); ++i) { 
-					if (packets[pid].get_matches_count()) {
-						if (i==0)
-							cout << "packet=" << pid; 
+				std::vector<uint32_t> users = packets[pid].get_users();
+					if (users.size()) {
+						cout << "packet=" << pid; 
 						this_pid_printed = true;
-						cout << ' ' << packets[pid].get_match(i);
-					}
+						for (uint32_t user: users) {
+							std::cout << " " << user;
+						}
 				}
 				if (this_pid_printed)
 					cout << endl;

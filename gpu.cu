@@ -69,7 +69,9 @@ if (_count < MAX_MATCHES) {\
 
 __global__ void 
 //__launch_bounds__(256, 8)
-three_phase_matching(const uint32_t * __restrict__ fib, unsigned int fib_size, 
+three_phase_matching(const uint32_t * __restrict__ fib, 
+									 const uint32_t * __restrict__ fib_ids, 
+									 unsigned int fib_size, 
 									 const uint32_t * __restrict__ ti_table, 
 									 const unsigned int * __restrict__ ti_indexes,  
 									 const uint16_t * __restrict__ query_ti_table ,  unsigned int batch_size, 
@@ -836,7 +838,8 @@ no_match: ;
 }
 
 template <unsigned int Blocks>
-__global__ void one_phase_matching(uint32_t * fib, unsigned int fib_size, 
+__global__ void one_phase_matching(uint32_t * fib, uint32_t * fib_ids, 
+								   unsigned int fib_size, 
 								   uint32_t * ti_table, 
 								   unsigned int * ti_indexes,  
 								   uint16_t * query_ti_table ,  unsigned int batch_size, 
@@ -1147,7 +1150,7 @@ static const int stopCounter=55 ;
 sig_atomic_t kernelCounter=0 ;
 #endif
 
-void gpu::run_kernel(uint32_t * fib, unsigned int fib_size, 
+void gpu::run_kernel(uint32_t * fib, uint32_t * fib_ids, unsigned int fib_size, 
 					 uint32_t * ti_table, 
 					 unsigned int * ti_indexes, 
 					 uint16_t * query_ti_table, unsigned int batch_size, 
@@ -1195,7 +1198,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 #else
 	case 0:
 		three_phase_matching <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream, intersections);
+			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream, intersections);
 		break;
 
 	case 1:
@@ -1215,7 +1218,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 #endif
 	case 4: 	
 		one_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
+			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 
@@ -1223,7 +1226,7 @@ void gpu::run_kernel(uint32_t * fib, unsigned int fib_size,
 
 	case 5: 	
 		one_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
+			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 

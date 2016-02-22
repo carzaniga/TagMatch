@@ -11,10 +11,13 @@
 #include <cassert>
 #include <string>
 #include <atomic>
+#include <vector>
+#include <algorithm>
 
 #include "parameters.hh"
 #include "bitvector.hh"
 #include "io_util.hh"
+#include <mutex> 
 
 typedef uint32_t interface_t;
 /** tree--interface pair */ 
@@ -150,11 +153,10 @@ private:
 	// this should be faster
 	//
 #ifdef WITH_ATOMIC_OUTPUT
-	std::atomic<unsigned char> output[INTERFACES]; 
 #else   
-	unsigned char output[INTERFACES];
-	int mcount = 0;
-	uint32_t matched_subscriptions[MAX_MATCHES_PP];
+	std::mutex mtx;
+	std::vector<uint32_t> output_users;
+	uint32_t pre,post;
 #endif
 public:
 	packet(const filter_t f, uint32_t i)
@@ -185,16 +187,6 @@ public:
     void reset() {
         state = FrontEnd;
 		pending_partitions = 0;
-		reset_output();
-    }
-
-    void reset_output() {
-#ifdef WITH_ATOMIC_OUTPUT
-		for(unsigned int i = 0; i < INTERFACES; ++i)
-			output[i].store(0);
-#else
-		memset(output, 0, sizeof(output));
-#endif
     }
 
     void frontend_done() {
@@ -205,42 +197,44 @@ public:
         return (state != FrontEnd) && (pending_partitions == 0);
     }
 
-	bool get_output(unsigned int ifx) const {
-#ifdef WITH_ATOMIC_OUTPUT		
-		return (output[ifx].load() == 1);
-#else
-		return (output[ifx] == 1);
-#endif
+	void lock_mtx() {
+		mtx.lock();
 	}
 
-	void set_output(unsigned int ifx) {
-#ifdef WITH_ATOMIC_OUTPUT		
-		output[ifx].store(1);
-#else
-		output[ifx] = 1;
-#endif
+	void unlock_mtx() {
+		mtx.unlock();
 	}
 
-	void set_matched_subscription(uint32_t sub) {
-		if (mcount < MAX_MATCHES_PP)
-			matched_subscriptions[mcount++] = sub;
+	void add_output_user(uint32_t user) {
+		output_users.push_back(user);
 	}
 
-	uint32_t get_matches_count() {
-		return mcount;
+	std::vector<uint32_t> get_users() {
+		return output_users;
 	}
 
-	uint32_t get_match(uint32_t i) {
-		return matched_subscriptions[i];
+	void clear() {
+		mtx.lock();
+		
+		pre = output_users.size();
+		std::sort( output_users.begin(), output_users.end() );
+		output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
+		post = output_users.size();
+
+		output_users.clear();
+		std::vector<uint32_t>().swap(output_users);
+		
+		mtx.unlock();
 	}
 
-	void reset_output(unsigned int ifx) {
-#ifdef WITH_ATOMIC_OUTPUT		
-		output[ifx].store(0);
-#else
-		output[ifx] = 0;
-#endif
+	uint32_t getpre() {
+		return pre;
 	}
+
+	uint32_t getpost() {
+		return post;
+	}
+
 };
 
 #endif // PACKET_HH_INCLUDED
