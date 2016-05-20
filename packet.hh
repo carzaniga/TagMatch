@@ -18,43 +18,11 @@
 #include "bitvector.hh"
 #include "io_util.hh"
 
-#if 0
-/** tree--interface pair with I/O capabilities */ 
-class tree_interface_pair_io : public tree_interface_pair {
-public:
-	tree_interface_pair_io()
-		: tree_interface_pair() {};
-	
-	tree_interface_pair_io(tree_t t, interface_t ifx)
-		: tree_interface_pair(t, ifx) {};
-	
-	std::ostream & write_binary(std::ostream & output) const {
-		return io_util_write_binary(output, value);
-	}
-
-	std::istream & read_binary(std::istream & input) {
-		return io_util_read_binary(input, value);
-	}
-
-	std::ostream & write_ascii(std::ostream & output) const {
-		return output << tree() << ' ' << interface();
-	}
-
-	std::istream & read_ascii(std::istream & input) {
-		uint16_t t;
-		uint16_t i;
-		if (input >> t >> i)
-			value = ((t << TREE_OFFSET) | (i & IFX_MASK));
-		return input;
-	}
-};
-#else
 extern std::ostream & tip_write_binary(const tree_interface_pair & tip, std::ostream & output);
 extern std::istream & tip_read_binary(tree_interface_pair & tip, std::istream & input);
 
 extern std::ostream & tip_write_ascii(const tree_interface_pair & tip, std::ostream & output);
 extern std::istream & tip_read_ascii(tree_interface_pair & tip, std::istream & input);
-#endif
 
 // this class represents the raw data read from the network.
 // 
