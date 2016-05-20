@@ -34,15 +34,15 @@ using std::atomic;
 
 // TEMPORARY FIB
 // 
-typedef vector<tree_interface_pair> ti_vector;
+typedef vector<tree_interface_pair> tip_vector;
 
 struct filter_descr {
 	filter_t filter;
-	ti_vector ti_pairs;
+	tip_vector ti_pairs;
 
 	filter_descr(const filter_t & f,
-				 const tree_interface_pair * begin,
-				 const tree_interface_pair * end)
+				 tip_vector::const_iterator begin,
+				 tip_vector::const_iterator end)
 		: filter(f), ti_pairs(begin, end) {};
 };
 
@@ -52,8 +52,8 @@ typedef map<unsigned int, f_descr_vector > tmp_fib_map;
 static tmp_fib_map tmp_fib;
 
 void back_end::add_filter(unsigned int part, const filter_t & f, 
-						  const tree_interface_pair * begin,
-						  const tree_interface_pair * end) {
+						  tip_vector::const_iterator begin,
+						  tip_vector::const_iterator end) {
 	// we simply add this filter to our temporary table
 	// 
 	tmp_fib[part].emplace_back(f, begin, end);

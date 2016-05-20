@@ -8,7 +8,6 @@
 #include <vector>
 #include <string>
 
-#include "packet.hh"
 #include "fib.hh"
 
 using std::vector;

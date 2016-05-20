@@ -9,7 +9,6 @@
 #define NODE_USES_MALLOC
 #endif
 
-
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
@@ -18,7 +17,6 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
-
 
 #ifdef NODE_USES_MALLOC
 #include <new>

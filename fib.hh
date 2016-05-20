@@ -11,7 +11,7 @@
 #include "io_util.hh"
 #include "packet.hh"
 
-class ti_vector : public std::vector<tree_interface_pair_io> {
+class tip_io_vector : public std::vector<tree_interface_pair> {
 public:
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);
@@ -20,7 +20,7 @@ public:
 class fib_entry {
 public:
 	filter_t filter;
-	ti_vector ti_pairs;
+	tip_io_vector ti_pairs;
 
 	fib_entry() : filter(), ti_pairs() {}
 

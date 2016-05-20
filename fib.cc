@@ -9,22 +9,22 @@
 #include "io_util.hh"
 #include "fib.hh"
 
-std::ostream & ti_vector::write_binary(std::ostream & output) const {
+std::ostream & tip_io_vector::write_binary(std::ostream & output) const {
 	uint32_t vector_size = size();
 	io_util_write_binary(output, vector_size);
 	for(const_iterator i = begin(); i != end(); ++i)
-		i->write_binary(output);
+		tip_write_binary(*i, output);
 	return output;
 }
 
-std::istream & ti_vector::read_binary(std::istream & input) {
+std::istream & tip_io_vector::read_binary(std::istream & input) {
 	uint32_t vector_size;
 	if (!io_util_read_binary(input, vector_size))
 		return input;
 
 	resize(vector_size);
 	for(iterator i = begin(); i != end(); ++i)
-		if (!i->read_binary(input))
+		if (!tip_read_binary(*i, input))
 			return input;
 
 	return input;
@@ -32,12 +32,12 @@ std::istream & ti_vector::read_binary(std::istream & input) {
 
 std::ostream & fib_entry::write_ascii(std::ostream & output) const {
 	output << "+ ";
-	ti_pairs[0].write_ascii(output);
+	tip_write_ascii(ti_pairs[0], output);
 	output << " ";
 	filter.write_ascii(output);
 	for(unsigned int i = 1; i < ti_pairs.size(); ++i) {
 		output << " ";
-		ti_pairs[i].write_ascii(output);
+		tip_write_ascii(ti_pairs[i], output);
 	}
 	output << std::endl;
 	return output;
@@ -51,9 +51,9 @@ std::istream & fib_entry::read_ascii(std::istream & input) {
 		input_line >> command;
 
 		if (command == "+") {
-			tree_interface_pair_io ti;
+			tree_interface_pair ti;
 
-			if (! ti.read_ascii(input_line))
+			if (! tip_read_ascii(ti, input_line))
 				return input;
 
 			if (! filter.read_ascii(input_line))
@@ -63,7 +63,7 @@ std::istream & fib_entry::read_ascii(std::istream & input) {
 
 			do {
 				ti_pairs.push_back(ti);
-			} while (ti.read_ascii(input_line));
+			} while (tip_read_ascii(ti, input_line));
 		}
 	}
 	return input;
@@ -102,7 +102,7 @@ std::ostream & partition_fib_entry::write_ascii(std::ostream & output) const {
 	filter.write_ascii(output);
 	for(unsigned int i = 0; i < ti_pairs.size(); ++i) {
 		output << " ";
-		ti_pairs[i].write_ascii(output);
+		tip_write_ascii(ti_pairs[i], output);
 	}
 	output << std::endl;
 	return output;
@@ -117,13 +117,13 @@ std::istream & partition_fib_entry::read_ascii(std::istream & input) {
 
 		if (command == "f") {
 			if (input_line >> partition) {
-				tree_interface_pair_io ti;
+				tree_interface_pair ti;
 
 				if (! filter.read_ascii(input_line))
 					return input;
 
 				ti_pairs.clear();
-				while(ti.read_ascii(input_line))
+				while(tip_read_ascii(ti, input_line))
 					ti_pairs.push_back(ti);
 			}
 		}

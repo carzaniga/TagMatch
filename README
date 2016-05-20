@@ -1,6 +1,11 @@
-This program is part of the Siena Content-Based Networking System.
-This program implements the forwarding table of a content-based router
-that uses a routing scheme built on mutiple spanning trees.
+This software is part of the Siena Content-Based Networking System.
+In particular, this software targets TagNet, a content-based network
+in which content descriptors consist of sets of tags.
+
+This package contains a number of prototypes and experimental software
+for the implementation of the forwarding module for TagNet.  The
+forwarding tables and matching algorithms are for a routing scheme
+built on mutiple spanning trees.
 
 This package contains the following programs:
 

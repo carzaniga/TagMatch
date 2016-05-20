@@ -16,8 +16,8 @@
 class back_end {
 public:
 	static void add_filter(unsigned int partition, const filter_t & f, 
-						   const tree_interface_pair * begin,
-						   const tree_interface_pair * end);
+						   std::vector<tree_interface_pair>::const_iterator begin,
+						   std::vector<tree_interface_pair>::const_iterator end);
 	static void start();
 	static void process_batch(unsigned int part, packet ** batch, unsigned int batch_size);
 	static void stop();

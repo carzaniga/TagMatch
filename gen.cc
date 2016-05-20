@@ -3,14 +3,12 @@
 #include <random>
 #include <bitset>
 
-#include "params.h"
-
 #define APP 1
 #define TREE 0
 
 int main(int argc, char * argv[]) {
-    const int M = BLOOM_FILTER_SIZE;
-    const int k = BLOOM_FILTER_K;
+    const int M = 192;
+    const int k = 7;
 
     unsigned N = 1000;
     unsigned Amin = 1;

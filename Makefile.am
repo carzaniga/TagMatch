@@ -3,7 +3,7 @@ SUBDIRS = . test
 ACLOCAL_AMFLAGS = -I m4 
 
 AM_CFLAGS = $(CFLAGS_prof) 
-AM_CXXFLAGS = -pthread -std=c++0x $(CXXFLAGS_prof)
+AM_CXXFLAGS = -pthread -std=c++11 $(CXXFLAGS_prof)
 AM_LDFLAGS = $(LDFLAGS_prof)
 
 #
@@ -24,9 +24,9 @@ bin_PROGRAMS = router gen gen2 split_prefixes \
 		cpu_gpu_matcher test_matcher \
 		analyze_workload convert_workload sample_workload split_workload
 
-gen_SOURCES = gen.cc params.h
+gen_SOURCES = gen.cc
 
-gen2_SOURCES = gen2.cc predicate.hh
+gen2_SOURCES = gen2.cc predicate.hh bv192.hh bv.hh
 
 router_SOURCES = main2.cc predicate.hh timing.hh \
 		router.cc router.hh	
@@ -34,6 +34,7 @@ router_LDADD = $(LIBS_prof) libpredicate.la
 
 if WORKING_NVCC
 cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
+			filter.hh routing.hh \
 			cpu_gpu_matcher.cc fib.cc packet.cc \
 			front_end.cc front_end.hh back_end.cc back_end.hh \
 			gpu.cu 
@@ -44,23 +45,25 @@ else
 ## this can only work with --disable-backend
 ##
 cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
+			filter.hh routing.hh \
 			cpu_gpu_matcher.cc fib.cc packet.cc \
 			front_end.cc front_end.hh back_end.cc back_end.hh
 endif
 
-test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh \
+test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh fib.hh \
+			filter.hh routing.hh \
 			packet.cc fib.cc
 
-split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
+split_prefixes_SOURCES = split_prefixes.cc filter.hh routing.hh bitvector.hh 
 
 analyze_workload_SOURCES = analyze_workload.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
+			packet.hh fib.hh bitvector.hh filter.hh routing.hh
 
 convert_workload_SOURCES = convert_workload.cc fib.cc packet.cc \
-			fib.hh packet.hh bitvector.hh
+			fib.hh packet.hh bitvector.hh filter.hh routing.hh
 
 sample_workload_SOURCES = sample_workload.cc fib.cc packet.cc \
-			fib.hh packet.hh bitvector.hh
+			fib.hh packet.hh bitvector.hh filter.hh routing.hh
 
 split_workload_SOURCES = split_workload.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
+			packet.hh fib.hh bitvector.hh filter.hh routing.hh
