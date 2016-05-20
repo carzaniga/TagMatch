@@ -24,6 +24,7 @@
 #include <new>
 #endif
 
+#if 1
 #ifdef WITH_BV192
 #include "bv192.hh"
 
@@ -32,14 +33,15 @@ typedef bv192 filter_t;
 #include "bv.hh"
 typedef bv<192> filter_t;
 #endif
-
+#else
+#include "filter.hh"
+#endif
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
 
 /** tree identifier */ 
 typedef uint16_t tree_t;
-
 
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -323,7 +325,7 @@ public:
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: key(), left(this), right(this), pos(filter_t::NULL_POSITION), 
+			: key(), left(this), right(this), pos(filter_t::WIDTH), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node

@@ -63,12 +63,14 @@ static int read_filters(string fname, bool binary_format) {
 	partition_fib_entry f;
 	if (binary_format) {
 		while(f.read_binary(is)) {
-			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			back_end::add_filter(f.partition, f.filter,
+								 f.ti_pairs.data(), f.ti_pairs.data() + f.ti_pairs.size());
 			++res;
 		}
 	} else {
 		while(f.read_ascii(is)) {
-			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			back_end::add_filter(f.partition, f.filter,
+								 f.ti_pairs.data(), f.ti_pairs.data() + f.ti_pairs.size());
 			++res;
 		}
 	}

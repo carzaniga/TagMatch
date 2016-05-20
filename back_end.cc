@@ -41,8 +41,8 @@ struct filter_descr {
 	ti_vector ti_pairs;
 
 	filter_descr(const filter_t & f,
-				 ti_vector::const_iterator begin,
-				 ti_vector::const_iterator end)
+				 const tree_interface_pair * begin,
+				 const tree_interface_pair * end)
 		: filter(f), ti_pairs(begin, end) {};
 };
 
@@ -52,8 +52,8 @@ typedef map<unsigned int, f_descr_vector > tmp_fib_map;
 static tmp_fib_map tmp_fib;
 
 void back_end::add_filter(unsigned int part, const filter_t & f, 
-						  ti_vector::const_iterator begin,
-						  ti_vector::const_iterator end) {
+						  const tree_interface_pair * begin,
+						  const tree_interface_pair * end) {
 	// we simply add this filter to our temporary table
 	// 
 	tmp_fib[part].emplace_back(f, begin, end);

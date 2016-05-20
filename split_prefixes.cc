@@ -9,8 +9,12 @@
 #include <cstdio>
 #include <algorithm>
 
-#include "bv.hh"
-#include "predicate.hh"
+#include "filter.hh"
+#include "routing.hh"
+
+static inline std::ostream & operator << (std::ostream & os, const filter_t & f) {
+	return f.write_ascii(os);
+}
 
 static std::vector<tree_interface_pair> ti_pairs;
 
@@ -78,8 +82,8 @@ void read_filters_vector(std::istream & is) {
 
 static unsigned int MIN_K = 2;
 
-filter_t::pos_t kth_most_significant_one_pos(const filter_t & f, unsigned int k) {
-	filter_t::pos_t i = filter_t::WIDTH;
+filter_pos_t kth_most_significant_one_pos(const filter_t & f, unsigned int k) {
+	filter_pos_t i = filter_t::WIDTH;
 	do {
 		--i;
 		if (f[i]) 
@@ -94,14 +98,14 @@ void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostre
 	unsigned int pid = 0;
 
 	while (f != filters.end()) {
-		filter_t::pos_t prefix_pos = 0;
+		filter_pos_t prefix_pos = 0;
 		std::vector<filter_descr>::const_iterator g = f + 1;
 		std::vector<filter_descr>::const_iterator next_f = g; 
 
-		filter_t::pos_t kth_msb_pos = kth_most_significant_one_pos(f->filter, MIN_K);
+		filter_pos_t kth_msb_pos = kth_most_significant_one_pos(f->filter, MIN_K);
 		
 		while(g != filters.end() && (g - f) < max_size) {
-			filter_t::pos_t msd = filter_t::most_significant_diff_pos(f->filter, g->filter);
+			filter_pos_t msd = f->filter.leftmost_diff(g->filter);
 
 			if (msd > prefix_pos) {
 				if (kth_msb_pos <= msd) {
@@ -130,7 +134,7 @@ void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostre
 			for(std::vector<filter_descr>::const_iterator i = f; i != next_f; ++i) {
 				*filters_os << "f " << pid << ' ' << i->filter;
 				for(unsigned int j = i->ti_pairs_begin; j < i->ti_pairs_end; ++j)
-					*filters_os << ' ' << ti_pairs[j].tree << ' ' << ti_pairs[j].interface;
+					*filters_os << ' ' << ti_pairs[j].tree() << ' ' << ti_pairs[j].interface();
 				*filters_os << std::endl;
 			}
 		}

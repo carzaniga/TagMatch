@@ -11,7 +11,7 @@
 #include "io_util.hh"
 #include "packet.hh"
 
-class ti_vector : public std::vector<tree_interface_pair> {
+class ti_vector : public std::vector<tree_interface_pair_io> {
 public:
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);

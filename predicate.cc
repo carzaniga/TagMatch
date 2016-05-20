@@ -89,7 +89,7 @@ void predicate::node::remove_last_pair() {
 }
 
 void predicate::destroy() {
-    for(int i = 0; i < filter_t::WIDTH; ++i){
+    for(filter_t::pos_t i = 0; i < filter_t::WIDTH; ++i){
         for(int j = 0; i < roots[i].size; ++j){
             node r = roots[i].tries[j];
             if (r.pos <= r.left->pos)
@@ -377,7 +377,7 @@ predicate::node * predicate::add(const filter_t & x, node & root) {
 
 	// now we insert the new node between prev and curr
 	++filter_count;
-	if (prev->pos < filter_t::NULL_POSITION && x[prev->pos]) {
+	if (prev->pos < filter_t::WIDTH && x[prev->pos]) {
 		return prev->right = new node(pos, x, curr);
 	} else {
 		return prev->left = new node(pos, x, curr);

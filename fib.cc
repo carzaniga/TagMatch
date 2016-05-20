@@ -51,7 +51,7 @@ std::istream & fib_entry::read_ascii(std::istream & input) {
 		input_line >> command;
 
 		if (command == "+") {
-			tree_interface_pair ti;
+			tree_interface_pair_io ti;
 
 			if (! ti.read_ascii(input_line))
 				return input;
@@ -117,7 +117,7 @@ std::istream & partition_fib_entry::read_ascii(std::istream & input) {
 
 		if (command == "f") {
 			if (input_line >> partition) {
-				tree_interface_pair ti;
+				tree_interface_pair_io ti;
 
 				if (! filter.read_ascii(input_line))
 					return input;

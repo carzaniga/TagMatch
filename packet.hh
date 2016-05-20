@@ -13,66 +13,20 @@
 #include <atomic>
 
 #include "parameters.hh"
+#include "filter.hh"
+#include "routing.hh"
 #include "bitvector.hh"
 #include "io_util.hh"
 
-/** interface identifier */ 
-typedef uint16_t interface_t;
-
-/** tree identifier */ 
-typedef uint16_t tree_t;
-
-/** tree--interface pair */ 
-class tree_interface_pair {
-// 
-// ASSUMPTIONS: 
-//   1. the router has at most 2^13 = 8192 interfaces
-//   2. the are at most 2^3 = 8 trees
-//
-	uint16_t value;
-
+/** tree--interface pair with I/O capabilities */ 
+class tree_interface_pair_io : public tree_interface_pair {
 public:
-	static const unsigned int TREE_OFFSET = 13;
-	static const uint16_t IFX_MASK = (0xFFFF >> (16 - TREE_OFFSET));
-
-	tree_interface_pair()
-		: value(0) {};
+	tree_interface_pair_io()
+		: tree_interface_pair() {};
 	
-	tree_interface_pair(tree_t t, interface_t ifx)
-		: value((t << TREE_OFFSET) | (ifx & IFX_MASK)) {};
+	tree_interface_pair_io(tree_t t, interface_t ifx)
+		: tree_interface_pair(t, ifx) {};
 	
-	tree_interface_pair(const tree_interface_pair & p)
-		: value(p.value) {};
-	
-	bool operator < (const tree_interface_pair &x) const {
-		return value < x.value;
-	}
-	bool operator == (const tree_interface_pair & rhs) const {
-		return value == rhs.value;
-	}
-	bool equals(tree_t t, interface_t ifx) const {
-		return (value == ((t << TREE_OFFSET) | (ifx & IFX_MASK)));
-	}
-	uint16_t get_uint16_value() const {
-		return value;
-	}
-
-	uint16_t tree() const {
-		return value >> TREE_OFFSET;;
-	}
-
-	uint16_t interface() const {
-		return value & IFX_MASK;
-	}
-
-	static uint16_t tree(uint16_t value) {
-		return value >> TREE_OFFSET;;
-	}
-
-	static uint16_t interface(uint16_t value) {
-		return value & IFX_MASK;
-	}
-
 	std::ostream & write_binary(std::ostream & output) const {
 		return io_util_write_binary(output, value);
 	}
@@ -94,20 +48,12 @@ public:
 	}
 };
 
-//
-// A packet is whatever we get from the network.  At this point, the
-// only important components are the filter, which is a 192-bit Bloom
-// filter, the tree that the packet is routed on, and the interface it
-// comes from.
-
-typedef bitvector<192> filter_t;
-
 // this class represents the raw data read from the network.
 // 
 class network_packet {
 public:
 	filter_t filter;
-	tree_interface_pair ti_pair;
+	tree_interface_pair_io ti_pair;
 
 	network_packet() : filter(), ti_pair() {};
 
