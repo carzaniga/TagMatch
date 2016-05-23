@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <assert.h>
 
 #include "gpu.hh"
 #include "cuda_profiler_api.h"
@@ -54,27 +55,17 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 #endif
 
 #define RECORD_MATCHING_FILTER(id,msg)\
-_count = atomicAdd(&(results_count->count), 1);\
-if (_count < MAX_MATCHES) {\
-	                  atomicAdd(&results_data->pairs[5*(_count/4)], ((uint32_t)msg << (8 * (_count % 4))));\
-	                  results_data->pairs[5*(_count/4)+1+(_count%4)] = id;\
+rescount = atomicAdd(&(results_count->count), 1);\
+if (rescount < MAX_MATCHES) {\
+	                  atomicOr(&results_data->pairs[5*(rescount/4)], ((uint32_t)msg << (8 * (rescount % 4))));\
+	                  results_data->pairs[5*(rescount/4)+1+(rescount%4)] = id;\
 }
-
-//#define RECORD_MATCHING_FILTER(id,msg)															\
-	for(unsigned int i = ti_table[ti_indexes[id]]; i > 0; --i) {								\
-		uint16_t ti_xor = query_ti_table[(msg)] ^ ti_table[ti_indexes[id] + i];					\
-		if ((ti_xor < (0x0001 << 13)) && (ti_xor != 0))											\
-			results->pairs[(msg)*INTERFACES + ((ti_table[ti_indexes[id] + i]) & (0xFFFF >> 3))] = 1;	\
-	}	 
 
 __global__ void 
 //__launch_bounds__(256, 8)
 three_phase_matching(const uint32_t * __restrict__ fib, 
-									 const uint32_t * __restrict__ fib_ids, 
 									 unsigned int fib_size, 
-									 const uint32_t * __restrict__ ti_table, 
-									 const unsigned int * __restrict__ ti_indexes,  
-									 const uint16_t * __restrict__ query_ti_table ,  unsigned int batch_size, 
+									 unsigned int batch_size, 
 									 result_t * results_count,
 									 result_t * results_data,
 									 unsigned int stream_id,
@@ -130,7 +121,7 @@ three_phase_matching(const uint32_t * __restrict__ fib,
 		results_data->done=true;
 	}
 */
-	int _count;
+	uint32_t rescount;
 #endif
 #if TIME
 	uint32_t t1=0,t2=0,t3=0,t4=0 ;
@@ -204,6 +195,7 @@ three_phase_matching(const uint32_t * __restrict__ fib,
 	// end for phase 1: computation of the common prefix by tid==0
 	__syncthreads();
 #if 1	
+	unsigned int prefix_end = prefix_complete_blocks;
 	if (prefix_first_non_zero==Blocks && batch_size % 2 ==0)// ==PACKETS_BATCH_SIZE)
 		goto match_all ;
 #else
@@ -250,7 +242,7 @@ three_phase_matching(const uint32_t * __restrict__ fib,
 skip_message: ;
 	}
 #else 
-	unsigned int prefix_end = prefix_complete_blocks;
+	prefix_end = prefix_complete_blocks;
 	if (prefix_blocks[prefix_end] != 0)
 		++prefix_end;
 
@@ -273,7 +265,7 @@ skip_message: ;
 #endif 
 	// end of phase 2 (candidate selection)
 	//
-phase_three:
+	// phase_three:
 	__syncthreads();
 #if TIME
 	if(id==0)
@@ -346,10 +338,10 @@ candidate_no_match:
 		uint32_t p6,p7,p8,p9,p10,p11;
 
 		uint32_t * p ;
+		uint8_t c_count = candidate_count; 
 		switch(prefix_end) {
 			case 0: 
 #if 1
-				uint8_t c_count = candidate_count; 
 				if (candidate_count % 2 == 1){
 						c_count = candidate_count - 1;
 						message = candidate_messages[c_count];
@@ -374,9 +366,8 @@ candidate_no_match:
 							goto candidate_no_match063;
 
 						RECORD_MATCHING_FILTER(id,message);
-candidate_no_match063:
-
 				}
+candidate_no_match063:
 
 				for(unsigned int pi = 0; pi < c_count; pi+=2) {
 					message = candidate_messages[pi];
@@ -618,6 +609,7 @@ match_all:
 
 							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match16A:
+							continue;
 						}
 						break;
 					case 2: 
@@ -633,6 +625,7 @@ candidate_no_match16A:
 
 							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match26A:
+							continue;
 						}
 						break;
 					case 3: 
@@ -646,6 +639,7 @@ candidate_no_match26A:
 							
 							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match36A:
+							continue;
 						}
 						break;
 					case 4: 
@@ -657,6 +651,7 @@ candidate_no_match36A:
 
 							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match46A:
+							continue;
 						}
 						break;
 					case 5: 
@@ -666,6 +661,7 @@ candidate_no_match46A:
 
 							RECORD_MATCHING_FILTER(id,pi);
 candidate_no_match56A:
+							continue;
 						}
 						break;
 				}
@@ -840,8 +836,6 @@ no_match: ;
 template <unsigned int Blocks>
 __global__ void one_phase_matching(uint32_t * fib, uint32_t * fib_ids, 
 								   unsigned int fib_size, 
-								   uint32_t * ti_table, 
-								   unsigned int * ti_indexes,  
 								   uint16_t * query_ti_table ,  unsigned int batch_size, 
 								   result_t * results_count,
 								   result_t * results_data,
@@ -849,24 +843,11 @@ __global__ void one_phase_matching(uint32_t * fib, uint32_t * fib_ids,
 
 	uint32_t id = (blockDim.x * blockIdx.x) + threadIdx.x;
 
-int _count;
+	uint32_t rescount;
 	if(id >= fib_size)
 		return;
 
-#if 0
-	if(id == 0 )
-		results->count=0;
-#else
-/*
-	if(id == 0 ){
-		//results_count->count=0;
-		results_count->done=true;
-		results_data->done=true;
-	}
-*/
-#endif
 
-	__syncthreads();
 	uint32_t d0,d1,d2,d3,d4,d5;
 
 	switch(Blocks) {
@@ -886,31 +867,6 @@ int _count;
 		case 1:	d0 = fib[id*Blocks + 0];
 #endif
 	}
-
-#if 0 
-	for(unsigned int pi = 0; pi < batch_size; ++pi) {
-		if (BV_BLOCK_NOT_SUBSET(d0, packets[stream_id][pi*Blocks + 0]))
-			continue;
-		if (Blocks > 1)
-			if (BV_BLOCK_NOT_SUBSET(d1, packets[stream_id][pi*Blocks + 1]))
-				continue;
-		if (Blocks > 2)
-			if (BV_BLOCK_NOT_SUBSET(d2, packets[stream_id][pi*Blocks + 2]))
-				continue;
-		if (Blocks > 3)
-			if (BV_BLOCK_NOT_SUBSET(d3, packets[stream_id][pi*Blocks + 3]))
-				continue;
-		if (Blocks > 4)
-			if (BV_BLOCK_NOT_SUBSET(d4, packets[stream_id][pi*Blocks + 4]))
-				continue;
-		if (Blocks > 5)
-			if (BV_BLOCK_NOT_SUBSET(d5, packets[stream_id][pi*Blocks + 5]))
-				continue;
-
-		RECORD_MATCHING_FILTER(id, pi);
-	}
-#else 
-	
 	if(batch_size==256){
 		uint32_t p0,p1,p2,p3,p4,p5;
 		uint32_t p6,p7,p8,p9,p10,p11;
@@ -1041,9 +997,7 @@ next_msg:
 
 			RECORD_MATCHING_FILTER(id,pi);
 		}
-
 	}
-#endif
 }
 
 void gpu::initialize() {
@@ -1115,10 +1069,7 @@ void gpu::async_set_zero(void * dev_array, unsigned int size, unsigned int strea
 void gpu::async_get_results(result_t * host_results, result_t * dev_results, 
 							unsigned int size, unsigned int stream, unsigned int gpu) {
 	// count + size * uint32 ids + floor(size/4) uint32 for msg ids
-	if (size > 0) 
-		ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, /*sizeof(result_t)*/ sizeof(uint32_t)*(1+size+(1+(size-1)/4)), cudaMemcpyDeviceToHost, streams[gpu][stream]));
-	else
-		ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, /*sizeof(result_t)*/ sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[gpu][stream]));
+		ABORT_ON_ERROR(cudaMemcpyAsync(host_results, dev_results, sizeof(uint32_t)*(1+size+(size+3)/4), cudaMemcpyDeviceToHost, streams[gpu][stream]));
 	ABORT_ON_ERROR(cudaEventRecord(copiedBack[gpu][stream], streams[gpu][stream]));
 }
 
@@ -1150,10 +1101,9 @@ static const int stopCounter=55 ;
 sig_atomic_t kernelCounter=0 ;
 #endif
 
-void gpu::run_kernel(uint32_t * fib, uint32_t * fib_ids, unsigned int fib_size, 
-					 uint32_t * ti_table, 
-					 unsigned int * ti_indexes, 
-					 uint16_t * query_ti_table, unsigned int batch_size, 
+void gpu::run_kernel(uint32_t * fib, 
+					 unsigned int fib_size, 
+					 unsigned int batch_size, 
 					 result_t * results_count, 
 					 result_t * results_data,
 					 unsigned int stream, 
@@ -1172,34 +1122,14 @@ void gpu::run_kernel(uint32_t * fib, uint32_t * fib_ids, unsigned int fib_size,
 	if (kernelCounter > stopCounter)
 	      return;
 #endif
-
+	assert(skip_blocks==0);
 	switch (skip_blocks) {
-#if 0
-	case 0:
-		one_phase_matching<6> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
-		break;
-
-	case 1:
-		one_phase_matching<5> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
-		break;
-
-	case 2:
-		one_phase_matching<4> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
-		break;
-
-	case 3:
-		one_phase_matching<3> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
-			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
-		break;
-
-#else
 	case 0:
 		three_phase_matching <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>>
-			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream, intersections);
-		break;
+			(fib, fib_size, batch_size, results_count, results_data, stream, intersections);
+		//one_phase_matching<6> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>>
+//	         (fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
+			break;
 
 	case 1:
 //		three_phase_matching<5> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
@@ -1215,18 +1145,13 @@ void gpu::run_kernel(uint32_t * fib, uint32_t * fib_ids, unsigned int fib_size,
 //		three_phase_matching<3> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 		break;
-#endif
 	case 4: 	
-		one_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
-			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<2> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 
 		break;
 
 	case 5: 	
-		one_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[gpu][stream] >>> 
-			(fib, fib_ids, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results_count, results_data, stream);
 //		three_phase_matching<1> <<<gridsize, GPU_BLOCK_SIZE, 0, streams[stream] >>>
 //			(fib, fib_size, ti_table, ti_indexes, query_ti_table, batch_size, results, stream, intersections);
 

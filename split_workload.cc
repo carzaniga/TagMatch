@@ -125,7 +125,7 @@ int main(int argc, const char * argv[]) {
 	const char * input_fname = nullptr;
 
 	for(int i = 1; i < argc; ++i) {
-		if (sscanf(argv[i],"m=%u", &max_size) || sscanf(argv[i],"N=%u", &max_size))
+		if (sscanf(argv[i],"m=%u", &max_size) || sscanf(argv[i],"M=%u", &max_size))
 			continue;
 
 		if (sscanf(argv[i],"k=%u", &MIN_K) || sscanf(argv[i],"K=%u", &MIN_K))

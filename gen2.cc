@@ -28,10 +28,10 @@ static void read_filters_dictionary(std::istream & is) {
 		if (command != "+")
 			continue;
 
-		unsigned int iface, tree;
+		unsigned int iface;
 		std::string filter;
 
-		line_s >> tree >> iface >> filter;
+		line_s >> iface >> filter;
 
 		filters_dictionary.push_back(std::bitset<M>(filter));
 	}
@@ -108,7 +108,6 @@ void workload_spec::generate() const {
 			f.set(random_position(generator));
 
 		std::cout << command << ' ' 
-				  << ((t_min == t_max) ? t_min : random_tree(generator)) << ' ' 
 				  << ((i_min == i_max) ? i_min : random_ifx(generator)) << ' '
 				  << f << std::endl;
     }

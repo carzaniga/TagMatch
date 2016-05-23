@@ -29,7 +29,7 @@ using std::endl;
 
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
-		 << " [-b] [in=<filename>] (freq | count)"
+		 << " [-b] [in=<filename>] [out=<filename>] (freq | count | sort)"
 		" | map=<permutation-filename>"
 		 << endl
 		 << "options:" << endl

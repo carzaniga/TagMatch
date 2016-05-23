@@ -322,7 +322,7 @@ partition_queue * partition_queue::first_pending() {
 void partition_queue::enqueue(packet * p) noexcept {
 	assert(tail <= PACKETS_BATCH_SIZE);
 
-	p->add_partition();
+	p->add_partition(partition_id);
 	unsigned int t = tail.load(std::memory_order_acquire);
 	
 	do {
@@ -633,7 +633,7 @@ union job {
 };
 
 static const size_t JOB_QUEUE_SIZE = 1024*1024; // must be a power of 2 for efficiency
-static job job_queue[JOB_QUEUE_SIZE];
+volatile static job job_queue[JOB_QUEUE_SIZE];
 
 // However, we must still maintain two separate pairs of indexes
 // (head,tail), one used by the matching loop, and the other used by

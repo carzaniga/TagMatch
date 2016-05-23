@@ -156,25 +156,39 @@ private:
 #else   
 	std::mutex mtx;
 	std::vector<uint32_t> output_users;
-	uint32_t pre,post;
+#ifdef WITH_STATISTICS
+	std::atomic<uint32_t> pre,post;
+#endif
+	std::atomic<bool> finalized;
 #endif
 public:
 	packet(const filter_t f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+			finalized = false;
 	};
 
 	packet(const std::string & f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+			finalized = false;
 	};
 
 	packet(const packet & p) 
 		: network_packet(p), state(FrontEnd), pending_partitions(0) {
+#ifdef WITH_STATISTICS
+		pre = 0;
+		post = 0;
+#endif
+		output_users = p.output_users;
+		finalized = false;
 	};
 
     void add_partition() {
 		++pending_partitions;
     }
 
+    void add_partition(uint32_t id) {
+		++pending_partitions;
+    }
     void add_partitions(unsigned int p) {
 		if (p > 0)
 			pending_partitions += p;
@@ -187,6 +201,7 @@ public:
     void reset() {
         state = FrontEnd;
 		pending_partitions = 0;
+		finalized = 0;
     }
 
     void frontend_done() {
@@ -206,6 +221,7 @@ public:
 	}
 
 	void add_output_user(uint32_t user) {
+		//Warning: you should lock the mutex before calling this method! 
 		output_users.push_back(user);
 	}
 
@@ -213,20 +229,35 @@ public:
 		return output_users;
 	}
 
-	void clear() {
-		mtx.lock();
-		
-		pre = output_users.size();
-		std::sort( output_users.begin(), output_users.end() );
-		output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
-		post = output_users.size();
-
-		output_users.clear();
-		std::vector<uint32_t>().swap(output_users);
-		
-		mtx.unlock();
+	bool finalize_matching() {
+		// This is where we should implement the actual forwwarding code.
+		// In this experimental code, instead, we simply collect statistics
+		// about the matching.  In order to do that, we still perform a "merge"
+		// over the set of output "users".
+		if (!atomic_exchange(&finalized, true)) { 
+#ifdef WITH_STATISTICS
+			pre = output_users.size();
+			assert(pre > 0);
+#endif
+			std::sort( output_users.begin(), output_users.end() );
+			output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
+#ifdef WITH_STATISTICS
+			post = output_users.size();
+#endif
+			//Flush the output vector and release its memory
+			output_users.clear();
+			std::vector<uint32_t>().swap(output_users);
+			// For some reason output.resize(0) doesn't really free the memory
+			// output_users.resize(0);
+			return true;
+		}
+		else {
+			//Nothing to do
+			return false;
+		}
 	}
 
+#ifdef WITH_STATISTICS
 	uint32_t getpre() {
 		return pre;
 	}
@@ -234,7 +265,7 @@ public:
 	uint32_t getpost() {
 		return post;
 	}
-
+#endif
 };
 
 #endif // PACKET_HH_INCLUDED

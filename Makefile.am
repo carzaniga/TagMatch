@@ -40,7 +40,7 @@ cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh
 			gpu.cu 
 
 #cpu_gpu_matcher_LDFLAGS = -lcudart
-cpu_gpu_matcher_LDFLAGS = -L/usr/local/cuda-7.0/lib64 -lcudart
+cpu_gpu_matcher_LDFLAGS = -lcudart
 else
 ##
 ## this can only work with --disable-backend
