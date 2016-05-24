@@ -308,9 +308,7 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
 }
 
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
-
-    return;
- /*   tree_matcher matcher(t,h);
+    tree_matcher matcher(t,h);
     //first we look if the filter exist, because the filter is a subset of itself
     //than we look at the subsets
 
@@ -330,7 +328,7 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 									 this, x, std::ref(roots[j].tries[i]), std::ref(matcher)));
     }
     for(auto& t : ts)
-        t.join();*/
+        t.join();
 }
 
 void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x){

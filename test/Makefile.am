@@ -33,8 +33,8 @@ check_PROGRAMS =
 UNIT_TESTS = 
 
 if USE_BOOST_UNIT_TEST_FRAMEWORK
-check_PROGRAMS += test_bv test_bv192 test_io test_bitvector
-UNIT_TESTS += test_bv test_bv192 test_io test_bitvector
+check_PROGRAMS += test_bv test_bv192 test_io test_bitvector test_patricia_predicate
+UNIT_TESTS += test_bv test_bv192 test_io test_bitvector test_patricia_predicate
 endif
 
 test_bv_SOURCES = test_bv.cc
@@ -48,6 +48,9 @@ test_io_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
 
 test_bitvector_SOURCES = test_bitvector.cc
 test_bitvector_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
+
+test_patricia_predicate_SOURCES = test_patricia_predicate.cc
+test_patricia_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../patricia_predicate.o
 
 TESTS = $(UNIT_TESTS)
 

@@ -22,7 +22,6 @@
 #include <new>
 #endif
 
-#if 1
 #ifdef WITH_BV192
 #include "bv192.hh"
 
@@ -31,9 +30,10 @@ typedef bv192 filter_t;
 #include "bv.hh"
 typedef bv<192> filter_t;
 #endif
-#else
-#include "filter.hh"
-#endif
+
+class filter_handler;
+class filter_const_handler;
+class match_handler;
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
@@ -80,13 +80,9 @@ public:
 // processing functions that operate on the marching or subset or
 // superset filters.  Those are instead delegated to some "handler"
 // functions defined in the three interface classes filter_handler,
-// filter_const_handler, and match_handler.
+// filter_const_handler, and match_handler (defined in matcher.hh).
 // 
-class filter_handler;
-class filter_const_handler;
-class match_handler;
 class p_params;
-
 class tree_matcher;
 class tree_ifx_matcher;
 
@@ -120,8 +116,6 @@ public:
         return (c==0);
     }
 };
-
-
 
 class predicate {      
 public:
@@ -492,6 +486,5 @@ public:
 	// 
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx) = 0;
 };
-
 
 #endif

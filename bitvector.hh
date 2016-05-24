@@ -210,7 +210,7 @@ public:
 		b[pos/BLOCK_SIZE] |= (BLOCK_ONE << (pos % BLOCK_SIZE));
 	}
 
-	bool operator[](unsigned int pos) const {
+	bool operator [] (unsigned int pos) const {
 		return (b[pos/BLOCK_SIZE] & (BLOCK_ONE << (pos % BLOCK_SIZE)));
 	}
 
@@ -236,6 +236,10 @@ public:
 		return memcmp(b, x.b, sizeof(b)) == 0;
 	}
 
+    bool operator != (const bitvector & x) const {
+		return memcmp(b, x.b, sizeof(b)) != 0;
+	}
+
     bool subset_of(const block_t * p) const {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			if ((b[i] & ~p[i]) != 0)
@@ -252,6 +256,69 @@ public:
 		return true;
     }
 
+	bool range_subset_of(const bitvector & x, const unsigned int left, const unsigned int right) const {
+		//
+		// Check that *this is a subset of x only in the range of
+		// positions from position left up to position right,
+		// including position right, as illustrated below:
+		//
+		//   range checked       rest of the bits are ignored
+		// |######----------#####################################|
+		//  ^0    ^left    ^right                            191^
+		// 
+		assert(left <= right);
+		for(unsigned int i = left / BLOCK_SIZE; i < BLOCK_COUNT; ++i) {
+			block_t mask = ~(0x0);
+			if (left > i*BLOCK_SIZE)
+				mask <<= (left - i*BLOCK_SIZE);
+
+			if (right < i*BLOCK_SIZE + BLOCK_SIZE) {
+				return (((b[i] & ~x.b[i] & mask) << (i*BLOCK_SIZE + BLOCK_SIZE - right - 1)) == 0);
+			} else if ((b[i] & ~x.b[i] & mask) != 0)
+				return false;
+		}
+		return true;
+	}
+
+	bool prefix_subset_of(const bitvector & x, const unsigned int right) const {
+		//
+		// Check that *this is a subset of x only in the prefix up to
+		// position right, including position right, as illustrated
+		// below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0             ^right                            191^
+		// 
+		assert(right < WIDTH);
+		for(unsigned int i = 0; i < BLOCK_COUNT; ++i) {
+			if (right < i*BLOCK_SIZE + BLOCK_SIZE) {
+				return (((b[i] & ~x.b[i]) << (i*BLOCK_SIZE + BLOCK_SIZE - right - 1)) == 0);
+			} else if ((b[i] & ~x.b[i]) != 0)
+				return false;
+		}
+		return true;
+	}
+	
+	bool prefix_equal(const bitvector & x, const unsigned int right) const {
+		//
+		// Check that *this and x share the same prefix up to position
+		// right - 1, as illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0              ^right                           191^
+		// 
+		assert(right <= WIDTH);
+		for(unsigned int i = 0; i < BLOCK_COUNT; ++i) {
+			if (right <= i*BLOCK_SIZE + BLOCK_SIZE) {
+				return (((b[i] ^ x.b[i]) << (i*BLOCK_SIZE + BLOCK_SIZE - right)) == 0);
+			} else if (b[i] != x.b[i])
+				return false;
+		}
+		return true;
+	}
+	
     bool operator < (const bitvector & x) const {
 		for (int i = 0; i < BLOCK_COUNT; ++i) {
 			if (b[i] != x.b[i]) {
@@ -263,7 +330,7 @@ public:
     }
 
 	/** returns the position of the leftmost bit that differs between
-	 * this bitvector and x.
+	 *  this bitvector and x, or WIDTH if *this == x.
 	 */
     unsigned int leftmost_diff (const bitvector & x) const {
 		for (int i = 0; i < BLOCK_COUNT; ++i) {
