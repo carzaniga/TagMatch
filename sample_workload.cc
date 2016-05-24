@@ -62,12 +62,29 @@ static int sample_filters(std::istream & input, std::ostream & output, const boo
 	return 0;
 }
 
+static int sample_packets(std::istream & input, std::ostream & output, const bool binary_format,
+						  sampler & s) {
+	network_packet p;
+
+	if (binary_format) {
+		while(p.read_binary(input)) 
+			if (s.sample())
+				p.write_binary(output);
+	} else {
+		while(p.read_ascii(input)) 
+			if (s.sample())
+				p.write_ascii(output);
+	}
+	return 0;
+}
+
 static void print_usage(const char * progname) {
 	std::cout << "usage: " << progname 
 			  << " [in=<filename>] [out=<filename>] [-a] N=<total> K=<choices>"
 			  << std::endl
 			  << "options:" << std::endl
-			  << "\t-a\t: uses ASCII format for I/O (default is binary)" << std::endl;
+			  << "\t-a\t: uses ASCII format for I/O (default is binary)" << std::endl
+			  << "\t-p\t: reads and outputs packets (default is filters)" << std::endl;
 }
 
 int main(int argc, const char * argv[]) {
@@ -75,6 +92,9 @@ int main(int argc, const char * argv[]) {
 
 	const char * input_fname = nullptr;
 	const char * output_fname = nullptr;
+
+	int (*sample_workload)(std::istream &, std::ostream &, const bool, sampler &);
+	sample_workload = sample_filters;
 
 	unsigned long N = 0;
 	unsigned long K = 0;
@@ -91,6 +111,9 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strcmp(argv[i],"-a")==0) {
 			binary_format = false;
+		} else 
+		if (strcmp(argv[i],"-p")==0) {
+			sample_workload = sample_packets;
 		} else 
 		if (sscanf(argv[i],"N=%lu", &N) > 0) {
 			continue;
@@ -127,10 +150,10 @@ int main(int argc, const char * argv[]) {
 				std::cerr << "could not open output file " << output_fname << std::endl;
 				return 1;
 			}
-			res = sample_filters(input_file, output_file, binary_format, s);
+			res = sample_workload(input_file, output_file, binary_format, s);
 			output_file.close();
 		} else {
-			res = sample_filters(input_file, std::cout, binary_format,s);
+			res = sample_workload(input_file, std::cout, binary_format,s);
 		}
 		input_file.close();
 	} else {
@@ -140,10 +163,10 @@ int main(int argc, const char * argv[]) {
 				std::cerr << "could not open output file " << output_fname << std::endl;
 				return 1;
 			}
-			res = sample_filters(std::cin, output_file, binary_format, s);
+			res = sample_workload(std::cin, output_file, binary_format, s);
 			output_file.close();
 		} else {
-			res = sample_filters(std::cin, std::cout, binary_format, s);
+			res = sample_workload(std::cin, std::cout, binary_format, s);
 		}
 	}
 
