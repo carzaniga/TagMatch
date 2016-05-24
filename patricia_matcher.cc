@@ -149,8 +149,7 @@ static void print_usage(const char * progname) {
 		 << "options:" << endl
 		 << "\tmap=<permutation-file-name>" << endl
 		 << "\t-q\t: disable output of matching results" << endl
-		 << "\t-Q\t: disable output of progress steps" << endl
-		 << "\t-s\t: enable output of front-end statistics" << endl;
+		 << "\t-Q\t: disable output of progress steps" << endl;
 }
 
 class match_vector : public match_handler {
@@ -272,14 +271,16 @@ int main(int argc, const char * argv[]) {
 		P.clear();
 		return 0;
 	};
-	if (print_progress_steps) 
-		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
 
 	vector<match_vector> match_results(packets.size());
 
 	unsigned int i = 0;
 	for(network_packet & p : packets) 
 		match_results[i++].set_tip(p.ti_pair);
+
+	if (print_progress_steps) {
+		cout << "Matching packets... " << std::flush;
+	}
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
@@ -296,7 +297,7 @@ int main(int argc, const char * argv[]) {
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
 	if (print_progress_steps) {
-		cout << "\t" << std::setw(10)
+		cout << "\t\t\t" << std::setw(10)
 			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
 			 << "ns average matching time." << endl;
 	} else if (print_matching_time_only) {
