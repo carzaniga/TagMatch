@@ -9,7 +9,7 @@
 #include "matcher.hh"
 #include "routing.hh"
 
-class predicate {      
+class predicate {
 public:
     predicate();
     ~predicate();
@@ -24,7 +24,7 @@ public:
 private:
 	node * add(const filter_t & x);
 	
-    node * root;    
+    node * root;
 };
 
 #endif

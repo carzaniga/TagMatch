@@ -20,15 +20,26 @@
 //
 // Each node N in the PATRICIA trie represents a filter (N.key) and
 // also a prefix that is common to all nodes in the sub-tree rooted at
-// N (including N itself).  The prefix is defined by N.pos, which
-// indicates the length of the prefix.  N.pos can be filter_t::WIDTH,
-// meaning that the prefix is the entire filter in N.
+// N (including N itself).  The prefix is defined by N.key and N.pos,
+// which indicates the length of the prefix.  N.pos can be
+// filter_t::WIDTH, meaning that the prefix is the entire filter in N.
+// Node N and all the nodes below it share the first N.pos bits (of
+// their filters).
 //
-
-nodes that are below , which in our case
-// is a filter.  Each node also stores a bit position in the filter
-// that represents the length of the prefix
-
+/*
+   EXAMPLE:     root:  *\
+                         \
+   common prefix -->  --- \
+                      0010011011
+                      /  ^-pos \
+                     /          \
+                    /            \
+             0010010110        0011101110
+                       ^        /    ^
+                               /
+                          0011100001
+                                    ^
+*/
 class predicate::node {
 public:
 	node * left;
