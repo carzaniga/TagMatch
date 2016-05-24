@@ -114,7 +114,9 @@ static unsigned int read_and_match_queries(string fname, bool binary_format) {
 
 void print_usage(const char * progname) {
 	cout << "usage: " << progname 
-		 << " f=filters_file_name q=queries_file_name"
+		 << " (f|F)=<filters-file-name> (q|Q)=<queries-file-name>"
+		 << endl
+		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl;
 }
 
