@@ -69,12 +69,12 @@ static unsigned int read_queries(vector<network_packet> & packets, string fname,
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			packets.emplace_back(p.filter, p.ti_pair);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			packets.emplace_back(p.filter, p.ti_pair);
 			++res;
 		}
 	}
@@ -161,7 +161,7 @@ public:
 	}
 
 	virtual bool match(const filter_t & filter, tree_t t, interface_t i) {
-		if (t == tip.tree() && i != tip.interface())
+		if (t == tip_tree(tip) && i != tip_interface(tip))
 			output[i] = 1;
 		return false;
 	}

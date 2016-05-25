@@ -60,24 +60,12 @@ private:
 
 public:
 	void add_pair(tree_t t, interface_t i);
-	void remove_pair(tree_t t, interface_t i);
-
-	// pointer to the first tree--interface pair
-	//
-	tree_interface_pair * tip_begin() {
-		return (pairs_count <= LOCAL_PAIRS_CAPACITY) ? local_pairs : external_pairs;
-	}
+	void add_pair(tree_interface_pair tip);
 
 	// pointer to the first tree--interface pair
 	//
 	const tree_interface_pair * tip_begin() const {
 		return (pairs_count <= LOCAL_PAIRS_CAPACITY) ? local_pairs : external_pairs;
-	}
-
-	// pointer to one-past the tree--interface pair
-	//
-	tree_interface_pair * tip_end() {
-		return tip_begin() + pairs_count;
 	}
 
 	// pointer to one-past the tree--interface pair
@@ -104,13 +92,17 @@ predicate::~predicate () {
 }
 
 void predicate::node::add_pair(tree_t t, interface_t i) {
+	add_pair(tip_value(t, i));
+}
+
+void predicate::node::add_pair(tree_interface_pair tip) {
     // here we don't check if the tree-interface pair already exists
     // becuase we assume that triple filter,tree,interface is unique
     // becuase of the compresion algorithm 
 	if (pairs_count < LOCAL_PAIRS_CAPACITY) {
 		// if the local table is not yet full, we simply add the new
 		// pair to the local table
-		local_pairs[pairs_count].assign(t, i);
+		local_pairs[pairs_count] = tip;
 		pairs_count += 1;
 	} else if (pairs_count == LOCAL_PAIRS_CAPACITY) {
 		// if we have a full local table we create an external table.
@@ -125,7 +117,7 @@ void predicate::node::add_pair(tree_t t, interface_t i) {
 		// copy the local pairs to the external storage
 		memcpy(new_table, local_pairs, sizeof(local_pairs));
 		// add the new one
-		new_table[pairs_count].assign(t, i);
+		new_table[pairs_count] = tip;
 		++pairs_count;
 		// link the external storage
 		external_pairs = new_table;
@@ -137,7 +129,7 @@ void predicate::node::add_pair(tree_t t, interface_t i) {
 			external_pairs = (tree_interface_pair *)realloc(external_pairs, 
 															byte_pos + EXT_PAIRS_ALLOCATION_UNIT);
 		}
-		external_pairs[pairs_count].assign(t, i);
+		external_pairs[pairs_count] = tip;
 		pairs_count += 1;
 	}
 }
@@ -223,7 +215,7 @@ void predicate::add(const filter_t & x,
 					const tree_interface_pair * begin, const tree_interface_pair * end) {
 	node * n = add(x);
 	for (; begin != end; ++begin)
-		n->add_pair(begin->tree(), begin->interface());
+		n->add_pair(*begin);
 }
 
 void predicate::add(const filter_t & x, tree_t t, interface_t i) {
@@ -253,7 +245,7 @@ void predicate::match(const filter_t & x, match_handler & h) const {
 
 			if (n->key.subset_of(x)) {
 				for (const tree_interface_pair * tip = n->tip_begin(); tip != n->tip_end(); ++tip)
-					if (h.match(n->key, tip->tree(), tip->interface()))
+					if (h.match(n->key, tip_tree(*tip), tip_interface(*tip)))
 						return;
 			} else if (n->pos > 0 && !n->key.prefix_subset_of(x, n->pos - 1))
 				continue;

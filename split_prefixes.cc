@@ -65,7 +65,7 @@ void read_filters_vector(std::istream & is) {
 		unsigned int begin = ti_pairs.size();
 
 		do {
-			ti_pairs.push_back(tree_interface_pair(tree, iface));
+			ti_pairs.push_back(tip_value(tree, iface));
 		} while (line_s >> tree >> iface);
 
 		unsigned int end = ti_pairs.size();
@@ -134,7 +134,7 @@ void split_on_prefix(unsigned int max_size, std::ostream * prefix_os, std::ostre
 			for(std::vector<filter_descr>::const_iterator i = f; i != next_f; ++i) {
 				*filters_os << "f " << pid << ' ' << i->filter;
 				for(unsigned int j = i->ti_pairs_begin; j < i->ti_pairs_end; ++j)
-					*filters_os << ' ' << ti_pairs[j].tree() << ' ' << ti_pairs[j].interface();
+					*filters_os << ' ' << tip_tree(ti_pairs[j]) << ' ' << tip_interface(ti_pairs[j]);
 				*filters_os << std::endl;
 			}
 		}

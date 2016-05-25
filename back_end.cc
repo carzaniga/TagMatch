@@ -264,7 +264,7 @@ static void compile_fibs() {
 			// following position
 			// 
 			for(const tree_interface_pair & tip : fd.ti_pairs)
-				host_ti_table[ti_table_curr_pos++] = tip.get_uint16_value();
+				host_ti_table[ti_table_curr_pos++] = tip_uint16_value(tip);
 
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
@@ -300,7 +300,7 @@ void back_end::process_batch(unsigned int part, packet ** batch, unsigned int ba
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = 0; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
-		sh->host_query_ti_table[i] = batch[i]->ti_pair.get_uint16_value();
+		sh->host_query_ti_table[i] = tip_uint16_value(batch[i]->ti_pair);
 	}
 
 	gpu::async_copy_packets(sh->host_queries, batch_size, sh->stream);

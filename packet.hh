@@ -31,13 +31,19 @@ public:
 	filter_t filter;
 	tree_interface_pair ti_pair;
 
-	network_packet() : filter(), ti_pair() {};
+	network_packet() : filter() {};
+
+	network_packet(const filter_t f, tree_interface_pair tip)
+		: filter(f), ti_pair(tip) {};
 
 	network_packet(const filter_t f, tree_t t, interface_t i)
-		: filter(f), ti_pair(t,i) {};
+		: filter(f), ti_pair(tip_value(t,i)) {};
+
+	network_packet(const std::string & f, tree_interface_pair tip)
+		: filter(f), ti_pair(tip) {};
 
 	network_packet(const std::string & f, tree_t t, interface_t i)
-		: filter(f), ti_pair(t,i) {};
+		: filter(f), ti_pair(tip_value(t,i)) {};
 
 	network_packet(const network_packet & p) 
 		: filter(p.filter), ti_pair(p.ti_pair) {};

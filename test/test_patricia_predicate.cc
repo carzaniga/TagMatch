@@ -192,18 +192,18 @@ BOOST_AUTO_TEST_CASE( add_array_of_tips ) {
 
 	tree_interface_pair tips[3];
 
-	tips[0].assign(1, 2);
-	tips[1].assign(1, 3);
-	tips[2].assign(2, 4);
+	tips[0] = tip_value(1, 2);
+	tips[1] = tip_value(1, 3);
+	tips[2] = tip_value(2, 4);
 
 	P.add(F[1], tips, tips + 3);
 	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3, 4 }));
 	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2, 3 }));
 	BOOST_CHECK(matching_interfaces(P, F[1], 2) == set<interface_t>({ 4 }));
 
-	tips[0].assign(1, 2);
-	tips[1].assign(1, 3);
-	tips[2].assign(3, 4);
+	tips[0] = tip_value(1, 2);
+	tips[1] = tip_value(1, 3);
+	tips[2] = tip_value(3, 4);
 
 	P.add(F[1], tips, tips + 3);
 	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3, 4 }));

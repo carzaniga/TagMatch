@@ -73,14 +73,14 @@ static int read_filters(string fname, bool binary_format) {
 static void match(const network_packet & p) {
 	bool results[INTERFACES] = { false };
 
-    const tree_t tree = p.ti_pair.tree();
-	const interface_t iface = p.ti_pair.interface();
+    const tree_t tree = tip_tree(p.ti_pair);
+	const interface_t iface = tip_interface(p.ti_pair);
 
 	for(const fib_entry & entry : fib) 
 		if (entry.filter.subset_of(p.filter)) 
 			for(const tree_interface_pair & tip : entry.ti_pairs)
-				if (tree == tip.tree() && iface != tip.interface())
-					results[tip.interface()] = true;
+				if (tree == tip_tree(tip) && iface != tip_interface(tip))
+					results[tip_interface(tip)] = true;
 
 	for(unsigned i = 0; i < INTERFACES; ++i) 
 		if (results[i])
