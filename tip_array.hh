@@ -55,6 +55,4 @@ public:
 	}
 };
 
-typedef patricia_predicate<tip_array> predicate;
-
 #endif
