@@ -50,7 +50,7 @@ test_bitvector_SOURCES = test_bitvector.cc
 test_bitvector_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
 
 test_patricia_predicate_SOURCES = test_patricia_predicate.cc
-test_patricia_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../patricia_predicate.o
+test_patricia_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
 
 TESTS = $(UNIT_TESTS)
 

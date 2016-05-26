@@ -21,7 +21,7 @@ noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
 bin_PROGRAMS = gen gen2 split_prefixes router \
-		cpu_gpu_matcher test_matcher patricia_matcher binary_trie_matcher \
+		cpu_gpu_matcher test_matcher patricia_matcher \
 		analyze_workload convert_workload sample_workload split_workload
 
 gen_SOURCES = gen.cc
@@ -54,14 +54,10 @@ test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh fib.hh
 			filter.hh routing.hh \
 			packet.cc fib.cc
 
-binary_trie_matcher_SOURCES = filter.hh bitvector.hh \
-			binary_trie_predicate.hh binary_trie_predicate.cc
-
-patricia_matcher_SOURCES = filter.hh bitvector.hh matcher.hh fib.hh io_util.hh \
-			patricia_predicate.hh patricia_predicate.cc fib.cc packet.cc \
+patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
+			patricia_predicate.hh tip_array.hh \
+			tip_array.cc fib.cc packet.cc \
 			patricia_matcher.cc
-
-
 
 split_prefixes_SOURCES = split_prefixes.cc filter.hh routing.hh bitvector.hh 
 

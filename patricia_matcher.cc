@@ -11,8 +11,10 @@
 #include <string>
 #include <cstdlib>
 
+#include "filter.hh"
+#include "routing.hh"
 #include "patricia_predicate.hh"
-#include "matcher.hh"
+#include "tip_array.hh"
 #include "fib.hh"
 #include "packet.hh"
 
@@ -32,6 +34,7 @@ using std::chrono::duration_cast;
 #define INTERFACES 256U
 #endif
 
+typedef patricia_predicate<tip_array> predicate;
 predicate P;
 
 static int read_filters(string fname, bool binary_format) {
@@ -43,17 +46,15 @@ static int read_filters(string fname, bool binary_format) {
 
 	int res = 0;
 	fib_entry f;
-	if (binary_format) {
-		while(f.read_binary(is)) {
-			P.add(f.filter, f.ti_pairs.data(), f.ti_pairs.data() + f.ti_pairs.size());
-			++res;
-		}
-	} else {
-		while(f.read_ascii(is)) {
-			P.add(f.filter, f.ti_pairs.data(), f.ti_pairs.data() + f.ti_pairs.size());
-			++res;
-		}
+
+	while((binary_format) ? f.read_binary(is) : f.read_ascii(is)) {
+		tip_array & tips = P.add(f.filter);
+		for(const tree_interface_pair * p = f.ti_pairs.data();
+			p != f.ti_pairs.data() + f.ti_pairs.size(); ++p)
+			tips.add(*p);
+		++res;
 	}
+
 	is.close();
 	return res;
 }
@@ -152,7 +153,7 @@ static void print_usage(const char * progname) {
 		 << "\t-Q\t: disable output of progress steps" << endl;
 }
 
-class match_vector : public match_handler {
+class match_vector : public predicate::match_handler {
 public:
 	match_vector(): output{0} {};
 
@@ -160,9 +161,10 @@ public:
 		tip = p;
 	}
 
-	virtual bool match(const filter_t & filter, tree_t t, interface_t i) {
-		if (t == tip_tree(tip) && i != tip_interface(tip))
-			output[i] = 1;
+	virtual bool match(tip_array & tips) {
+		for (const tree_interface_pair * p = tips.begin(); p != tips.end(); ++p)
+			if (tip_tree(*p) == tip_tree(tip) && tip_interface(*p) != tip_interface(tip))
+				output[tip_interface(*p)] = 1;
 		return false;
 	}
 
@@ -287,11 +289,11 @@ int main(int argc, const char * argv[]) {
 	if (use_identity_permutation) {
 		unsigned int i = 0;
 		for(network_packet & p : packets) 
-			P.match(p.filter, match_results[i++]);
+			P.find_all_subsets(p.filter, match_results[i++]);
 	} else {
 		unsigned int i = 0;
 		for(network_packet & p : packets)
-			P.match(apply_permutation(p.filter), match_results[i++]);
+			P.find_all_subsets(apply_permutation(p.filter), match_results[i++]);
 	}
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();

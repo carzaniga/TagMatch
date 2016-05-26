@@ -25,7 +25,6 @@
 #include <set>
 
 #include "patricia_predicate.hh"
-#include "routing.hh"
 
 #ifndef INTERFACES
 #define INTERFACES 256U
@@ -35,40 +34,27 @@ using std::set;
 using std::cout;
 using std::endl;
 
-class general_matcher : public match_handler {
-public:
-	general_matcher(set<interface_t> & s): result(s) {};
+typedef patricia_predicate<int> predicate;
 
-	virtual bool match(const filter_t & f, tree_t t, interface_t i) {
+class general_matcher : public predicate::match_handler {
+public:
+	general_matcher(set<int> & s): result(s) {};
+
+	virtual bool match(int & i) {
 		result.insert(i);
 		return false;
 	}
 
 private:
-	set<interface_t> & result;
+	set<int> & result;
 };
 
-class tree_matcher : public match_handler {
+class finder_matcher : public predicate::match_handler {
 public:
-	tree_matcher(set<interface_t> & s, tree_t t): result(s), tree(t) {};
+	finder_matcher(int t): target(t), found(false) {};
 
-	virtual bool match(const filter_t & f, tree_t t, interface_t i) {
-		if (t == tree)
-			result.insert(i);
-		return false;
-	}
-
-private:
-	set<interface_t> & result;
-	tree_t tree;
-};
-
-class filter_finder : public match_handler {
-public:
-	filter_finder(const filter_t & f): filter(f), found(false) {};
-
-	virtual bool match(const filter_t & f, tree_t t, interface_t i) {
-		if (f == filter)
+	virtual bool match(int & i) {
+		if (i == target)
 			found = true;
 		return found;
 	}
@@ -78,29 +64,21 @@ public:
     }
 
 private:
-	filter_t filter;
+	int target;
 	bool found;
 };
 
-bool find_filter(predicate & P, const filter_t & f) {
-	filter_finder finder(f);
-	P.match(f, finder);
+bool find_filter (predicate & P, const filter_t & f, int i) {
+	finder_matcher finder(i);
+	P.find_all_subsets(f, finder);
 	return finder.result();
 }
 
-const set<interface_t> & matching_interfaces(predicate & P, const filter_t & f) {
-	static set<interface_t> result;
+const set<int> & matching_results(predicate & P, const filter_t & f) {
+	static set<int> result;
 	result.clear();
 	general_matcher matcher(result);
-	P.match(f, matcher);
-	return result;
-}
-
-const set<interface_t> & matching_interfaces(predicate & P, const filter_t & f, tree_t t) {
-	static set<interface_t> result;
-	result.clear();
-	tree_matcher matcher(result, t);
-	P.match(f, matcher);
+	P.find_all_subsets(f, matcher);
 	return result;
 }
 
@@ -146,149 +124,99 @@ BOOST_AUTO_TEST_SUITE( patricia_predicate_basics )
 
 BOOST_AUTO_TEST_CASE( find_in_empty_predicate ) {
 	predicate P;
-	BOOST_CHECK(!find_filter(P, ALL_ZEROS));
-	BOOST_CHECK(!find_filter(P, ALL_ONES));
+	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 0));
+	BOOST_CHECK(!find_filter(P, ALL_ONES, 0));
 }
 
 BOOST_AUTO_TEST_CASE( find_one_filter ) {
 	predicate P;
-	BOOST_CHECK(!find_filter(P, F[1]));
-	P.add(F[1], 1, 1);
-	BOOST_CHECK(find_filter(P, F[1]));
-	BOOST_CHECK(!find_filter(P, F[2]));
-	BOOST_CHECK(!find_filter(P, ALL_ZEROS));
-	BOOST_CHECK(!find_filter(P, ALL_ONES));
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	P.add(F[1]) = 1;
+	BOOST_CHECK(find_filter(P, F[1], 1));
+	BOOST_CHECK(!find_filter(P, F[2], 1));
+	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 1));
+	BOOST_CHECK(find_filter(P, ALL_ONES, 1));
 }
 
 BOOST_AUTO_TEST_CASE( clear ) {
 	predicate P;
-	BOOST_CHECK(!find_filter(P, F[1]));
-	P.add(F[1], 1, 1);
-	BOOST_CHECK(find_filter(P, F[1]));
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	P.add(F[1]) = 1;
+	BOOST_CHECK(find_filter(P, F[1], 1));
 	P.clear();
-	BOOST_CHECK(!find_filter(P, F[1]));
+	BOOST_CHECK(!find_filter(P, F[1], 1));
 }
 
-BOOST_AUTO_TEST_CASE( add_tree_interface ) {
+BOOST_AUTO_TEST_CASE( same_filter_same_value_object ) {
 	predicate P;
-	BOOST_CHECK(matching_interfaces(P, F[1]).empty());
-	BOOST_CHECK(matching_interfaces(P, F[1], 1).empty());
-	P.add(F[1], 1, 2);
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 2).empty());
-	P.add(F[1], 1, 3);
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2, 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 2).empty());
-	P.add(F[1], 2, 4);
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3, 4 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2, 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 2) == set<interface_t>({ 4 }));
+	BOOST_CHECK(&P.add(F[1]) == &P.add(F[1]));
+	BOOST_CHECK(&P.add(F[2]) != &P.add(F[1]));
 }
 
-BOOST_AUTO_TEST_CASE( add_array_of_tips ) {
+BOOST_AUTO_TEST_CASE( add_same_filter ) {
 	predicate P;
-
-	tree_interface_pair tips[3];
-
-	tips[0] = tip_value(1, 2);
-	tips[1] = tip_value(1, 3);
-	tips[2] = tip_value(2, 4);
-
-	P.add(F[1], tips, tips + 3);
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3, 4 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2, 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 2) == set<interface_t>({ 4 }));
-
-	tips[0] = tip_value(1, 2);
-	tips[1] = tip_value(1, 3);
-	tips[2] = tip_value(3, 4);
-
-	P.add(F[1], tips, tips + 3);
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 2, 3, 4 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 1) == set<interface_t>({ 2, 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 2) == set<interface_t>({ 4 }));
-	BOOST_CHECK(matching_interfaces(P, F[1], 3) == set<interface_t>({ 4 }));
+	BOOST_CHECK(matching_results(P, F[1]).empty());
+	P.add(F[1]) = 2;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 2 }));
+	P.add(F[1]) = 3;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 3 }));
+	P.add(F[1]) = 4;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 4 }));
 }
 
 BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
 	predicate P;
-	P.add(F[1], 1, 1);
-	P.add(F[1], 1, 2);
-	P.add(F[2], 1, 3);
-	P.add(F[3], 1, 4);
+	P.add(F[1]) = 1;
+	P.add(F[1]) = 2;
+	P.add(F[2]) = 3;
+	P.add(F[3]) = 4;
 
-	BOOST_CHECK(find_filter(P, F[1]));
-	BOOST_CHECK(find_filter(P, F[2]));
-	BOOST_CHECK(find_filter(P, F[3]));
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	BOOST_CHECK(find_filter(P, F[1], 2));
+	BOOST_CHECK(!find_filter(P, F[2], 1));
+	BOOST_CHECK(!find_filter(P, F[3], 1));
+	BOOST_CHECK(find_filter(P, F[2], 3));
+	BOOST_CHECK(find_filter(P, F[3], 4));
 }
 
 BOOST_AUTO_TEST_CASE( add_and_clear ) {
 	predicate P;
 
-	BOOST_CHECK(!find_filter(P, F[1]));
+	BOOST_CHECK(!find_filter(P, F[1], 1));
 
-	P.add(F[1], 1, 3);
-	P.add(F[1], 1, 2);
+	P.add(F[1]) = 3;
 
-	BOOST_CHECK(find_filter(P, F[1]));
+	BOOST_CHECK(find_filter(P, F[1], 3));
 
 	P.clear();
 
-	BOOST_CHECK(!find_filter(P, F[1]));
+	BOOST_CHECK(!find_filter(P, F[1], 3));
 }
 
 BOOST_AUTO_TEST_CASE( add_many_and_find ) {
 	predicate P;
 
-	P.add(F[1], 1, 1);
-	P.add(F[2], 1, 2);
-	P.add(F[3], 1, 3);
-	P.add(F[4], 1, 4);
-	P.add(F[5], 1, 5);
-	P.add(F[6], 1, 6);
-	P.add(F[7], 1, 7);
-	P.add(F[8], 1, 8);
-	P.add(F[9], 1, 9);
-	P.add(F[10], 1, 10);
+	P.add(F[1]) = 1;
+	P.add(F[2]) = 2;
+	P.add(F[3]) = 3;
+	P.add(F[4]) = 4;
+	P.add(F[5]) = 5;
+	P.add(F[6]) = 6;
+	P.add(F[7]) = 7;
+	P.add(F[8]) = 8;
+	P.add(F[9]) = 9;
+	P.add(F[10]) = 10;
 
-	BOOST_CHECK(find_filter(P, F[1]));
-	BOOST_CHECK(find_filter(P, F[2]));
-	BOOST_CHECK(find_filter(P, F[3]));
-	BOOST_CHECK(find_filter(P, F[4]));
-	BOOST_CHECK(find_filter(P, F[5]));
-	BOOST_CHECK(find_filter(P, F[6]));
-	BOOST_CHECK(find_filter(P, F[7]));
-	BOOST_CHECK(find_filter(P, F[8]));
-	BOOST_CHECK(find_filter(P, F[9]));
-	BOOST_CHECK(find_filter(P, F[10]));
-}
-
-BOOST_AUTO_TEST_CASE( add_many_and_match ) {
-	predicate P;
-
-	P.add(F[1], 1, 1);
-	P.add(F[2], 1, 2);
-	P.add(F[3], 1, 3);
-	P.add(F[4], 1, 4);
-	P.add(F[5], 1, 5);
-	P.add(F[6], 1, 6);
-	P.add(F[7], 1, 7);
-	P.add(F[8], 1, 8);
-	P.add(F[9], 1, 9);
-	P.add(F[10], 1, 10);
-
-	BOOST_CHECK(matching_interfaces(P, F[1]) == set<interface_t>({ 1 }));
-	BOOST_CHECK(matching_interfaces(P, F[2]) == set<interface_t>({ 2 }));
-	BOOST_CHECK(matching_interfaces(P, F[3]) == set<interface_t>({ 3 }));
-	BOOST_CHECK(matching_interfaces(P, F[4]) == set<interface_t>({ 4 }));
-	BOOST_CHECK(matching_interfaces(P, F[5]) == set<interface_t>({ 5 }));
-	BOOST_CHECK(matching_interfaces(P, F[6]) == set<interface_t>({ 6 }));
-	BOOST_CHECK(matching_interfaces(P, F[7]) == set<interface_t>({ 7 }));
-	BOOST_CHECK(matching_interfaces(P, F[8]) == set<interface_t>({ 8 }));
-	BOOST_CHECK(matching_interfaces(P, F[9]) == set<interface_t>({ 9 }));
-	BOOST_CHECK(matching_interfaces(P, F[10]) == set<interface_t>({ 10 }));
+	BOOST_CHECK(find_filter(P, F[1], 1));
+	BOOST_CHECK(find_filter(P, F[2], 2));
+	BOOST_CHECK(find_filter(P, F[3], 3));
+	BOOST_CHECK(find_filter(P, F[4], 4));
+	BOOST_CHECK(find_filter(P, F[5], 5));
+	BOOST_CHECK(find_filter(P, F[6], 6));
+	BOOST_CHECK(find_filter(P, F[7], 7));
+	BOOST_CHECK(find_filter(P, F[8], 8));
+	BOOST_CHECK(find_filter(P, F[9], 9));
+	BOOST_CHECK(find_filter(P, F[10], 10));
 }
 
 BOOST_AUTO_TEST_CASE( subsets ) {
@@ -297,35 +225,100 @@ BOOST_AUTO_TEST_CASE( subsets ) {
 	static const int N = sizeof(F) / sizeof(const filter_t);
 
 	for(unsigned int i = 0; i < N; ++i)
-		P.add(F[i], 1, i);
+		P.add(F[i]) = i;
 
 	static const int M = sizeof(Q) / sizeof(const filter_t);
 
 	for(unsigned int i = 0; i < M; ++i) {
-		set<interface_t> expected_results;
+		set<int> expected_results;
 		for (int j = 0; j < N; ++j)
 			if (F[j].subset_of(Q[i]))
 				expected_results.insert(j);
 
-		BOOST_CHECK(matching_interfaces(P, Q[i]) == expected_results);
+		BOOST_CHECK(matching_results(P, Q[i]) == expected_results);
 	}
+}
+
+BOOST_AUTO_TEST_CASE( corner_case_filters ) {
+	predicate P;
+	filter_t f_first;
+	filter_t f_last;
+	f_first.clear();
+	f_first.set_bit(0);
+	f_last.clear();
+	f_last.set_bit(filter_t::WIDTH - 1);
+
+	P.add(f_first) = 1;
+	P.add(f_last) = 2;
+	BOOST_CHECK(matching_results(P, ALL_ONES) == set<int>({1, 2}));
+
+	filter_t has_first;
+	has_first.clear();
+	has_first.set_bit(0);
+	has_first.set_bit(10);
+	has_first.set_bit(100);
+	has_first.set_bit(filter_t::WIDTH - 2);
+
+	filter_t has_last;
+	has_last.clear();
+	has_last.set_bit(1);
+	has_last.set_bit(10);
+	has_last.set_bit(100);
+	has_last.set_bit(filter_t::WIDTH - 1);
+
+	filter_t has_none;
+	has_none.clear();
+	has_none.set_bit(1);
+	has_none.set_bit(10);
+	has_none.set_bit(100);
+	has_none.set_bit(filter_t::WIDTH - 2);
+
+	filter_t has_both;
+	has_both.clear();
+	has_both.set_bit(0);
+	has_both.set_bit(10);
+	has_both.set_bit(100);
+	has_both.set_bit(filter_t::WIDTH - 1);
+
+	BOOST_CHECK(matching_results(P, has_none) == set<int>({}));
+	BOOST_CHECK(matching_results(P, has_first) == set<int>({ 1 }));
+	BOOST_CHECK(matching_results(P, has_last) == set<int>({ 2 }));
+	BOOST_CHECK(matching_results(P, has_both) == set<int>({ 1, 2 }));
+}
+
+BOOST_AUTO_TEST_CASE( single_bit_filters ) {
+	predicate P;
+
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		filter_t f;
+		f.clear();
+		f.set_bit(i);
+		P.add(f) = i;
+	}
+
+	set<int> all_interfaces;
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		all_interfaces.insert(i);
+
+	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
 }
 
 BOOST_AUTO_TEST_CASE( deepest_trie ) {
 	predicate P;
 
 	filter_t f;			// all-zero
+	f.clear();
 
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
 		f.set_bit(i);
-		P.add(f, 1, i);
+		P.add(f) = i;
 	}
 
-	set<interface_t> all_interfaces;
+	set<int> all_interfaces;
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
 		all_interfaces.insert(i);
 
-	BOOST_CHECK(matching_interfaces(P, f) == all_interfaces);
+	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
