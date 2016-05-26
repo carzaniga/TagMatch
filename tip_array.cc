@@ -42,7 +42,7 @@ void tip_array::add(tree_interface_pair tip) {
 		if (size > UINT32_MAX/2)
 			return;
 		tree_interface_pair * new_tip_vector = new tree_interface_pair[size*2];
-		memcpy(new_tip_vector, local_tips, size*sizeof(tree_interface_pair));
+		memcpy(new_tip_vector, external_tips, size*sizeof(tree_interface_pair));
 		delete[](external_tips);
 		external_tips = new_tip_vector;
     }
