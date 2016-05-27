@@ -265,17 +265,21 @@ public:
 		// |######----------#####################################|
 		//  ^0    ^left     ^right                           191^
 		// 
-		assert(left <= right);
-		for(unsigned int i = left / BLOCK_SIZE; i*BLOCK_COUNT < right; ++i) {
-			block_t mask = ~(0x0);
-			if (left > i*BLOCK_SIZE)
-				mask <<= (left - i*BLOCK_SIZE);
+		assert(left < right);
+		unsigned int i = left / BLOCK_SIZE;
+		block_t mask = ~(0x0);
+		mask <<= (left % BLOCK_SIZE);
+		if (i == right / BLOCK_SIZE) {
+			return !((b[i] & ~x.b[i] & mask) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+		} else if (b[i] & ~x.b[i] & mask)
+			return false;
 
-			if (right <= i*BLOCK_SIZE + BLOCK_SIZE) {
-				return (((b[i] & ~x.b[i] & mask) << (i*BLOCK_SIZE + BLOCK_SIZE - right)) == 0);
-			} else if ((b[i] & ~x.b[i] & mask) != 0)
+		for (++i; i < right/BLOCK_SIZE; ++i)
+			if ((b[i] & ~x.b[i]) != 0)
 				return false;
-		}
+
+		if (right % BLOCK_SIZE)
+			return !((b[i] & ~x.b[i]) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
 		return true;
 	}
 
@@ -288,13 +292,38 @@ public:
 		// |----------------#####################################|
 		//  ^0              ^right                           191^
 		// 
-		assert(right < WIDTH);
-		for(unsigned int i = 0; i*BLOCK_COUNT < right; ++i) {
-			if (right <= i*BLOCK_SIZE + BLOCK_SIZE) {
-				return (((b[i] & ~x.b[i]) << (i*BLOCK_SIZE + BLOCK_SIZE - right)) == 0);
-			} else if ((b[i] & ~x.b[i]) != 0)
+		assert(right <= WIDTH);
+
+		unsigned int i;
+		for (i = 0; i < right/BLOCK_SIZE; ++i)
+			if ((b[i] & ~x.b[i]) != 0)
 				return false;
-		}
+
+		if (right % BLOCK_SIZE)
+			return !((b[i] & ~x.b[i]) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+		return true;
+
+	}
+
+	bool suffix_subset_of(const bitvector & x, const unsigned int left) const {
+		//
+		// Check that *this is a subset of x only in the suffix starting at
+		// position left, as illustrated below:
+		//
+		//   ignored prefix           checked suffix
+		// |################-------------------------------------|
+		//  ^0              ^left                            191^
+		//
+		assert(left < WIDTH);
+		unsigned int i = left/BLOCK_SIZE;
+
+		if (((b[i] & ~x.b[i]) >> (left % BLOCK_SIZE)) != 0)
+			return false;
+
+		while (++i < BLOCK_COUNT)
+			if ((b[i] & ~x.b[i]) != 0)
+				return false;
+
 		return true;
 	}
 	
