@@ -171,36 +171,66 @@ void multi_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 	// track of the visited nodes, and we visit new nodes along a
 	// subset prefix.
 	//
+	struct exploration_state {
+		node * n;
+		filter_pos_t slack;
+	};
+
 	filter_pos_t i = x.popcount(); 
-	while (i > 0) {
+	for (filter_pos_t max_slack = 0; i > 0; ++max_slack) {
 		--i;
 		if (roots[i]) {
 			// if the trie is not empty we push the root node onto the stack.
 			//
-			node * S[filter_t::WIDTH];
+			exploration_state S[filter_t::WIDTH];
 			unsigned int head = 0;
 
-			node * n = roots[i];
-
+			node * n = roots[i];	// current node in the trie exploration
+			filter_pos_t slack = max_slack; // number of times we can
+											// ignore a 1-bits in the
+											// current node
 			for (;;) {
 				if (n->key.subset_of(x)) {
 					if (h.match(n->value))
 						return;
+					if (n->pos < filter_t::WIDTH) {
+						if (n->right) // we don't need to check
+									  // x[n->pos], which is implied
+									  // by the branch condition
+									  // n->key.subset_of(x)
+							goto explore_right_subtree_first;
+						else if (n->left)
+							goto explore_left_subtree_only_if_have_slack;
+					}
+				} else if (n->pos < filter_t::WIDTH && n->key.prefix_subset_of(x, n->pos)) {
+					if (x[n->pos]) {
+						if (n->right) {
+						explore_right_subtree_first:
+							if (slack > 0 && n->left) {
+								S[head].n = n->left;
+								S[head].slack = slack - 1;
+								++head;
+							}
+							n = n->right;
+							continue;
+						} else if (n->left) {
+						explore_left_subtree_only_if_have_slack:
+							if (slack > 0) {
+								n = n->left;
+								--slack;
+								continue;
+							}
+						}
+					} else if (n->left) {
+						n = n->left;
+						continue;
+					}
 				}
-				if (n->pos > 0 && !n->key.prefix_subset_of(x, n->pos - 1)) {
-					if (head > 0)
-						n = S[--head];
-					else
-						break;
-				} else if (n->right && x[n->pos]) {
-					if (n->left)
-						S[head++] = n->left;
-					n = n->right;
-				} else if (n->left) {
-					n = n->left;
-				} else if (head > 0)
-					n = S[--head];
-				else
+				if (head > 0) {
+					--head;
+					n = S[head].n;
+					slack = S[head].slack;
+				} else
 					break;
 			}
 		}

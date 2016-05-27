@@ -174,29 +174,37 @@ void patricia_predicate<T>::find_all_subsets(const filter_t & x,
 		//
 		node * S[filter_t::WIDTH];
 		unsigned int head = 0;
-
 		node * n = root;
 
 		for (;;) {
 			if (n->key.subset_of(x)) {
 				if (h.match(n->value))
-					return;
+					break;
+				if (n->pos < filter_t::WIDTH) {
+					if (n->right) // we don't need to check x[n->pos],
+								  // which is implied by the branch
+								  // condition n->key.subset_of(x)
+						goto explore_right_subtree_first;
+					else if (n->left)
+						goto explore_left_subtree_only;
+				}
+			} else if (n->pos < filter_t::WIDTH && n->key.prefix_subset_of(x, n->pos)) {
+				if (n->right && x[n->pos]) {
+				explore_right_subtree_first:
+					if (n->left)
+						S[head++] = n->left;
+					n = n->right;
+					continue;
+				} else if (n->left) {
+				explore_left_subtree_only:
+					n = n->left;
+					continue;
+				}
 			}
-			if (n->pos > 0 && !n->key.prefix_subset_of(x, n->pos - 1)) {
-				if (head > 0)
-					n = S[--head];
-				else
-					return;
-			} else if (n->right && x[n->pos]) {
-				if (n->left)
-					S[head++] = n->left;
-				n = n->right;
-			} else if (n->left) {
-				n = n->left;
-			} else if (head > 0)
+			if (head > 0)
 				n = S[--head];
 			else
-				return;
+				break;
 		}
 	}
 }
