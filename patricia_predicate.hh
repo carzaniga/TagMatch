@@ -72,6 +72,10 @@ private:
 	};
 
     node * root;
+
+	static bool trie_node_matches_filter(node * n, const filter_t & f) {
+		return (n) && (n->key.prefix_subset_of(f, n->pos));
+	}
 };
 
 template <typename T>
@@ -160,6 +164,8 @@ T & patricia_predicate<T>::add(const filter_t & x) {
 	return n->value;
 }
 
+#define MUST_VISIT(nodep, filter) ((nodep) && ((nodep)->key.prefix_subset_of((filter), (nodep)->pos)))
+
 template <typename T>
 void patricia_predicate<T>::find_all_subsets(const filter_t & x,
 											 patricia_predicate<T>::match_handler & h) {
@@ -169,6 +175,7 @@ void patricia_predicate<T>::find_all_subsets(const filter_t & x,
 	// track of the visited nodes, and we visit new nodes along a
 	// subset prefix.
 	//
+#if 0
 	if (root) {
 		// if the trie is not empty we push the root node onto the stack.
 		//
@@ -207,6 +214,42 @@ void patricia_predicate<T>::find_all_subsets(const filter_t & x,
 				break;
 		}
 	}
+#else
+	// this is a more elegant but unfortunately less efficient
+	// algorithm.  It is more elegant because it visits only those
+	// nodes that represent matching prefixes.  That is, prefixes that
+	// are subsets of the input filter.  However, the inefficiency is
+	// probably in the fact that that check is not worth the potential
+	// savings.
+
+	if (trie_node_matches_filter(root, x)) {
+		node * S[filter_t::WIDTH];
+		unsigned int head = 0;
+		node * n = root;
+
+		for (;;) {
+			if (n->pos == filter_t::WIDTH || n->key.suffix_subset_of(x, n->pos))
+				if (h.match(n->value))
+					break;
+
+			if (n->pos < filter_t::WIDTH) {
+				if (trie_node_matches_filter(n->right, x)) {
+					if (trie_node_matches_filter(n->left, x))
+						S[head++] = n->left;
+					n = n->right;
+					continue;
+				} else if (trie_node_matches_filter(n->left, x)) {
+					n = n->left;
+					continue;
+				}
+			}
+			if (head > 0)
+				n = S[--head];
+			else
+				break;
+		}
+	}
+#endif
 }
 
 #endif
