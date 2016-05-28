@@ -12,12 +12,8 @@ AC_LANG(C++)
 #
 LT_INIT
 #
-AX_CXX_COMPILE_STDCXX_0X
-if test "$ax_cv_cxx_compile_cxx0x_cxx" = yes; then
-  CXXFLAGS="-std=c++0x $CXXFLAGS"
-elif test "$ax_cv_cxx_compile_cxx0x_gxx" = yes; then
-  CXXFLAGS="-std=gnu++0x $CXXFLAGS"
-fi
+AX_CXX_COMPILE_STDCXX([11], , mandatory)
+
 AX_CHECK_COMPILE_FLAG([-Wall], [[
   CFLAGS="-Wall $CFLAGS"
   CXXFLAGS="-Wall $CXXFLAGS"
