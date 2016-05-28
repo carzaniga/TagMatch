@@ -22,6 +22,7 @@ libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
 bin_PROGRAMS = gen gen2 split_prefixes router \
 		cpu_gpu_matcher test_matcher patricia_matcher multi_patricia_matcher \
+		compact_patricia_matcher \
 		analyze_workload convert_workload sample_workload split_workload
 
 gen_SOURCES = gen.cc
@@ -58,6 +59,11 @@ patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io
 			patricia_predicate.hh tip_array.hh \
 			tip_array.cc fib.cc packet.cc \
 			patricia_matcher.cc
+
+compact_patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
+			compact_patricia_predicate.hh tip_array.hh \
+			tip_array.cc fib.cc packet.cc \
+			compact_patricia_matcher.cc
 
 multi_patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
 				multi_patricia_predicate.hh tip_array.hh \

@@ -24,7 +24,7 @@
 #include <iostream>
 #include <set>
 
-#include "multi_patricia_predicate.hh"
+#include "compact_patricia_predicate.hh"
 
 #ifndef INTERFACES
 #define INTERFACES 256U
@@ -34,7 +34,7 @@ using std::set;
 using std::cout;
 using std::endl;
 
-typedef multi_patricia_predicate<int> predicate;
+typedef compact_patricia_predicate<int> predicate;
 
 class general_matcher : public predicate::match_handler {
 public:
@@ -115,7 +115,7 @@ static const filter_t Q[] = {
 	filter_t("111111111111111111111111111111111111111011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"),
 };
 
-#define BOOST_TEST_MODULE multi_patricia_predicate
+#define BOOST_TEST_MODULE compact_patricia_predicate_predicate
 #define BOOST_TEST_DYN_LINK 1
 
 #include <boost/test/unit_test.hpp>
@@ -130,8 +130,8 @@ BOOST_AUTO_TEST_CASE( find_in_empty_predicate ) {
 
 BOOST_AUTO_TEST_CASE( find_one_filter ) {
 	predicate P;
-	BOOST_CHECK(!find_filter(P, F[1], 1));
 	P.add(F[1]) = 1;
+	P.consolidate();
 	BOOST_CHECK(find_filter(P, F[1], 1));
 	BOOST_CHECK(!find_filter(P, F[2], 1));
 	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 1));
@@ -140,27 +140,27 @@ BOOST_AUTO_TEST_CASE( find_one_filter ) {
 
 BOOST_AUTO_TEST_CASE( clear ) {
 	predicate P;
-	BOOST_CHECK(!find_filter(P, F[1], 1));
 	P.add(F[1]) = 1;
+	P.consolidate();
 	BOOST_CHECK(find_filter(P, F[1], 1));
 	P.clear();
+	P.consolidate();
 	BOOST_CHECK(!find_filter(P, F[1], 1));
 }
 
 BOOST_AUTO_TEST_CASE( same_filter_same_value_object ) {
 	predicate P;
+	P.consolidate();
 	BOOST_CHECK(&P.add(F[1]) == &P.add(F[1]));
 	BOOST_CHECK(&P.add(F[2]) != &P.add(F[1]));
 }
 
 BOOST_AUTO_TEST_CASE( add_same_filter ) {
 	predicate P;
-	BOOST_CHECK(matching_results(P, F[1]).empty());
 	P.add(F[1]) = 2;
-	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 2 }));
 	P.add(F[1]) = 3;
-	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 3 }));
 	P.add(F[1]) = 4;
+	P.consolidate();
 	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 4 }));
 }
 
@@ -170,7 +170,7 @@ BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
 	P.add(F[1]) = 2;
 	P.add(F[2]) = 3;
 	P.add(F[3]) = 4;
-
+	P.consolidate();
 	BOOST_CHECK(!find_filter(P, F[1], 1));
 	BOOST_CHECK(find_filter(P, F[1], 2));
 	BOOST_CHECK(!find_filter(P, F[2], 1));
@@ -185,11 +185,12 @@ BOOST_AUTO_TEST_CASE( add_and_clear ) {
 	BOOST_CHECK(!find_filter(P, F[1], 1));
 
 	P.add(F[1]) = 3;
-
+	P.consolidate();
 	BOOST_CHECK(find_filter(P, F[1], 3));
 
 	P.clear();
 
+	P.consolidate();
 	BOOST_CHECK(!find_filter(P, F[1], 3));
 }
 
@@ -206,6 +207,7 @@ BOOST_AUTO_TEST_CASE( add_many_and_find ) {
 	P.add(F[8]) = 8;
 	P.add(F[9]) = 9;
 	P.add(F[10]) = 10;
+	P.consolidate();
 
 	BOOST_CHECK(find_filter(P, F[1], 1));
 	BOOST_CHECK(find_filter(P, F[2], 2));
@@ -229,12 +231,14 @@ BOOST_AUTO_TEST_CASE( subsets ) {
 
 	static const int M = sizeof(Q) / sizeof(const filter_t);
 
+	P.consolidate();
+
 	for(unsigned int i = 0; i < M; ++i) {
 		set<int> expected_results;
 		for (int j = 0; j < N; ++j)
 			if (F[j].subset_of(Q[i]))
 				expected_results.insert(j);
-		BOOST_TEST_MESSAGE("Q[" << i << "]\n");
+
 		BOOST_CHECK(matching_results(P, Q[i]) == expected_results);
 	}
 }
@@ -250,7 +254,6 @@ BOOST_AUTO_TEST_CASE( corner_case_filters ) {
 
 	P.add(f_first) = 1;
 	P.add(f_last) = 2;
-	BOOST_CHECK(matching_results(P, ALL_ONES) == set<int>({1, 2}));
 
 	filter_t has_first;
 	has_first.clear();
@@ -280,6 +283,7 @@ BOOST_AUTO_TEST_CASE( corner_case_filters ) {
 	has_both.set_bit(100);
 	has_both.set_bit(filter_t::WIDTH - 1);
 
+	P.consolidate();
 	BOOST_CHECK(matching_results(P, has_none) == set<int>({}));
 	BOOST_CHECK(matching_results(P, has_first) == set<int>({ 1 }));
 	BOOST_CHECK(matching_results(P, has_last) == set<int>({ 2 }));
@@ -300,6 +304,7 @@ BOOST_AUTO_TEST_CASE( single_bit_filters ) {
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
 		all_interfaces.insert(i);
 
+	P.consolidate();
 	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
 }
 
@@ -318,6 +323,7 @@ BOOST_AUTO_TEST_CASE( deepest_trie ) {
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
 		all_interfaces.insert(i);
 
+	P.consolidate();
 	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
 }
 

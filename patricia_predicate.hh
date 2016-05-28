@@ -54,7 +54,7 @@ public:
 		virtual bool match(T &) = 0;
 	};
 
-	void find_all_subsets(const filter_t & x, match_handler & h);
+	void find_all_subsets(const filter_t & x, match_handler & h) noexcept;
 
 private:
 	class node {
@@ -73,7 +73,7 @@ private:
 
     node * root;
 
-	static bool trie_node_matches_filter(node * n, const filter_t & f) {
+	static bool trie_node_matches_filter(node * n, const filter_t & f) noexcept {
 		return (n) && (n->key.prefix_subset_of(f, n->pos));
 	}
 };
@@ -168,14 +168,14 @@ T & patricia_predicate<T>::add(const filter_t & x) {
 
 template <typename T>
 void patricia_predicate<T>::find_all_subsets(const filter_t & x,
-											 patricia_predicate<T>::match_handler & h) {
+											 patricia_predicate<T>::match_handler & h) noexcept {
 	//
 	// this is a non-recursive (i.e., iterative) exploration of the
 	// PATRICIA trie that looks for subsets.  We use a stack S to keep
 	// track of the visited nodes, and we visit new nodes along a
 	// subset prefix.
 	//
-#if 0
+#if 1
 	if (root) {
 		// if the trie is not empty we push the root node onto the stack.
 		//

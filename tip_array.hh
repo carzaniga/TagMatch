@@ -56,6 +56,28 @@ public:
 		other.size = 0;
 	}
 
+	// move assignment (C++ 11)
+	tip_array & operator = (tip_array && other) {
+		size = other.size;
+		if (size > LOCAL_CAPACITY)
+			external_tips = other.external_tips;
+		else
+			memcpy(local_tips, other.local_tips, size*sizeof(tree_interface_pair));
+		other.size = 0;
+		return *this;
+	}
+
+	// copy assignment, with ownership transfer
+	tip_array & operator = (tip_array & other) {
+		size = other.size;
+		if (size > LOCAL_CAPACITY)
+			external_tips = other.external_tips;
+		else
+			memcpy(local_tips, other.local_tips, size*sizeof(tree_interface_pair));
+		other.size = 0;
+		return *this;
+	}
+
 	void add(tree_interface_pair tip);
 
 	const tree_interface_pair * begin() const {
