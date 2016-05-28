@@ -22,7 +22,7 @@ static bool is_power_of_two(uint16_t x) {
 	return ((x) & ((x) - 1)) == 0;
 }
 
-tip_array::tip_array(tip_array & other) : size(other.size) {
+tip_array::tip_array(const tip_array & other) : size(other.size) {
 	if (size > LOCAL_CAPACITY) {
 		external_tips = other.external_tips;
 		unsigned int allocated_size = INITIAL_EXTERNAL_CAPACITY;

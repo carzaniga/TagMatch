@@ -45,7 +45,7 @@ public:
 	}
 
 	// copy constructor
-	tip_array(tip_array & other);
+	tip_array(const tip_array & other);
 
 	// move constructor (C++ 11)
 	tip_array(tip_array && other) : size(other.size) {

@@ -102,10 +102,6 @@ private:
 		assert(has_left_child(n));
 		return n + nodes[n].left_offset;
 	}
-
-	bool prefix_is_subset(unsigned int n, const filter_t & x) {
-		return nodes[n].key.prefix_subset_of(x, nodes[n].pos);
-	}
 };
 
 template <typename T>

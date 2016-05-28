@@ -13,6 +13,7 @@
 
 #include "filter.hh"
 #include "routing.hh"
+#include "tip_array.hh"
 #include "compact_patricia_predicate.hh"
 #include "fib.hh"
 #include "packet.hh"
@@ -33,10 +34,6 @@ using std::chrono::duration_cast;
 #define INTERFACES 256U
 #endif
 
-// #include "tip_array.hh"
-
-typedef std::vector<tree_interface_pair> tip_array;
-
 typedef compact_patricia_predicate<tip_array> predicate;
 
 predicate P;
@@ -55,7 +52,7 @@ static int read_filters(string fname, bool binary_format) {
 		tip_array & tips = P.add(f.filter);
 		for(const tree_interface_pair * p = f.ti_pairs.data();
 			p != f.ti_pairs.data() + f.ti_pairs.size(); ++p)
-			tips.emplace_back(*p);
+			tips.add(*p);
 		++res;
 	}
 
@@ -166,7 +163,7 @@ public:
 	}
 
 	virtual bool match(tip_array & tips) {
-		for (typename tip_array::const_iterator p = tips.begin(); p != tips.end(); ++p)
+		for (const tree_interface_pair * p = tips.begin(); p != tips.end(); ++p)
 			if (tip_tree(*p) == tip_tree(tip) && tip_interface(*p) != tip_interface(tip))
 				output[tip_interface(*p)] = 1;
 		return false;
@@ -182,6 +179,13 @@ public:
 private:
 	unsigned char output[INTERFACES];
 	tree_interface_pair tip;
+};
+
+class null_matcher : public predicate::match_handler {
+public:
+	virtual bool match(tip_array & tips) {
+		return false;
+	}
 };
 
 int main(int argc, const char * argv[]) {
@@ -278,12 +282,6 @@ int main(int argc, const char * argv[]) {
 		return 0;
 	};
 
-	vector<match_vector> match_results(packets.size());
-
-	unsigned int i = 0;
-	for(network_packet & p : packets) 
-		match_results[i++].set_tip(p.ti_pair);
-
 	if (print_progress_steps)
 		cout << "Consolidating FIB... " << std::flush;
 
@@ -295,20 +293,46 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps) 
 		cout << "Matching packets... " << std::flush;
 	
-	high_resolution_clock::time_point start = high_resolution_clock::now();
+	high_resolution_clock::time_point start;
 
-	if (use_identity_permutation) {
+	high_resolution_clock::time_point stop;
+
+	if (print_matching_results) {
+		vector<match_vector> match_results(packets.size());
+
 		unsigned int i = 0;
 		for(network_packet & p : packets) 
-			P.find_all_subsets(p.filter, match_results[i++]);
+			match_results[i++].set_tip(p.ti_pair);
+
+		start = high_resolution_clock::now();
+
+		if (use_identity_permutation) {
+			unsigned int i = 0;
+			for(network_packet & p : packets) 
+				P.find_all_subsets(p.filter, match_results[i++]);
+		} else {
+			unsigned int i = 0;
+			for(network_packet & p : packets)
+				P.find_all_subsets(apply_permutation(p.filter), match_results[i++]);
+		}
+		stop = high_resolution_clock::now();
+
+		if (print_matching_results) 
+			for(const match_vector & m : match_results)
+				m.print_results();
 	} else {
-		unsigned int i = 0;
-		for(network_packet & p : packets)
-			P.find_all_subsets(apply_permutation(p.filter), match_results[i++]);
+		null_matcher handler;
+		start = high_resolution_clock::now();
+
+		if (use_identity_permutation) {
+			for(network_packet & p : packets) 
+				P.find_all_subsets(p.filter, handler);
+		} else {
+			for(network_packet & p : packets)
+				P.find_all_subsets(apply_permutation(p.filter), handler);
+		}
+		stop = high_resolution_clock::now();
 	}
-
-	high_resolution_clock::time_point stop = high_resolution_clock::now();
-
 	if (print_progress_steps) {
 		cout << "\t\t\t" << std::setw(10)
 			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
@@ -318,10 +342,6 @@ int main(int argc, const char * argv[]) {
 	}
 
 	P.clear();
-
-	if (print_matching_results) 
-		for(const match_vector & m : match_results)
-			m.print_results();
 
 	return 0;
 }
