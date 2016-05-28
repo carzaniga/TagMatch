@@ -14,32 +14,29 @@
 #include "filter.hh"
 
 //
-// This is a predicate implemented as a prefix trie.  More
-// specifically, the trie is implemented as a simplified PATRICIA trie.
+// This is a predicate implemented conceptually as a prefix trie.
+// More specifically, the trie is implemented as a PATRICIA trie.
+// However, the implementation is encoded as a compact array in which
+// the left links are explicit but the right links are implicit to the
+// next node in the array.  The left links are implemented as offsets
+// in the array.
 //
-// Each node N in the PATRICIA trie represents a filter (N.key) and
-// also a prefix that is common to all nodes in the sub-tree rooted at
-// N (including N itself).  The prefix is defined by N.key and N.pos,
-// which indicates the length of the prefix.  N.pos can be
-// filter_t::WIDTH, meaning that the prefix is the entire filter in N.
-// Node N and all the nodes below it share the first N.pos bits (of
-// their filters).
-//
+// The encoding is as in the following example.  Notice that filters
+// are sorted in descending lexicographical order.
 /*
-   EXAMPLE:     root:  *\
-                         \
-   common prefix -->  --- \
-                      0010011011
-                      /  ^-pos \
-                 left/          \right
-                    /            \
-             0010010110        0011101110
-                       ^        /    ^
-					       left/
-                              /
-                         0011100001
-                                   ^
-   All left/right links are either indicated or equal to nullptr.
+   EXAMPLE:
+                     -0010011011_
+                    /    ^       \ (implicit right link)
+                   / /0010010111<'
+                  | |          ^
+                  |  >0010010100
+                   \            ^
+                    ->0001111010_
+                    /     ^      \ (implicit right link)
+                   |  0001111010<'
+                   \            ^
+                    `>0001011010
+                                ^
 */
 template <typename T>
 class compact_patricia_predicate {
