@@ -44,6 +44,18 @@ public:
 			delete[](external_tips);
 	}
 
+	// copy constructor
+	tip_array(tip_array & other);
+
+	// move constructor (C++ 11)
+	tip_array(tip_array && other) : size(other.size) {
+		if (size > LOCAL_CAPACITY)
+			external_tips = other.external_tips;
+		else
+			memcpy(local_tips, other.local_tips, size*sizeof(tree_interface_pair));
+		other.size = 0;
+	}
+
 	void add(tree_interface_pair tip);
 
 	const tree_interface_pair * begin() const {
