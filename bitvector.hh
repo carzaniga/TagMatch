@@ -304,7 +304,6 @@ public:
 		if (right % BLOCK_SIZE)
 			return !((b[i] & ~x.b[i]) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
 		return true;
-
 	}
 
 	bool suffix_subset_of(const bitvector & x, const unsigned int left) const noexcept {
@@ -421,6 +420,26 @@ public:
 		unsigned int result = 0;
 		for (int i = 0; i < BLOCK_COUNT; ++i) 
 			result += block_popcount(b[i]);
+		return result;
+	}
+
+	unsigned int prefix_popcount(const unsigned int right) const noexcept {
+		//
+		// Computes the popcount up to position right - 1, as
+		// illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0              ^right                           191^
+		//
+		unsigned int result = 0;
+		unsigned int i;
+		for(i = 0; i < right/BLOCK_SIZE; ++i)
+			result += block_popcount(b[i]);
+
+		if (right % BLOCK_SIZE)
+			result += block_popcount(b[i] << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+
 		return result;
 	}
 
