@@ -5,12 +5,9 @@
 #include "config.h"
 #endif
 
-#if TRACING_WALK
 #include <iostream>
-#endif
-
 #include <map>
-#include <functional>
+
 #include "filter.hh"
 
 //
@@ -41,12 +38,14 @@
 template <typename T>
 class compact_patricia_predicate {
 public:
-	compact_patricia_predicate () : tmp_nodes(), nodes() {}
+	compact_patricia_predicate () : tmp_nodes(), nodes(nullptr) {}
 	~compact_patricia_predicate () { clear(); }
 
+	void use_pre_sorted_filters(unsigned int s);
     void clear();
 	T & add(const filter_t & x);
 	void consolidate();
+	void print_statistics(std::ostream & output) const;
 
 	class match_handler {
 	public:
@@ -61,14 +60,17 @@ public:
 	void find_all_subsets(const filter_t & x, match_handler & h);
 
 private:
-	void compute_offset(unsigned int first, unsigned int last);
+	void compute_offsets(unsigned int first, unsigned int last);
+	void compute_popcount_limits(unsigned int n);
 
 	class node {
 	public:
 		filter_t key;
 		unsigned int left_offset;
-
 		filter_pos_t pos;
+		filter_pos_t popcount_prefix;
+		filter_pos_t popcount_min;
+		filter_pos_t popcount_max;
 		T value;
 
 		node() {}
@@ -84,6 +86,10 @@ private:
 	map_t tmp_nodes;
 	node * nodes;
 	unsigned int size;
+
+	bool is_leaf_node(unsigned int n) {
+		return nodes[n].left_offset == 0;
+	}
 
 	bool has_right_child(unsigned int n) {
 		return nodes[n].left_offset > 1;
@@ -105,6 +111,13 @@ private:
 };
 
 template <typename T>
+void compact_patricia_predicate<T>::use_pre_sorted_filters(unsigned int s) {
+	clear();
+	nodes = new node[s];
+	size = 0;
+}
+
+template <typename T>
 void compact_patricia_predicate<T>::clear() {
 	tmp_nodes.clear();
 	if (nodes) {
@@ -116,33 +129,43 @@ void compact_patricia_predicate<T>::clear() {
 
 template <typename T>
 T & compact_patricia_predicate<T>::add(const filter_t & x) {
-	//
-	return tmp_nodes[x];
+	if (nodes) {
+		node & n = nodes[size++];
+		n.key = x;
+		n.left_offset = 0;
+		n.pos = filter_t::WIDTH;
+		return n.value;
+	} else
+		return tmp_nodes[x];
 }
 
 template <typename T>
 void compact_patricia_predicate<T>::consolidate() {
 	//
-	size = tmp_nodes.size();
-	if (size == 0)
-		return;
-	nodes = new node[size];
-	node * n = nodes;
-	for (typename map_t::iterator i = tmp_nodes.begin(); i != tmp_nodes.end(); ++i) {
-		n->key = i->first;
-		n->left_offset = 0;
-		n->value = std::move(i->second);
-		n->pos = filter_t::WIDTH;
-		++n;
+	if (!nodes) {
+		size = tmp_nodes.size();
+		if (size == 0)
+			return;
+		nodes = new node[size];
+		node * n = nodes;
+		for (typename map_t::iterator i = tmp_nodes.begin(); i != tmp_nodes.end(); ++i) {
+			n->key = i->first;
+			n->left_offset = 0;
+			n->value = std::move(i->second);
+			n->pos = filter_t::WIDTH;
+			++n;
+		}
+		tmp_nodes.clear();
 	}
-	tmp_nodes.clear();
 
 	if (size > 1)
-		compute_offset(0, size - 1);
+		compute_offsets(0, size - 1);
+
+	compute_popcount_limits(0);
 }
 
 template <typename T>
-void compact_patricia_predicate<T>::compute_offset(unsigned int first, unsigned int last) {
+void compact_patricia_predicate<T>::compute_offsets(unsigned int first, unsigned int last) {
 	//
 	filter_pos_t d_pos = nodes[first].key.leftmost_diff(nodes[last].key);
 	unsigned int one_pos = first;
@@ -157,9 +180,33 @@ void compact_patricia_predicate<T>::compute_offset(unsigned int first, unsigned 
 	nodes[first].left_offset = child - first;
 	nodes[first].pos = d_pos;
 	if (first + 2 < child)
-		compute_offset(first + 1, child - 1);
+		compute_offsets(first + 1, child - 1);
 	if (child < last)
-		compute_offset(child, last);
+		compute_offsets(child, last);
+}
+
+template <typename T>
+void compact_patricia_predicate<T>::compute_popcount_limits(unsigned int n) {
+	//
+	nodes[n].popcount_prefix = nodes[n].key.prefix_popcount(nodes[n].pos);
+	nodes[n].popcount_min = nodes[n].key.popcount();
+	nodes[n].popcount_max = nodes[n].popcount_min;
+	if (has_left_child(n)) {
+		unsigned int child = left_child(n);
+		compute_popcount_limits(child);
+		if 	(nodes[n].popcount_min > nodes[child].popcount_min)
+			nodes[n].popcount_min = nodes[child].popcount_min;
+		if 	(nodes[n].popcount_max < nodes[child].popcount_max)
+			nodes[n].popcount_max = nodes[child].popcount_max;
+	}
+	if (has_right_child(n)) {
+		unsigned int child = right_child(n);
+		compute_popcount_limits(child);
+		if 	(nodes[n].popcount_min > nodes[child].popcount_min)
+			nodes[n].popcount_min = nodes[child].popcount_min;
+		if 	(nodes[n].popcount_max < nodes[child].popcount_max)
+			nodes[n].popcount_max = nodes[child].popcount_max;
+	}
 }
 
 template <typename T>
@@ -169,30 +216,46 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 		unsigned int S[filter_t::WIDTH];
 		unsigned int head = 0;
 		unsigned int n = 0;
-
+#if 0
+		filter_pos_t x_popcount = x.popcount();
+#endif
 		for (;;) {
-			if (nodes[n].pos < filter_t::WIDTH) { // internal node
-				if (nodes[n].key.prefix_subset_of(x, nodes[n].pos)) {
-					if (x[nodes[n].pos]) {
-						if (nodes[n].key.subset_of(x)) 
-							if (h.match(nodes[n].value))
-								return;
-						if (has_right_child(n)) {
-							if  (has_left_child(n))
-								S[head++] = left_child(n);
-							n = right_child(n);
-							continue;
-						}
-					}
-					if (has_left_child(n)) {
-						n = left_child(n);
-						continue;
-					}
-				}
-			} else {			// leaf node
+			if (is_leaf_node(n)) {
 				if (nodes[n].key.subset_of(x))
 					if (h.match(nodes[n].value))
 						return;
+			} else
+				// here we check whether we can not ignore node n and
+				// the whole subtree rooted at n for the purpose of a
+				// subset search.  These are essentially optimizations
+				// for the trie walk, in the sense that the subset
+				// search should be correct even if this condition is
+				// always true.
+				if (
+#if 0
+					nodes[n].popcount_min <= x_popcount &&
+					nodes[n].popcount_min <= nodes[n].popcount_prefix + x.suffix_popcount(nodes[n].pos) &&
+#endif
+					nodes[n].key.prefix_subset_of(x, nodes[n].pos)) {
+
+				// Structural properties:
+				//   1. !is_leaf_node(n, x) ==> (has_left_child(n) || has_right_child(n))
+				//   2. has_right_child(n) ==> has_left_child(n)
+				// so...
+				assert(has_left_child(n));
+
+				if (x[nodes[n].pos]) {
+					if (nodes[n].key.subset_of(x))
+						if (h.match(nodes[n].value))
+							return;
+					if (has_right_child(n)) {
+						S[head++] = left_child(n);
+						n = right_child(n);
+						continue;
+					}
+				}
+				n = left_child(n);
+				continue;
 			}
 			if (head > 0) {
 				n = S[--head];
@@ -202,4 +265,9 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 	}
 }
 
-#endif
+template <typename T>
+void compact_patricia_predicate<T>::print_statistics(std::ostream & output) const {
+	output << "size: " << size << std::endl;
+	output << "sizeof(node): " << sizeof(node) << std::endl;
+}
+#endif // include guard

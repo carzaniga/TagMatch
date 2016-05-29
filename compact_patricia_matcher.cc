@@ -38,14 +38,17 @@ typedef compact_patricia_predicate<tip_array> predicate;
 
 predicate P;
 
-static int read_filters(string fname, bool binary_format) {
+static int read_filters(string fname, bool binary_format, unsigned int pre_sorted) {
+	if (pre_sorted)
+		P.use_pre_sorted_filters(pre_sorted);
+
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
 		return -1;
 
-	int res = 0;
+	unsigned int res = 0;
 	fib_entry f;
 
 	while((binary_format) ? f.read_binary(is) : f.read_ascii(is)) {
@@ -54,6 +57,8 @@ static int read_filters(string fname, bool binary_format) {
 			p != f.ti_pairs.data() + f.ti_pairs.size(); ++p)
 			tips.add(*p);
 		++res;
+		if (res == pre_sorted)
+			break;
 	}
 
 	is.close();
@@ -144,7 +149,7 @@ static int read_bit_permutation(const char * fname) {
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
 		 << " [options] " 
-		"(f|F)=<filters-file-name> (q|Q)=<queries-file-name>"
+		"(f|F)=<filters-file-name> (q|Q)=<queries-file-name> [SF=<number-of-sorted-filters>]"
 		 << endl
 		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl
@@ -197,6 +202,7 @@ int main(int argc, const char * argv[]) {
 	const char * queries_fname = nullptr; 
 	bool queries_binary_format = false;
 	const char * permutation_fname = nullptr; 
+	unsigned int pre_sorted_filters = 0;
 
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"f=",2)==0) {
@@ -221,7 +227,10 @@ int main(int argc, const char * argv[]) {
 			permutation_fname = argv[i] + 4;
 			continue;
 		} else
-		if (strncmp(argv[i],"-q",2)==0) {
+		if (sscanf(argv[i],"SF=%u", &pre_sorted_filters)==1) {
+			continue;
+		} else
+		if (strcmp(argv[i],"-q")==0) {
 			print_matching_results = false;
 			continue;
 		} else
@@ -258,7 +267,8 @@ int main(int argc, const char * argv[]) {
 	
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
-	if ((res = read_filters(filters_fname, filters_binary_format)) < 0) {
+
+	if ((res = read_filters(filters_fname, filters_binary_format, pre_sorted_filters)) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
@@ -289,6 +299,9 @@ int main(int argc, const char * argv[]) {
 	
 	if (print_progress_steps) 
 		cout << endl;
+
+	if (print_progress_steps)
+		P.print_statistics(cout);
 
 	if (print_progress_steps) 
 		cout << "Matching packets... " << std::flush;
