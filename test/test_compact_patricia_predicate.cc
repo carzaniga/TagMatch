@@ -115,7 +115,7 @@ static const filter_t Q[] = {
 	filter_t("111111111111111111111111111111111111111011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"),
 };
 
-#define BOOST_TEST_MODULE compact_patricia_predicate_predicate
+#define BOOST_TEST_MODULE compact_patricia_predicate
 #define BOOST_TEST_DYN_LINK 1
 
 #include <boost/test/unit_test.hpp>
@@ -148,6 +148,10 @@ BOOST_AUTO_TEST_CASE( clear ) {
 	BOOST_CHECK(!find_filter(P, F[1], 1));
 }
 
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE( same_filter )
+
 BOOST_AUTO_TEST_CASE( same_filter_same_value_object ) {
 	predicate P;
 	P.consolidate();
@@ -163,6 +167,10 @@ BOOST_AUTO_TEST_CASE( add_same_filter ) {
 	P.consolidate();
 	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 4 }));
 }
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE( finding_filters )
 
 BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
 	predicate P;
@@ -221,7 +229,11 @@ BOOST_AUTO_TEST_CASE( add_many_and_find ) {
 	BOOST_CHECK(find_filter(P, F[10], 10));
 }
 
-BOOST_AUTO_TEST_CASE( subsets ) {
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE( subset_search )
+
+BOOST_AUTO_TEST_CASE( misc_subsets ) {
 	predicate P;
 
 	static const int N = sizeof(F) / sizeof(const filter_t);
