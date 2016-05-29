@@ -443,6 +443,27 @@ public:
 		return result;
 	}
 
+	unsigned int suffix_popcount(const unsigned int left) const noexcept {
+		//
+		// Compute the popcunt starting at position left, as
+		// illustrated below:
+		//
+		//   ignored prefix           checked suffix
+		// |################-------------------------------------|
+		//  ^0              ^left                            191^
+		//
+		if (left < WIDTH) {
+			unsigned int i = left/BLOCK_SIZE;
+			unsigned int result = block_popcount(b[i] >> (left % BLOCK_SIZE));
+
+			while (++i < BLOCK_COUNT)
+				result += block_popcount(b[i]);
+
+			return result;
+		} else
+			return 0;
+	}
+
 	std::ostream & write_binary(std::ostream & output) const {
 #ifdef WORDS_BIGENDIAN
 		unsigned char tmp[sizeof(b)];
