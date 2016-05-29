@@ -300,9 +300,6 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps) 
 		cout << endl;
 
-	if (print_progress_steps)
-		P.print_statistics(cout);
-
 	if (print_progress_steps) 
 		cout << "Matching packets... " << std::flush;
 	
