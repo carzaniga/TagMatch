@@ -167,7 +167,7 @@ public:
 	void print_results() {
 		std::sort(output.begin(), output.end());
 		std::unique(output.begin(), output.end());
-		for(twitter_id_vector::const_iterator i = output.begin(); i != output.end(); ++i)
+		for(std::vector<twitter_id_t>::const_iterator i = output.begin(); i != output.end(); ++i)
 			cout << ' ' << *i;
 		cout << endl;
     }
@@ -178,7 +178,7 @@ public:
 	}
 
 private:
-	twitter_id_vector output;
+	std::vector<twitter_id_t> output;
 };
 
 class null_matcher : public predicate::match_handler {
