@@ -15,7 +15,6 @@
 #include "filter.hh"
 #include "compact_patricia_predicate.hh"
 #include "twitter_fib.hh"
-#include "packet.hh"
 
 using std::vector;
 using std::ifstream;
@@ -62,7 +61,7 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 	return res;
 }
 
-static unsigned int read_queries(vector<network_packet> & packets, string fname, bool binary_format) {
+static unsigned int read_queries(vector<twitter_packet> & packets, string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -70,15 +69,15 @@ static unsigned int read_queries(vector<network_packet> & packets, string fname,
 		return -1;
 
 	int res = 0;
-	network_packet p;
+	twitter_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair);
+			packets.emplace_back(p);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.ti_pair);
+			packets.emplace_back(p);
 			++res;
 		}
 	}
@@ -271,7 +270,7 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 	
-	vector<network_packet> packets;
+	vector<twitter_packet> packets;
 	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
@@ -310,7 +309,7 @@ int main(int argc, const char * argv[]) {
 
 		if (use_identity_permutation) {
 			unsigned int i = 0;
-			for(network_packet & p : packets) {
+			for(twitter_packet & p : packets) {
 				P.find_all_subsets(p.filter, match_results[i]);
 				if (print_matching_results) 
 					match_results[i].print_results();
@@ -319,7 +318,7 @@ int main(int argc, const char * argv[]) {
 			}
 		} else {
 			unsigned int i = 0;
-			for(network_packet & p : packets) {
+			for(twitter_packet & p : packets) {
 				P.find_all_subsets(apply_permutation(p.filter), match_results[i]);
 				if (print_matching_results) 
 					match_results[i].print_results();
@@ -334,10 +333,10 @@ int main(int argc, const char * argv[]) {
 		start = high_resolution_clock::now();
 
 		if (use_identity_permutation) {
-			for(network_packet & p : packets) 
+			for(twitter_packet & p : packets) 
 				P.find_all_subsets(p.filter, handler);
 		} else {
-			for(network_packet & p : packets)
+			for(twitter_packet & p : packets)
 				P.find_all_subsets(apply_permutation(p.filter), handler);
 		}
 		stop = high_resolution_clock::now();

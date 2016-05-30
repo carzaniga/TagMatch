@@ -50,3 +50,24 @@ std::istream & twitter_fib_entry::read_ascii(std::istream & input) {
 	return input;
 }
 
+std::ostream & twitter_packet::write_binary(std::ostream & output) const {
+	filter.write_binary(output);
+	return io_util_write_binary(output, id);
+}
+
+std::istream & twitter_packet::read_binary(std::istream & input) {
+	if (filter.read_binary(input))
+		return io_util_read_binary(input, id);
+	return input;
+}
+
+std::ostream & twitter_packet::write_ascii(std::ostream & output) const {
+	assert(false);
+	return output;
+}
+
+std::istream & twitter_packet::read_ascii(std::istream & input) {
+	assert(false);
+	return input;
+}
+
