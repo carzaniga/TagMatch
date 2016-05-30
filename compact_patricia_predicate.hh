@@ -323,9 +323,17 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 				assert(has_right_child(n));
 
 				if (x[nodes[n].pos]) {
+#if GO_RIGHT_FIRST
 					if (has_left_child(n))
 						S[head++] = left_child(n);
 					n = right_child(n);
+#else
+					if (has_left_child(n)) {
+						S[head++] = right_child(n);
+						n = left_child(n);
+					} else
+						n = right_child(n);
+#endif
 					continue;
 				} else if (has_left_child(n)) {
 					n = left_child(n);
