@@ -32,14 +32,58 @@ using std::chrono::duration_cast;
 #define INTERFACES 256U
 #endif
 
+#if EXPERIMENTAL_PROGRESS_BAR
+class progress_bar {
+public:
+	progress_bar(unsigned int w, unsigned int n, std::ostream & os = std::cout)
+		: width(w), total(n), count(0), output(os) {
+		mask = 0;
+		while (mask < total/w)
+			mask = (mask << 1) | 1U;
+	}
+
+	void tick() {
+		if ((count & mask) == 0)
+			print_progress_bar();
+		++count;
+	}
+
+	void print_progress_bar() const {
+		output << '|';
+		unsigned int w = count * width / total;
+		for (unsigned int i = 0; i < width; ++i) {
+			if (i < w) output << '=';
+			else if (i == w) output << '>';
+			else output << '-';
+		}
+		output << '|';
+		for (unsigned int i = 0; i < width + 2; ++i)
+			output << '\b';
+		output.flush();
+	}
+
+	void clear() {
+		for (unsigned int i = 0; i < width + 2; ++i)
+			output << ' ';
+		for (unsigned int i = 0; i < width + 2; ++i)
+			output << '\b';
+		output.flush();
+	}
+
+private:
+	const unsigned int width;
+	const unsigned int total;
+	unsigned int count;
+	unsigned int mask;
+	std::ostream & output;
+};
+#endif
+
 typedef compact_patricia_predicate<twitter_id_vector> predicate;
 
 predicate P;
 
 static int read_filters(string fname, bool binary_format, unsigned int pre_sorted) {
-	if (pre_sorted)
-		P.use_pre_sorted_filters(pre_sorted);
-
 	ifstream is (fname) ;
 	string line;
 
@@ -49,14 +93,32 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 	unsigned int res = 0;
 	twitter_fib_entry e;
 
-	while((binary_format) ? e.read_binary(is) : e.read_ascii(is)) {
-		twitter_id_vector & tids = P.add(e.filter);
-		tids = e.ids;
-		++res;
-		if (res == pre_sorted)
-			break;
-	}
+	if (pre_sorted) {
+		P.use_pre_sorted_filters(pre_sorted);
 
+#if EXPERIMENTAL_PROGRESS_BAR
+		progress_bar pb(50, pre_sorted);
+#endif
+		while((binary_format) ? e.read_binary(is) : e.read_ascii(is)) {
+			twitter_id_vector & tids = P.add(e.filter);
+			tids = e.ids;
+			++res;
+#if EXPERIMENTAL_PROGRESS_BAR
+			pb.tick();
+#endif
+			if (res == pre_sorted)
+				break;
+		}
+#if EXPERIMENTAL_PROGRESS_BAR
+		pb.clear();
+#endif
+	} else {
+		while((binary_format) ? e.read_binary(is) : e.read_ascii(is)) {
+			twitter_id_vector & tids = P.add(e.filter);
+			tids = e.ids;
+			++res;
+		}
+	}
 	is.close();
 	return res;
 }
@@ -166,7 +228,7 @@ public:
 
 	void print_results() {
 		std::sort(output.begin(), output.end());
-		std::unique(output.begin(), output.end());
+		output.erase(std::unique(output.begin(), output.end()), output.end());
 		for(std::vector<twitter_id_t>::const_iterator i = output.begin(); i != output.end(); ++i)
 			cout << ' ' << *i;
 		cout << endl;
@@ -299,7 +361,6 @@ int main(int argc, const char * argv[]) {
 		cout << "Matching packets... " << std::flush;
 	
 	high_resolution_clock::time_point start;
-
 	high_resolution_clock::time_point stop;
 
 	if (print_matching_results) {
@@ -327,7 +388,6 @@ int main(int argc, const char * argv[]) {
 			}
 		}
 		stop = high_resolution_clock::now();
-
 	} else {
 		null_matcher handler;
 		start = high_resolution_clock::now();

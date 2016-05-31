@@ -22,7 +22,10 @@ public:
 				data[i] = other.data[i];
 	}
 
-	twitter_id_vector(twitter_id_vector && other) : data(other.data), length(other.length) {}
+	twitter_id_vector(twitter_id_vector && other) : data(other.data), length(other.length) {
+		other.data = nullptr;
+		other.length = 0;
+	}
 
 	twitter_id_vector & operator = (const twitter_id_vector & other) {
 		resize(other.length);
@@ -31,9 +34,11 @@ public:
 		return *this;
 	}
 
-	twitter_id_vector & operator = (const twitter_id_vector && other) {
+	twitter_id_vector & operator = (twitter_id_vector && other) {
 		data = other.data;
 		length = other.length;
+		other.data = nullptr;
+		other.length = 0;
 		return *this;
 	}
 
