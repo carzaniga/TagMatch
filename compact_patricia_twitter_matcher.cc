@@ -11,6 +11,8 @@
 #include <chrono>
 #include <string>
 #include <cstdlib>
+#include <atomic>
+#include <thread>
 
 #include "filter.hh"
 #include "compact_patricia_predicate.hh"
@@ -72,7 +74,6 @@ private:
 			else if (i == limit) output << '>';
 			else output << '-';
 		}
-		output << "|\r";
 		output << "\e[u";
 		output.flush();
 	}
@@ -128,7 +129,9 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 	return res;
 }
 
-static unsigned int read_queries(vector<twitter_packet> & packets, string fname, bool binary_format) {
+vector<twitter_packet> packets;
+
+static unsigned int read_queries(string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -212,11 +215,13 @@ static int read_bit_permutation(const char * fname) {
 static void print_usage(const char * progname) {
 	cout << "usage: " << progname 
 		 << " [options] " 
-		"(f|F)=<filters-file-name> (q|Q)=<queries-file-name> [SF=<number-of-sorted-filters>]"
+		"(f|F)=<filters-file-name> (q|Q)=<queries-file-name>"
 		 << endl
 		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl
 		 << "options:" << endl
+		 << "\tT=<number-of-threads>" << endl
+		 << "\tSF=<number-of-sorted-filters>" << endl
 		 << "\tmap=<permutation-file-name>" << endl
 		 << "\t-q\t: disable output of matching results" << endl
 		 << "\t--no-merge\t: disable merge phase" << endl
@@ -266,6 +271,34 @@ public:
 	}
 };
 
+static std::atomic_uint packet_idx;
+static std::atomic_bool matchers_hold;
+
+void match_and_merge() {
+	match_vector handler;
+	unsigned int i;
+
+	while (matchers_hold.load())
+		;
+
+	while ((i = packet_idx.fetch_add(1)) < packets.size()) {
+		P.find_all_subsets(packets[i].filter, handler);
+		handler.merge_results();
+		handler.clear();
+	}
+}
+
+void match_only() {
+	null_handler handler;
+	unsigned int i;
+
+	while (matchers_hold.load())
+		;
+
+	while ((i = packet_idx.fetch_add(1)) < packets.size())
+		P.find_all_subsets(packets[i].filter, handler);
+}
+
 int main(int argc, const char * argv[]) {
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
@@ -277,6 +310,7 @@ int main(int argc, const char * argv[]) {
 	bool queries_binary_format = false;
 	const char * permutation_fname = nullptr; 
 	unsigned int pre_sorted_filters = 0;
+	unsigned int thread_count = 0;
 
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"f=",2)==0) {
@@ -302,6 +336,9 @@ int main(int argc, const char * argv[]) {
 			continue;
 		} else
 		if (sscanf(argv[i],"SF=%u", &pre_sorted_filters)==1) {
+			continue;
+		} else
+		if (sscanf(argv[i],"T=%u", &thread_count)==1) {
 			continue;
 		} else
 		if (strcmp(argv[i],"-q")==0) {
@@ -353,11 +390,9 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 	
-	vector<twitter_packet> packets;
-	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
-	if ((res = read_queries(packets, queries_fname, queries_binary_format)) < 0) {
+	if ((res = read_queries(queries_fname, queries_binary_format)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
@@ -401,37 +436,33 @@ int main(int argc, const char * argv[]) {
 
 		stop = high_resolution_clock::now();
 
-	} else if (merge_results) {
-		match_vector handler;
-
-		start = high_resolution_clock::now();
-
-		if (use_identity_permutation) {
-			for(twitter_packet & p : packets) {
-				P.find_all_subsets(p.filter, handler);
-				handler.merge_results();
-				handler.clear_and_shrink();
-			}
-		} else {
-			for(twitter_packet & p : packets) {
-				P.find_all_subsets(apply_permutation(p.filter), handler);
-				handler.merge_results();
-				handler.clear_and_shrink();
-			}
-		}
-		stop = high_resolution_clock::now();
 	} else {
-		null_handler handler;
-		start = high_resolution_clock::now();
+		packet_idx = 0;
+		void (*matcher_function)();
+		matcher_function = (merge_results) ? match_and_merge : &match_only;
+		if (thread_count > 1) {
+			std::thread * T[thread_count];
+			matchers_hold = true;
 
-		if (use_identity_permutation) {
-			for(twitter_packet & p : packets) 
-				P.find_all_subsets(p.filter, handler);
-		} else {
-			for(twitter_packet & p : packets)
-				P.find_all_subsets(apply_permutation(p.filter), handler);
+			for(unsigned int i = 0; i < thread_count; ++i)
+				T[i] = new std::thread(matcher_function);
+
+			start = high_resolution_clock::now();
+
+			matchers_hold = false;
+			for(unsigned int i = 0; i < thread_count; ++i)
+				T[i]->join();
+
+			stop = high_resolution_clock::now();
+
+			for(unsigned int i = 0; i < thread_count; ++i)
+				delete(T[i]);
 		}
-		stop = high_resolution_clock::now();
+		else {
+			start = high_resolution_clock::now();
+			matcher_function();
+			stop = high_resolution_clock::now();
+		}
 	}
 
 	if (print_progress_steps) {
