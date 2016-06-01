@@ -32,13 +32,18 @@ using std::chrono::duration_cast;
 #define INTERFACES 256U
 #endif
 
+#define EXPERIMENTAL_PROGRESS_BAR 1
+
 #if EXPERIMENTAL_PROGRESS_BAR
+template <unsigned int W>
 class progress_bar {
 public:
-	progress_bar(unsigned int w, unsigned int n, std::ostream & os = std::cout)
-		: width(w), total(n), count(0), output(os) {
+	static const unsigned int WIDTH = W;
+
+	progress_bar(unsigned int n, std::ostream & os = std::cout)
+		: total(n), count(0), output(os) {
 		mask = 0;
-		while (mask < total/w)
+		while (mask < n/WIDTH)
 			mask = (mask << 1) | 1U;
 	}
 
@@ -48,30 +53,30 @@ public:
 		++count;
 	}
 
-	void print_progress_bar() const {
-		output << '|';
-		unsigned int w = count * width / total;
-		for (unsigned int i = 0; i < width; ++i) {
-			if (i < w) output << '=';
-			else if (i == w) output << '>';
-			else output << '-';
-		}
-		output << '|';
-		for (unsigned int i = 0; i < width + 2; ++i)
-			output << '\b';
-		output.flush();
-	}
-
 	void clear() {
-		for (unsigned int i = 0; i < width + 2; ++i)
+		output << "\e[s";
+		for (unsigned int i = 0; i < WIDTH + 2; ++i)
 			output << ' ';
-		for (unsigned int i = 0; i < width + 2; ++i)
-			output << '\b';
+		output << "\e[u";
 		output.flush();
+		count = 0;
 	}
 
 private:
-	const unsigned int width;
+	void print_progress_bar() const {
+		output << "\e[s";
+		output << '|';
+		unsigned int limit = (count * WIDTH) / total;
+		for (unsigned int i = 0; i < WIDTH; ++i) {
+			if (i < limit) output << '=';
+			else if (i == limit) output << '>';
+			else output << '-';
+		}
+		output << "|\r";
+		output << "\e[u";
+		output.flush();
+	}
+
 	const unsigned int total;
 	unsigned int count;
 	unsigned int mask;
@@ -97,7 +102,7 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 		P.use_pre_sorted_filters(pre_sorted);
 
 #if EXPERIMENTAL_PROGRESS_BAR
-		progress_bar pb(50, pre_sorted);
+		progress_bar<50> pb(pre_sorted);
 #endif
 		while((binary_format) ? e.read_binary(is) : e.read_ascii(is)) {
 			twitter_id_vector & tids = P.add(e.filter);
@@ -214,6 +219,7 @@ static void print_usage(const char * progname) {
 		 << "options:" << endl
 		 << "\tmap=<permutation-file-name>" << endl
 		 << "\t-q\t: disable output of matching results" << endl
+		 << "\t--no-merge\t: disable merge phase" << endl
 		 << "\t-Q\t: disable output of progress steps" << endl;
 }
 
@@ -228,13 +234,23 @@ public:
 
 	void print_results() {
 		std::sort(output.begin(), output.end());
-		output.erase(std::unique(output.begin(), output.end()), output.end());
-		for(std::vector<twitter_id_t>::const_iterator i = output.begin(); i != output.end(); ++i)
-			cout << ' ' << *i;
+		std::vector<twitter_id_t>::const_iterator begin = output.begin();
+		std::vector<twitter_id_t>::const_iterator end = std::unique(output.begin(), output.end());
+		while (begin != end)
+			cout << *begin++ << ' ';
 		cout << endl;
     }
 
+	void merge_results() {
+		std::sort(output.begin(), output.end());
+		std::unique(output.begin(), output.end());
+    }
+
 	void clear() {
+		output.clear();
+	}
+
+	void clear_and_shrink() {
 		output.clear();
 		output.shrink_to_fit();
 	}
@@ -243,7 +259,7 @@ private:
 	std::vector<twitter_id_t> output;
 };
 
-class null_matcher : public predicate::match_handler {
+class null_handler : public predicate::match_handler {
 public:
 	virtual bool match(twitter_id_vector &) {
 		return false;
@@ -254,6 +270,7 @@ int main(int argc, const char * argv[]) {
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
 	bool print_matching_time_only = false;
+	bool merge_results = true;
 	const char * filters_fname = nullptr;
 	bool filters_binary_format = false;
 	const char * queries_fname = nullptr; 
@@ -289,6 +306,10 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strcmp(argv[i],"-q")==0) {
 			print_matching_results = false;
+			continue;
+		} else
+		if (strcmp(argv[i],"--no-merge")==0) {
+			merge_results = false;
 			continue;
 		} else
 		if (strncmp(argv[i],"-Q",2)==0) {
@@ -364,32 +385,43 @@ int main(int argc, const char * argv[]) {
 	high_resolution_clock::time_point stop;
 
 	if (print_matching_results) {
-		vector<match_vector> match_results(packets.size());
+		match_vector handler;
+
+		start = high_resolution_clock::now();
+
+		for(twitter_packet & p : packets) {
+			if (use_identity_permutation)
+				P.find_all_subsets(p.filter, handler);
+			else
+				P.find_all_subsets(apply_permutation(p.filter), handler);
+
+			handler.print_results();
+			handler.clear();
+		}
+
+		stop = high_resolution_clock::now();
+
+	} else if (merge_results) {
+		match_vector handler;
 
 		start = high_resolution_clock::now();
 
 		if (use_identity_permutation) {
-			unsigned int i = 0;
 			for(twitter_packet & p : packets) {
-				P.find_all_subsets(p.filter, match_results[i]);
-				if (print_matching_results) 
-					match_results[i].print_results();
-				match_results[i].clear();
-				++i;
+				P.find_all_subsets(p.filter, handler);
+				handler.merge_results();
+				handler.clear_and_shrink();
 			}
 		} else {
-			unsigned int i = 0;
 			for(twitter_packet & p : packets) {
-				P.find_all_subsets(apply_permutation(p.filter), match_results[i]);
-				if (print_matching_results) 
-					match_results[i].print_results();
-				match_results[i].clear();
-				++i;
+				P.find_all_subsets(apply_permutation(p.filter), handler);
+				handler.merge_results();
+				handler.clear_and_shrink();
 			}
 		}
 		stop = high_resolution_clock::now();
 	} else {
-		null_matcher handler;
+		null_handler handler;
 		start = high_resolution_clock::now();
 
 		if (use_identity_permutation) {
@@ -401,6 +433,7 @@ int main(int argc, const char * argv[]) {
 		}
 		stop = high_resolution_clock::now();
 	}
+
 	if (print_progress_steps) {
 		cout << "\t\t\t" << std::setw(10)
 			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
