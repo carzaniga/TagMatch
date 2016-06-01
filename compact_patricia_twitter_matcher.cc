@@ -14,6 +14,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <limits>
 
 #include "filter.hh"
 #include "compact_patricia_predicate.hh"
@@ -68,7 +69,9 @@ public:
 private:
 	void print_progress_bar() const {
 		output << "\e[s";
-		unsigned int limit = (count * WIDTH) / total;
+		output << '|';
+		unsigned int limit = (total > std::numeric_limits<unsigned int>::max()/WIDTH)
+			? count / (total / WIDTH) : (count * WIDTH) / total;
 		for (unsigned int i = 0; i < WIDTH; ++i) {
 			if (i < limit) output << '=';
 			else if (i == limit) output << '>';
