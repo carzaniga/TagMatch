@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <thread>
+#include <mutex>
 
 #include "filter.hh"
 #include "compact_patricia_predicate.hh"
@@ -67,13 +68,13 @@ public:
 private:
 	void print_progress_bar() const {
 		output << "\e[s";
-		output << '|';
 		unsigned int limit = (count * WIDTH) / total;
 		for (unsigned int i = 0; i < WIDTH; ++i) {
 			if (i < limit) output << '=';
 			else if (i == limit) output << '>';
 			else output << '-';
 		}
+		output << '|';
 		output << "\e[u";
 		output.flush();
 	}
@@ -89,7 +90,8 @@ typedef compact_patricia_predicate<twitter_id_vector> predicate;
 
 predicate P;
 
-static int read_filters(string fname, bool binary_format, unsigned int pre_sorted) {
+static int read_filters(string fname, bool binary_format, unsigned int pre_sorted,
+						bool print_progress) {
 	ifstream is (fname) ;
 	string line;
 
@@ -110,13 +112,15 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 			tids = e.ids;
 			++res;
 #if EXPERIMENTAL_PROGRESS_BAR
-			pb.tick();
+			if (print_progress)
+				pb.tick();
 #endif
 			if (res == pre_sorted)
 				break;
 		}
 #if EXPERIMENTAL_PROGRESS_BAR
-		pb.clear();
+		if (print_progress)
+			pb.clear();
 #endif
 	} else {
 		while((binary_format) ? e.read_binary(is) : e.read_ascii(is)) {
@@ -225,8 +229,12 @@ static void print_usage(const char * progname) {
 		 << "\tmap=<permutation-file-name>" << endl
 		 << "\t-q\t: disable output of matching results" << endl
 		 << "\t--no-merge\t: disable merge phase" << endl
-		 << "\t-Q\t: disable output of progress steps" << endl;
+		 << "\t-Q\t: disable output of progress steps" << endl
+		 << "\t-Qt\t: disable output of progress steps, print timing results" << endl
+		 << "\t-Qm\t: disable output of progress steps, print per-query totals" << endl;
 }
+
+static std::mutex output_mtx;
 
 class match_vector : public predicate::match_handler {
 public:
@@ -246,9 +254,9 @@ public:
 		cout << endl;
     }
 
-	void merge_results() {
+	unsigned int merge_results() {
 		std::sort(output.begin(), output.end());
-		std::unique(output.begin(), output.end());
+		return std::unique(output.begin(), output.end()) - output.begin();
     }
 
 	void clear() {
@@ -288,6 +296,23 @@ void match_and_merge() {
 	}
 }
 
+void match_and_merge_output() {
+	match_vector handler;
+	unsigned int i;
+
+	while (matchers_hold.load())
+		;
+
+	while ((i = packet_idx.fetch_add(1)) < packets.size()) {
+		P.find_all_subsets(packets[i].filter, handler);
+		unsigned int res = handler.merge_results();
+		output_mtx.lock();
+		std::cout << res << std::endl;
+		output_mtx.unlock();
+		handler.clear();
+	}
+}
+
 void match_only() {
 	null_handler handler;
 	unsigned int i;
@@ -303,6 +328,7 @@ int main(int argc, const char * argv[]) {
 	bool print_matching_results = true;
 	bool print_progress_steps = true;
 	bool print_matching_time_only = false;
+	bool print_per_query_totals_only = false;
 	bool merge_results = true;
 	const char * filters_fname = nullptr;
 	bool filters_binary_format = false;
@@ -353,6 +379,8 @@ int main(int argc, const char * argv[]) {
 			print_progress_steps = false;
 			if (strncmp(argv[i],"-Qt",3)==0)
 				print_matching_time_only = true;
+			else if (strncmp(argv[i],"-Qm",3)==0)
+				print_per_query_totals_only = true;
 			continue;
 		} else {
 			print_usage(argv[0]);
@@ -383,7 +411,7 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "Reading filters..." << std::flush;
 
-	if ((res = read_filters(filters_fname, filters_binary_format, pre_sorted_filters)) < 0) {
+	if ((res = read_filters(filters_fname, filters_binary_format, pre_sorted_filters, print_progress_steps)) < 0) {
 		cerr << endl << "couldn't read filters file: " << filters_fname << endl;
 		return 1;
 	};
@@ -439,7 +467,14 @@ int main(int argc, const char * argv[]) {
 	} else {
 		packet_idx = 0;
 		void (*matcher_function)();
-		matcher_function = (merge_results) ? match_and_merge : &match_only;
+
+		if (print_per_query_totals_only)
+			matcher_function = match_and_merge_output;
+		else if (merge_results)
+			matcher_function =  match_and_merge;
+		else
+			matcher_function = match_only;
+
 		if (thread_count > 1) {
 			std::thread * T[thread_count];
 			matchers_hold = true;
