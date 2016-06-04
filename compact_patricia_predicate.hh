@@ -288,6 +288,22 @@ void compact_patricia_predicate<T>::compute_popcount_limits(unsigned int n) {
 }
 #endif
 
+#if USING_POPCOUNT_LIMITS
+static void compute_suffix_popcounts(filter_pos_t * P, const filter_t & f) {
+	filter_pos_t i = 0;
+	filter_pos_t c = f.popcount();
+	filter_pos_t p = f.next_bit(0);
+	while (i < filter_t::WIDTH) {
+		P[i] = c;
+		if (i == p) {
+			--c;
+			p = f.next_bit(++i);
+		} else
+			++i;
+	}
+}
+#endif
+
 template <typename T>
 void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 													 compact_patricia_predicate<T>::match_handler & h) {
@@ -296,7 +312,8 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 		unsigned int head = 0;
 		unsigned int n = 0;
 #if USING_POPCOUNT_LIMITS
-		filter_pos_t x_popcount = x.popcount();
+		filter_pos_t x_suffix_popcounts[filter_t::WIDTH];
+		compute_suffix_popcounts(x_suffix_popcounts, x);
 #endif
 		for (;;) {
 			if (nodes[n].key.subset_of(x))
@@ -311,8 +328,7 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 				// correct even if these additional conditions are
 				// always true.
 #if  USING_POPCOUNT_LIMITS
-				&& nodes[n].popcount_min <= x_popcount
-				&& nodes[n].popcount_min <= nodes[n].popcount_prefix + x.suffix_popcount(nodes[n].pos)
+				&& nodes[n].popcount_min <= nodes[n].popcount_prefix + x_suffix_popcounts[nodes[n].pos]
 #endif
 				&& nodes[n].key.prefix_subset_of(x, nodes[n].pos)) {
 
