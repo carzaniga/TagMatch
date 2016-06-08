@@ -99,7 +99,7 @@ public:
 private:
 	void reverse_nodes();
 	void compute_offsets(unsigned int first, unsigned int last);
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 	void compute_popcount_limits(unsigned int n);
 #endif
 	class node {
@@ -107,7 +107,7 @@ private:
 		filter_t key;
 		unsigned int right_offset;
 		filter_pos_t pos;
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 		filter_pos_t popcount_prefix;
 		filter_pos_t popcount_min;
 		filter_pos_t popcount_max;
@@ -220,7 +220,7 @@ void compact_patricia_predicate<T>::consolidate() {
 	}
 	compute_offsets(0, size - 1);
 
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 	compute_popcount_limits(0);
 #endif
 }
@@ -262,7 +262,7 @@ void compact_patricia_predicate<T>::compute_offsets(unsigned int first, unsigned
 	compute_offsets(child, last);
 }
 
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 template <typename T>
 void compact_patricia_predicate<T>::compute_popcount_limits(unsigned int n) {
 	//
@@ -288,7 +288,7 @@ void compact_patricia_predicate<T>::compute_popcount_limits(unsigned int n) {
 }
 #endif
 
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 static void compute_suffix_popcounts(filter_pos_t * P, const filter_t & f) {
 	filter_pos_t i = 0;
 	filter_pos_t c = f.popcount();
@@ -311,7 +311,7 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 		unsigned int S[filter_t::WIDTH];
 		unsigned int head = 0;
 		unsigned int n = 0;
-#if USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 		filter_pos_t x_suffix_popcounts[filter_t::WIDTH];
 		compute_suffix_popcounts(x_suffix_popcounts, x);
 #endif
@@ -327,7 +327,7 @@ void compact_patricia_predicate<T>::find_all_subsets(const filter_t & x,
 				// walk, in the sense that the subset search should be
 				// correct even if these additional conditions are
 				// always true.
-#if  USING_POPCOUNT_LIMITS
+#ifdef WITH_POPCOUNT_LIMITS
 				&& nodes[n].popcount_min <= nodes[n].popcount_prefix + x_suffix_popcounts[nodes[n].pos]
 #endif
 				&& nodes[n].key.prefix_subset_of(x, nodes[n].pos)) {

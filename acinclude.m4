@@ -423,3 +423,22 @@ flags are "-arch sm_21".]])
 
 fi
 AM_CONDITIONAL([WORKING_NVCC], [test "x$working_nvcc" = "xyes"]) ])
+
+dnl
+dnl AC_OPT_POPCOUNT_LIMITS
+dnl
+AC_DEFUN([AC_OPT_POPCOUNT_LIMITS], [
+AC_ARG_WITH(popcount-limits,
+   AC_HELP_STRING([--with-popcount-limits],
+      [Use heuristcs based on popcount limits in subset search in compact PATRICIA trie. Values are "yes" or "no" (default=no)]), [
+      case "$withval" in
+         yes )
+	    AC_DEFINE([WITH_POPCOUNT_LIMITS], 1, [Use popcount limits in subset search in compact PATRICIA trie])
+	    ;;
+	 * )
+ 	    AC_MSG_RESULT([not using popcount limits in PATRICIA trie.])
+	    ;;
+      esac
+  ])
+])
+
