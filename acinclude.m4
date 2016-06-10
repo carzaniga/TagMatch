@@ -428,10 +428,10 @@ dnl
 dnl AC_OPT_POPCOUNT_LIMITS
 dnl
 AC_DEFUN([AC_OPT_POPCOUNT_LIMITS], [
-AC_ARG_WITH(popcount-limits,
-   AC_HELP_STRING([--with-popcount-limits],
-      [Use heuristcs based on popcount limits in subset search in compact PATRICIA trie. Values are "yes" or "no" (default=no)]), [
-      case "$withval" in
+AC_ARG_ENABLE(popcount-limits,
+   AC_HELP_STRING([--enable-popcount-limits],
+      [Enable heuristcs based on popcount limits in subset search in compact PATRICIA trie. Values are "yes" or "no" (default=no)]), [
+      case "$enableval" in
          yes )
 	    AC_DEFINE([WITH_POPCOUNT_LIMITS], 1, [Use popcount limits in subset search in compact PATRICIA trie])
 	    ;;
