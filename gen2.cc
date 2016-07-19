@@ -131,7 +131,7 @@ unsigned int universal_hash(unsigned int x, unsigned int a) {
 	const static unsigned int b = 3;
 	const static unsigned int P = (1<<17) - 1;
 	const static unsigned int M = (1<<16);
-	return (((a+73)*x + b) % P) % M;
+	return (((a+73)*x + a + b) % P) % M;
 }
 
 void workload_spec::generate() const {
