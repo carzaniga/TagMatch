@@ -69,7 +69,7 @@ public:
 		i_min(0),
 		i_max(255),
 		t_min(0),
-		t_max(7),
+		t_max(0),
 		filters_file(nullptr),
 		filters_count(0)
 		{}
@@ -185,11 +185,10 @@ void workload_spec::generate() const {
 				f.set(random_position(generator));
 		}
 
-		std::cout << command << ' ' 
-#if GEN2_USES_TREES
-				  << ((t_min == t_max) ? t_min : random_tree(generator)) << ' ' 
-#endif
-				  << ((i_min == i_max) ? i_min : random_ifx(generator)) << ' '
+		std::cout << command << ' ';
+		if (t_max > 0) 
+			std::cout << ((t_min == t_max) ? t_min : random_tree(generator)) << ' ';
+		std::cout << ((i_min == i_max) ? i_min : random_ifx(generator)) << ' '
 				  << f << std::endl;
     }
 }
@@ -252,7 +251,7 @@ int main(int argc, char * argv[]) {
 				"     [a=<N1>[,<N2>]] :: number or range of tags per filters (default=1,10)\n"
 				"     [zipf=<N>,<s>]  :: zipf parameters for additional tags (default=0,0.0)\n"
 				"     [i=<N1>[,<N2>]] :: number or range of interface ids (default=0,0)\n"
-				"     [t=<N1>[,<N2>]] :: number or range of tree ids (default=0,0)\n"
+				"     [t=<N1>[,<N2>]] :: number or range of tree ids (default=0,0 => no trees used)\n"
 				"     [F=<filename>]  :: file containing filters ('-'=stdin, default=none)\n"
 				"     [Fc=<N>]        :: number of random filters to combine from F (default=0)\n"
 				"\n  command: +|!|?|sub|sup (commands understood by the driver program)\n" 
