@@ -4,6 +4,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#define WITH_MATCH_STATISTICS
 
 #include <cstdint>
 #include <climits>
@@ -156,7 +157,7 @@ private:
 #else   
 	std::mutex mtx;
 	std::vector<uint32_t> output_users;
-#ifdef WITH_STATISTICS
+#ifdef WITH_MATCH_STATISTICS
 	std::atomic<uint32_t> pre,post;
 #endif
 	std::atomic<bool> finalized;
@@ -174,7 +175,7 @@ public:
 
 	packet(const packet & p) 
 		: network_packet(p), state(FrontEnd), pending_partitions(0) {
-#ifdef WITH_STATISTICS
+#ifdef WITH_MATCH_STATISTICS
 		pre = 0;
 		post = 0;
 #endif
@@ -230,18 +231,20 @@ public:
 	}
 
 	bool finalize_matching() {
-		// This is where we should implement the actual forwwarding code.
+		// This is where we should implement the actual forwarding code.
 		// In this experimental code, instead, we simply collect statistics
 		// about the matching.  In order to do that, we still perform a "merge"
 		// over the set of output "users".
-		if (!atomic_exchange(&finalized, true)) { 
-#ifdef WITH_STATISTICS
+		if (!atomic_exchange(&finalized, true)) {
+#ifdef WITH_MATCH_STATISTICS
 			pre = output_users.size();
 			assert(pre > 0);
 #endif
+#if 1
 			std::sort( output_users.begin(), output_users.end() );
 			output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
-#ifdef WITH_STATISTICS
+#endif
+#ifdef WITH_MATCH_STATISTICS
 			post = output_users.size();
 #endif
 			//Flush the output vector and release its memory
@@ -257,7 +260,7 @@ public:
 		}
 	}
 
-#ifdef WITH_STATISTICS
+#ifdef WITH_MATCH_STATISTICS
 	uint32_t getpre() {
 		return pre;
 	}

@@ -16,7 +16,7 @@
 #define PACKETS_BATCH_SIZE (MULTIPLIER * GPU_BLOCK_SIZE) 
 //This represents the maximum number of matches that can be produced for a single packet.
 //In case there are more results, the list is truncated
-#define MAX_MATCHES_PP 128
+#define MAX_MATCHES_PP 16384
 #define MAX_MATCHES MAX_MATCHES_PP * PACKETS_BATCH_SIZE
 
 #define NEW_PARTITIONING 1
@@ -33,5 +33,11 @@
 #define INTERFACES				1U
 
 #define DEFAULT_THREAD_COUNT	5U
+
+// WITH_MATCH_STATISTICS makes cpu_gpu_matcher print statistics about the matches generated
+// on the stdout
+#if 0
+#define WITH_MATCH_STATISTICS
+#endif
 
 #endif /* PARAMETERS_HH_INCLUDED */

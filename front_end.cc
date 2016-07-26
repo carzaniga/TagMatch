@@ -93,7 +93,10 @@ private:
 	friend batch_pool;
 
 public:
-	packet * packets[PACKETS_BATCH_SIZE];
+	struct {
+		unsigned int bsize;
+		packet * packets[PACKETS_BATCH_SIZE];
+	};
 };
 
 // A free-list allocator of packet batches.
@@ -148,6 +151,11 @@ public:
 	}
 };
 
+#ifdef WITH_MATCH_STATISTICS
+static std::mutex mtx;
+std::vector<uint32_t> matches;
+std::atomic<uint64_t> prep, postp;
+#endif
 mutex batch_pool::pool_mtx;
 vector<batch *> batch_pool::pool;
 atomic<batch *> batch_pool::head(nullptr);
@@ -349,8 +357,26 @@ void partition_queue::enqueue(packet * p) noexcept {
 		remove_from_pending_pq_list();
 		written.store(0, std::memory_order_release);
 		tail.store(0, std::memory_order_release);
+		bx->bsize = PACKETS_BATCH_SIZE;
 		bx = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
-		if (bx != NULL) batch_pool::put(bx);
+		if (bx != NULL) {
+			for (unsigned int r = 0; r < bx->bsize; r++) {
+				packet * pkt = bx->packets[r];
+		  		pkt->partition_done();
+				if (pkt->is_matching_complete()) {
+					if (pkt->finalize_matching()) {
+#ifdef WITH_MATCH_STATISTICS
+					prep += pkt->getpre();
+					postp += pkt->getpost();
+					mtx.lock();
+					matches.push_back(pkt->getpost());
+					mtx.unlock();
+#endif
+				}
+			}
+			}
+			batch_pool::put(bx);
+		}
 	} else  {
 		if (t == 0) {
 			first_enqueue_time = high_resolution_clock::now();
@@ -381,8 +407,28 @@ void partition_queue::flush() noexcept {
 	remove_from_pending_pq_list();
 	written.store(0, std::memory_order_release);
 	tail.store(0, std::memory_order_release);
+	bx->bsize = bx_size;
 	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
-	if (bx != NULL) batch_pool::put(bx);
+	if (bx != NULL) {
+#if 1
+			for (unsigned int r = 0; r < bx->bsize; r++) {
+				packet * pkt = bx->packets[r];
+		  		pkt->partition_done();
+				if (pkt->is_matching_complete()) {
+				if (pkt->finalize_matching()) {
+#ifdef WITH_MATCH_STATISTICS
+					prep += pkt->getpre();
+					postp += pkt->getpost();
+					mtx.lock();
+					matches.push_back(pkt->getpost());
+					mtx.unlock();
+#endif
+				}
+			}
+			}
+#endif
+		batch_pool::put(bx);
+	}
 }
 
 template<unsigned int Size>
@@ -592,6 +638,17 @@ static void match(packet * pkt) {
 	}
 
 	pkt->frontend_done();
+				if (pkt->is_matching_complete()) {
+					if (pkt->finalize_matching()) {
+#ifdef WITH_MATCH_STATISTICS
+						prep += pkt->getpre();
+						postp += pkt->getpost();
+						mtx.lock();
+						matches.push_back(pkt->getpost());
+						mtx.unlock();
+#endif
+					}
+				}
 }
 
 // FRONT-END EXECUTION THREADS
@@ -767,6 +824,11 @@ static void processing_thread() {
 static vector<thread *> thread_pool;
 
 void front_end::start(unsigned int threads) {
+#ifdef WITH_MATCH_STATISTICS
+	prep = 0;
+	postp = 0;
+	matches.clear();
+#endif
 	if (processing_state == FE_INITIAL && threads > 0) {
 		compile_fib();
 
@@ -812,22 +874,62 @@ void front_end::stop() {
 	thread_pool.clear();
 
 	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
-		batch * p = (batch *)back_end::flush_stream();
-		if(p==0)
+		batch * bx = (batch *)back_end::flush_stream();
+		if(bx==0)
 			continue;
-		batch_pool::put(p) ;
+			for (unsigned int r = 0; r < bx->bsize; r++) {
+				packet * pkt = bx->packets[r];
+		  		pkt->partition_done();
+				if (pkt->is_matching_complete()) {
+					if (pkt->finalize_matching()) {
+#ifdef WITH_MATCH_STATISTICS
+						prep += pkt->getpre();
+						postp += pkt->getpost();
+						mtx.lock();
+						matches.push_back(pkt->getpost());
+						mtx.unlock();
+#endif
+					}
+				}
+			}
+		batch_pool::put(bx) ;
 	}
 	
 	back_end::release_stream_handles();	
 		
 	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
-		batch * p = (batch *)back_end::second_flush_stream();
-		if(p==0)
+		batch * bx = (batch *)back_end::second_flush_stream();
+		if(bx==0)
 			continue;
-		batch_pool::put(p) ;
+			for (unsigned int r = 0; r < bx->bsize; r++) {
+				packet * pkt = bx->packets[r];
+		  		pkt->partition_done();
+
+			if (pkt->is_matching_complete()) {
+				if (pkt->finalize_matching()) {
+#ifdef WITH_MATCH_STATISTICS
+					prep += pkt->getpre();
+					postp += pkt->getpost();
+					mtx.lock();
+					matches.push_back(pkt->getpost());
+					mtx.unlock();
+#endif
+				}
+			}
+			}
+		batch_pool::put(bx) ;
 	}
 
 	processing_state = FE_INITIAL;
+#ifdef WITH_MATCH_STATISTICS
+	std::cout << "Total matches before merge: " << prep << std::endl;
+	std::cout << "Total matches after merge: " << postp << std::endl;
+	for (uint32_t i=0; i<matches.size(); i++)
+	{
+		assert(matches[i]>0);
+		std::cout << matches[i] << std::endl;
+	}
+#endif
 }
 
 void front_end::clear() {

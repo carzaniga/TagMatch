@@ -43,12 +43,6 @@
 	// 
 	static const unsigned int BACKEND_BLOCK_SIZE = (GPU_WORD_SIZE * CHAR_BIT);
 	uint32_t absolute_id = 0;
-#ifdef WITH_STATISTICS
-	std::atomic<unsigned int> pre (0);
-	std::atomic<uint32_t> post (0);
-	std::mutex mtx;
-	std::vector<uint32_t> matches;
-#endif
 	// TEMPORARY FIB
 	// 
 	typedef vector<tree_interface_pair> ti_vector;
@@ -452,28 +446,13 @@ void* back_end::flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) { 
-				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
 			}
 #else
 				// You need to get unique ids from the gpu to use this
 				pkt->add_output_user(id);
 #endif
 			pkt->unlock_mtx();	
-	  }
-	  for(unsigned int i=0; i< sh->second_last_batch_size; i++) {
-		    packet * pkt = sh->second_last_batch[i];
-		  	pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
-#ifdef WITH_STATISTICS
-					pre += pkt->getpre();
-					post += pkt->getpost();
-					mtx.lock();
-					matches.push_back(pkt->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
 	  }
   	}
 	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream, sh->gpu);
@@ -514,34 +493,19 @@ void* back_end::second_flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
-				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
 #else
 			pkt->add_output_user(id);
 #endif
 			pkt->unlock_mtx();	
 		}
-	  	for(unsigned int i=0; i< sh->last_batch_size; i++) {
-			packet * pkt = sh->last_batch[i];
-			pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
-#ifdef WITH_STATISTICS
-					pre += pkt->getpre();
-					post += pkt->getpost();
-					mtx.lock();
-					matches.push_back(pkt->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
-		}
   	}
 	return res;
 }
 
+
 void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr) {
 	void *res = nullptr;
-
 #ifndef BACK_END_IS_VOID
 
 // If the partition is small, compute it entirely on the CPU
@@ -607,26 +571,11 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
-				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
 #else
 			pkt->add_output_user(id);
 #endif
 			pkt->unlock_mtx();	
-		}
-		for(unsigned int i=0; i < sh->second_last_batch_size; i++) {
-			packet * pkt = sh->second_last_batch[i];
-			pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
-#ifdef WITH_STATISTICS
-					pre += pkt->getpre();
-					post += pkt->getpost();
-					mtx.lock();
-					matches.push_back(pkt->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
 		}
 	}
 	// If we are at the 2nd cycle, synchronize on the results from the
@@ -689,9 +638,6 @@ size_t back_end::bytesize() {
 
 void back_end::start() {
 #ifndef BACK_END_IS_VOID
-#ifdef WITH_STATISTICS
-	matches.clear();
-#endif
 	gpu_mem_info mi;
 	gpu::initialize();
 	gpu::mem_info(&mi);
@@ -714,19 +660,6 @@ void back_end::stop() {
 }
 
 void back_end::clear() {
-#ifdef WITH_STATISTICS
-	mtx.lock();
-	std::cout << "Pre: " << pre / 4000000 << std::endl;
-	std::cout << "Post: " << post / 4000000 << std::endl;
-	std::cout << "#######################" << std::endl;
-	for (uint32_t i=0; i<matches.size(); i++)
-	{
-		assert(matches[i]>0);
-		std::cout << matches[i] << std::endl;
-	}
-	std::cout << "#######################" << std::endl;
-	mtx.unlock();
-#endif
 #ifndef BACK_END_IS_VOID
 	for (int i = 0; i < GPU_NUM; i++) {
 		if (dev_partitions[i]) {

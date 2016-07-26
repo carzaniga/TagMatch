@@ -7,6 +7,7 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
+#include <set>
 
 #include "predicate.hh"
 
@@ -30,9 +31,8 @@ static void read_filters_dictionary(std::istream & is) {
 
 		unsigned int iface;
 		std::string filter;
-
+	
 		line_s >> iface >> filter;
-
 		filters_dictionary.push_back(std::bitset<M>(filter));
 	}
 }
@@ -45,6 +45,8 @@ public:
 	unsigned int k;
 	unsigned int a_min;
 	unsigned int a_max;
+	unsigned int zipf_n;
+	double zipf_s;
 	unsigned int i_min;
 	unsigned int i_max;
 	unsigned int t_min;
@@ -61,14 +63,75 @@ public:
 		k(7),
 		a_min(1),
 		a_max(10),
+		zipf_n(0),
+		zipf_s(0.0),
 		i_min(0),
 		i_max(255),
 		t_min(0),
-		t_max(7),
+		t_max(0),
 		filters_file(nullptr),
 		filters_count(0)
 		{}
 };
+
+class zipf_dist {
+private:
+	unsigned N;
+	double * V;
+	double s;
+	double v_max;
+
+public:
+	zipf_dist(unsigned n_, double s_)
+		: N(n_), V(0), s(s_) {
+		if (N > 0) {
+			V = new double[N];
+			double v = std::exp(s*std::log(N));
+			unsigned i = 0;
+			while(i < N) {
+				V[i] = v;
+				i += 1;
+				v += std::exp(s*std::log(N/(i+1)));
+			}
+			v_max = V[N-1];
+		}
+	}
+
+	~zipf_dist() {
+		if (V)
+			delete[](V);
+	}
+
+	template<class Generator> 
+	unsigned int operator()(Generator & g) {
+		if (N > 0) {
+			std::uniform_real_distribution<double> random_double(0,v_max);
+			double x = random_double(g);
+			unsigned int i = 0;
+			unsigned int j = N;
+			while (i < j) {
+				unsigned int m = (i + j)/2;
+				if (x < V[m]) {
+					j = m;
+				} else if (x > V[m]) {
+					i = m + 1;
+				} else {
+					return m + 1;
+				}
+			}
+			return i;
+		}
+		else
+			return 0;
+	}
+};
+
+unsigned int universal_hash(unsigned int x, unsigned int a) {
+	const static unsigned int b = 3;
+	const static unsigned int P = (1<<17) - 1;
+	const static unsigned int M = (1<<16);
+	return (((a+73)*x + a + b) % P) % M;
+}
 
 void workload_spec::generate() const {
 
@@ -97,6 +160,8 @@ void workload_spec::generate() const {
     std::bitset<M> f;
 
     unsigned int bsize;
+	zipf_dist random_tag(zipf_n, zipf_s);
+
     for(unsigned int i = 0; i < n; ++i) {
 		f.reset();
 
@@ -104,11 +169,25 @@ void workload_spec::generate() const {
 			for(unsigned int i = 0; i < filters_count; ++i)
 				f |= filters_dictionary[random_filter_pos(generator)];
 
-		for(bsize = ((a_min == a_max) ? a_min : random_fsize(generator)) * k; bsize > 0; --bsize)
-			f.set(random_position(generator));
+		if (zipf_n > 0) {
+			std::set<unsigned int> tags;
+			
+			bsize = ((a_min == a_max) ? a_min : random_fsize(generator));
+			while(tags.size() < bsize)
+				tags.insert(random_tag(generator));
 
-		std::cout << command << ' ' 
-				  << ((i_min == i_max) ? i_min : random_ifx(generator)) << ' '
+			for(std::set<unsigned int>::const_iterator itr = tags.begin(); itr != tags.end(); ++itr)
+				for (unsigned int i = 0; i < k; ++i)
+					f.set(universal_hash(i,*itr) % M);
+		} else {
+			for(bsize = ((a_min == a_max) ? a_min : random_fsize(generator)) * k; bsize > 0; --bsize)
+				f.set(random_position(generator));
+		}
+
+		std::cout << command << ' ';
+		if (t_max > 0) 
+			std::cout << ((t_min == t_max) ? t_min : random_tree(generator)) << ' ';
+		std::cout << ((i_min == i_max) ? i_min : random_ifx(generator)) << ' '
 				  << f << std::endl;
     }
 }
@@ -123,6 +202,12 @@ int main(int argc, char * argv[]) {
 	for(int i = 1; i < argc; ++i) {
 		switch (sscanf(argv[i],"a=%u,%u", &ws.a_min, &ws.a_max)) {
 		case 1: ws.a_max = ws.a_min;
+		case 2: continue;
+		default: break;
+		}
+
+		switch (sscanf(argv[i],"zipf=%u,%lf", &ws.zipf_n, &ws.zipf_s)) {
+		case 1: ws.zipf_n = 0;
 		case 2: continue;
 		default: break;
 		}
@@ -163,8 +248,9 @@ int main(int argc, char * argv[]) {
 				"     [k=<N>]         :: number of hash functions in Bloom filters  (default=7)\n"
 				"     [n=<N>]         :: number of generated filters (default=1000)\n"
 				"     [a=<N1>[,<N2>]] :: number or range of tags per filters (default=1,10)\n"
+				"     [zipf=<N>,<s>]  :: zipf parameters for additional tags (default=0,0.0)\n"
 				"     [i=<N1>[,<N2>]] :: number or range of interface ids (default=0,0)\n"
-				"     [t=<N1>[,<N2>]] :: number or range of tree ids (default=0,0)\n"
+				"     [t=<N1>[,<N2>]] :: number or range of tree ids (default=0,0 => no trees used)\n"
 				"     [F=<filename>]  :: file containing filters ('-'=stdin, default=none)\n"
 				"     [Fc=<N>]        :: number of random filters to combine from F (default=0)\n"
 				"\n  command: +|!|?|sub|sup (commands understood by the driver program)\n" 
