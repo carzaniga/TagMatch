@@ -4,7 +4,6 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#define WITH_MATCH_STATISTICS
 
 #include <cstdint>
 #include <climits>
