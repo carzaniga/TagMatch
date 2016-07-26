@@ -154,7 +154,7 @@ public:
 #ifdef WITH_MATCH_STATISTICS
 static std::mutex mtx;
 std::vector<uint32_t> matches;
-std::atomic<uint64_t> prep, postp;
+std::atomic<uint64_t> macthes_pre_merge, matches_post_merge;
 #endif
 mutex batch_pool::pool_mtx;
 vector<batch *> batch_pool::pool;
@@ -366,14 +366,14 @@ void partition_queue::enqueue(packet * p) noexcept {
 				if (pkt->is_matching_complete()) {
 					if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					prep += pkt->getpre();
-					postp += pkt->getpost();
+					macthes_pre_merge += pkt->getpre();
+					matches_post_merge += pkt->getpost();
 					mtx.lock();
 					matches.push_back(pkt->getpost());
 					mtx.unlock();
 #endif
+					}
 				}
-			}
 			}
 			batch_pool::put(bx);
 		}
@@ -410,23 +410,21 @@ void partition_queue::flush() noexcept {
 	bx->bsize = bx_size;
 	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
 	if (bx != NULL) {
-#if 1
-			for (unsigned int r = 0; r < bx->bsize; r++) {
-				packet * pkt = bx->packets[r];
-		  		pkt->partition_done();
-				if (pkt->is_matching_complete()) {
+		for (unsigned int r = 0; r < bx->bsize; r++) {
+			packet * pkt = bx->packets[r];
+		  	pkt->partition_done();
+			if (pkt->is_matching_complete()) {
 				if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					prep += pkt->getpre();
-					postp += pkt->getpost();
+					macthes_pre_merge += pkt->getpre();
+					matches_post_merge += pkt->getpost();
 					mtx.lock();
 					matches.push_back(pkt->getpost());
 					mtx.unlock();
 #endif
 				}
 			}
-			}
-#endif
+		}
 		batch_pool::put(bx);
 	}
 }
@@ -638,17 +636,20 @@ static void match(packet * pkt) {
 	}
 
 	pkt->frontend_done();
-				if (pkt->is_matching_complete()) {
-					if (pkt->finalize_matching()) {
+	
+	// Now we need to check whether some packet has already been processed
+	// and has already finished the match in the back_end
+	if (pkt->is_matching_complete()) {
+		if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-						prep += pkt->getpre();
-						postp += pkt->getpost();
-						mtx.lock();
-						matches.push_back(pkt->getpost());
-						mtx.unlock();
+			macthes_pre_merge += pkt->getpre();
+			matches_post_merge += pkt->getpost();
+			mtx.lock();
+			matches.push_back(pkt->getpost());
+			mtx.unlock();
 #endif
-					}
-				}
+		}
+	}
 }
 
 // FRONT-END EXECUTION THREADS
@@ -825,8 +826,8 @@ static vector<thread *> thread_pool;
 
 void front_end::start(unsigned int threads) {
 #ifdef WITH_MATCH_STATISTICS
-	prep = 0;
-	postp = 0;
+	macthes_pre_merge = 0;
+	matches_post_merge = 0;
 	matches.clear();
 #endif
 	if (processing_state == FE_INITIAL && threads > 0) {
@@ -883,8 +884,8 @@ void front_end::stop() {
 				if (pkt->is_matching_complete()) {
 					if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-						prep += pkt->getpre();
-						postp += pkt->getpost();
+						macthes_pre_merge += pkt->getpre();
+						matches_post_merge += pkt->getpost();
 						mtx.lock();
 						matches.push_back(pkt->getpost());
 						mtx.unlock();
@@ -892,7 +893,7 @@ void front_end::stop() {
 					}
 				}
 			}
-		batch_pool::put(bx) ;
+			batch_pool::put(bx) ;
 	}
 	
 	back_end::release_stream_handles();	
@@ -904,26 +905,25 @@ void front_end::stop() {
 			for (unsigned int r = 0; r < bx->bsize; r++) {
 				packet * pkt = bx->packets[r];
 		  		pkt->partition_done();
-
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+				if (pkt->is_matching_complete()) {
+					if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					prep += pkt->getpre();
-					postp += pkt->getpost();
-					mtx.lock();
-					matches.push_back(pkt->getpost());
-					mtx.unlock();
+						macthes_pre_merge += pkt->getpre();
+						matches_post_merge += pkt->getpost();
+						mtx.lock();
+						matches.push_back(pkt->getpost());
+						mtx.unlock();
 #endif
+					}
 				}
 			}
-			}
-		batch_pool::put(bx) ;
+			batch_pool::put(bx) ;
 	}
 
 	processing_state = FE_INITIAL;
 #ifdef WITH_MATCH_STATISTICS
-	std::cout << "Total matches before merge: " << prep << std::endl;
-	std::cout << "Total matches after merge: " << postp << std::endl;
+	std::cout << "Total matches before merge: " << macthes_pre_merge << std::endl;
+	std::cout << "Total matches after merge: " << matches_post_merge << std::endl;
 	for (uint32_t i=0; i<matches.size(); i++)
 	{
 		assert(matches[i]>0);
