@@ -446,7 +446,7 @@ void* back_end::flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) { 
-				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
 			}
 #else
 				// You need to get unique ids from the gpu to use this
@@ -493,7 +493,7 @@ void* back_end::second_flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
-				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
 #else
 			pkt->add_output_user(id);
 #endif
@@ -571,7 +571,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.ti_pairs.size(); ++i) 
-				pkt->add_output_user(filter.ti_pairs[0].get_uint32_value());
+				pkt->add_output_user(filter.ti_pairs[i].get_uint32_value());
 #else
 			pkt->add_output_user(id);
 #endif
