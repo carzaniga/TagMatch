@@ -23,7 +23,7 @@ libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 bin_PROGRAMS = router gen gen2 split_prefixes \
 		cpu_gpu_matcher test_matcher \
 		analyze_workload convert_workload sample_workload split_workload \
-		subset_counter
+		subset_counter new_partitioning balanced_partitioning
 
 gen_SOURCES = gen.cc params.h
 
@@ -69,3 +69,10 @@ split_workload_SOURCES = split_workload.cc packet.cc fib.cc \
 subset_counter_SOURCES = filter_set_driver.cc trie_filter_set.cc \
 			filter_set.hh packet.hh packet.cc bitvector.hh \
 			fib.hh fib.cc
+
+new_partitioning_SOURCES = new_partitioning.cc packet.cc fib.cc \
+			packet.hh fib.hh bitvector.hh
+
+balanced_partitioning_SOURCES = balanced_partitioning.cc packet.cc fib.cc \
+			packet.hh fib.hh bitvector.hh
+
