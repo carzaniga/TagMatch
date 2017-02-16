@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <cstdlib>
-#include <climits>
+#include <cstring>
 #include <algorithm>
 #include <chrono>
 
@@ -62,14 +62,31 @@ struct partition_candidate {
 	fib_t::iterator end;
 	filter_t mask;
 	filter_t used_bits;
+	unsigned int freq[filter_t::WIDTH];
 	struct partition_candidate * next;
 
-	partition_candidate(fib_t::iterator b, fib_t::iterator e, partition_candidate * n)
-		: begin(b), end(e), mask(), used_bits(), next(n) {};
+	partition_candidate(fib_t::iterator b, fib_t::iterator e)
+		: begin(b), end(e), mask(), used_bits(), next(nullptr) {};
 
 	partition_candidate(fib_t::iterator b, fib_t::iterator e,
 						const filter_t & m, const filter_t & ub, partition_candidate * n)
 		: begin(b), end(e), mask(m), used_bits(ub), next(n) {};
+
+	void compute_frequencies() {
+		std::memset(freq, 0, sizeof(freq));
+		for(fib_t::const_iterator i = begin; i != end; ++i)
+			for(unsigned int b = (*i)->filter.next_bit(0); b < filter_t::WIDTH; b = (*i)->filter.next_bit(b + 1))
+				freq[b] += 1;
+	}
+
+	void subtract_frequencies(const partition_candidate & x) {
+		for(unsigned int b = 0; b < filter_t::WIDTH; ++b)
+			freq[b] -= x.freq[b];
+	}
+
+	size_t size() const {
+		return end - begin;
+	}
 };
 
 static unsigned int distance(unsigned int a, unsigned int b) {
@@ -84,43 +101,57 @@ struct has_bit {
 };
 
 partition_candidate * balanced_partitioning(size_t max_p) {
+	partition_candidate * Q = new partition_candidate(fib.begin(), fib.end());
+	if (Q->size() <= max_p)
+		return Q;
+
 	partition_candidate * PT = nullptr;
-	partition_candidate * Q = new partition_candidate(fib.begin(), fib.end(), nullptr);
+	Q->compute_frequencies();
 	while (Q) {
-		size_t P_size = Q->end - Q->begin; 
-		if (P_size <= max_p) {
-			partition_candidate * tmp = Q;
-			Q = Q->next;
-			tmp->next = PT;
-			PT = tmp;
-		} else {
-			unsigned int freq[filter_t::WIDTH] = {0};
-			for(fib_t::const_iterator i = Q->begin; i < Q->end; ++i) 
-				for(unsigned int b = (*i)->filter.next_bit(0);
-					b < filter_t::WIDTH; b = (*i)->filter.next_bit(b + 1))
-					freq[b] += 1;
-			
-			unsigned int pivot;
-			for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
-				if (! Q->used_bits[pivot])
-					break;
-			unsigned int min_dist = distance(P_size / 2, freq[pivot]);
-			for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
-				unsigned d = distance(P_size / 2, freq[b]); 
-				if (d < min_dist) {
-					pivot = b;
-					if (d == 0) break;
-					min_dist = d;
-				}
+		unsigned int pivot;
+		for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
+			if (! Q->used_bits[pivot])
+				break;
+		unsigned int min_dist = distance(Q->size() / 2, Q->freq[pivot]);
+		for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
+			unsigned d = distance(Q->size() / 2, Q->freq[b]); 
+			if (d < min_dist) {
+				pivot = b;
+				if (d == 0) break;
+				min_dist = d;
 			}
-			vector<fib_entry *>::iterator middle;
-			middle = std::stable_partition(Q->begin, Q->end, has_bit(pivot));
-			Q->used_bits.set_bit(pivot);
-			partition_candidate * P0;
-			P0 = new partition_candidate(Q->begin, middle, Q->mask, Q->used_bits, Q);
-			Q->begin = middle;
-			Q->mask.set_bit(pivot);
+		}
+		vector<fib_entry *>::iterator middle = std::stable_partition(Q->begin, Q->end,
+																	 has_bit(pivot));
+		partition_candidate * P0;
+		partition_candidate * P1 = Q;
+		Q = Q->next;
+		P1->used_bits.set_bit(pivot);
+		P0 = new partition_candidate(P1->begin, middle, P1->mask, P1->used_bits, nullptr);
+		P1->begin = middle;
+		P1->mask.set_bit(pivot);
+		if (P0->size() > max_p && P1->size() > max_p) {
+			P0->compute_frequencies();
+			P1->subtract_frequencies(*P0);
+			P1->next = Q;
+			P0->next = P1;
 			Q = P0;
+		} else if (P1->size() > max_p) {
+			P1->compute_frequencies();
+			P1->next = Q;
+			Q = P1;
+			P0->next = PT;
+			PT = P0;
+		} else if (P0->size() > max_p) {
+			P0->compute_frequencies();
+			P0->next = Q;
+			Q = P0;
+			P1->next = PT;
+			PT = P1;
+		} else {
+			P1->next = PT;
+			P0->next = P1;
+			PT = P0;
 		}
 	}
 	return PT;
