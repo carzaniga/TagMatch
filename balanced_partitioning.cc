@@ -5,9 +5,9 @@
 #include <vector>
 #include <string>
 #include <cstdlib>
-#include <atomic>
 #include <climits>
 #include <algorithm>
+#include <chrono>
 
 #include "packet.hh"
 #include "fib.hh"
@@ -15,6 +15,9 @@
 using std::vector;
 using std::endl;
 using std::cout;
+using std::chrono::high_resolution_clock;
+using std::chrono::milliseconds;
+using std::chrono::duration_cast;
 
 static void print_usage(const char* progname) {
 	std::cerr << "usage: " << progname
@@ -32,7 +35,6 @@ static void print_usage(const char* progname) {
 typedef vector<fib_entry *> fib_t;
 static fib_t fib;
 
-static int partition_counter = 0;
 static bool binary_format = false;
 
 static std::ostream* prefixes_output = nullptr;
@@ -91,7 +93,6 @@ partition_candidate * balanced_partitioning(size_t max_p) {
 			Q = Q->next;
 			tmp->next = PT;
 			PT = tmp;
-			partition_counter += 1;
 		} else {
 			unsigned int freq[filter_t::WIDTH] = {0};
 			for(fib_t::const_iterator i = Q->begin; i < Q->end; ++i) 
@@ -124,7 +125,7 @@ partition_candidate * balanced_partitioning(size_t max_p) {
 	}
 	return PT;
 }
-	
+
 int main(int argc, const char* argv[]) {
 	const char* prefixes_fname = nullptr;
 	const char* filters_fname = nullptr;
@@ -207,14 +208,51 @@ int main(int argc, const char* argv[]) {
 	}
 	
 	std::cerr << "Balanced partitioning..." << std::flush;
+
+	high_resolution_clock::time_point start = high_resolution_clock::now();
+
 	partition_candidate * PT = balanced_partitioning(max_size);
-	std::cerr << "\t\t" << std::setw(12) << partition_counter << " partitions." << endl;
+
+	high_resolution_clock::time_point stop = high_resolution_clock::now();
+
+	std::cerr << "\t\t" << std::setw(12)
+			  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
+
+	partition_id_t pid = 0;
 
 	while(PT) {
+		if (prefixes_output) {
+			partition_prefix partition;
+			partition.filter = PT->mask;
+			partition.length = filter_t::WIDTH;
+			partition.partition = pid;
+			partition.size = PT->end - PT->begin;
+			if (binary_format)
+				partition.write_binary(*prefixes_output);
+			else
+				partition.write_ascii(*prefixes_output);
+		}
+		++pid;
+		if (filters_output) {
+			partition_fib_entry f;
+
+			for(fib_t::iterator i = PT->begin; i != PT->end; ++i) {
+				f.filter = (*i)->filter;
+				f.ti_pairs = std::move((*i)->ti_pairs);
+				f.partition = pid;
+				if (binary_format)
+					f.write_binary(*filters_output);
+				else
+					f.write_ascii(*filters_output);
+			}
+		}
 		partition_candidate * tmp = PT;
 		PT = PT->next;
 		delete(tmp);
 	}
+
+	std::cerr << "Number of partitions:\t\t\t" << std::setw(12) << pid << " partitions." << endl;
+
 	for(fib_t::iterator i = fib.begin(); i != fib.end(); ++i)
 		delete(*i);
 	

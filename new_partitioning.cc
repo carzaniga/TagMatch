@@ -1,5 +1,5 @@
-
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <climits>
+#include <chrono>
 
 #include "packet.hh"
 #include "fib.hh"
@@ -14,6 +15,9 @@
 using std::vector;
 using std::endl;
 using std::cout;
+using std::chrono::high_resolution_clock;
+using std::chrono::milliseconds;
+using std::chrono::duration_cast;
 
 static void print_usage(const char* progname) {
 	std::cerr << "usage: " << progname
@@ -299,6 +303,10 @@ int main(int argc, const char* argv[]) {
 		}
 	}
 	
+	std::cerr << "New partitioning..." << std::flush;
+
+	high_resolution_clock::time_point start = high_resolution_clock::now();
+
 	filter_t partition, checked;
 	partition.clear();
 	checked.clear();
@@ -313,6 +321,11 @@ int main(int argc, const char* argv[]) {
 	totalSize = global_fib_index.size();
 	
 	split(partition, checked, global_fib_index);
+	
+	high_resolution_clock::time_point stop = high_resolution_clock::now();
+
+	std::cerr << "New partitioning time:\t\t" << std::setw(12)
+			  << duration_cast<milliseconds>(stop - start).count() << " ms" << std::endl;
 	
 	if (prefixes_output == &prefixes_file) prefixes_file.close();
 	if (filters_output == &filters_file) filters_file.close();
