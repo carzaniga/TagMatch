@@ -281,30 +281,31 @@ int main(int argc, const char* argv[]) {
 	partition_id_t pid = 0;
 
 	while(PT) {
-		if (prefixes_output) {
-			partition_prefix partition;
-			partition.filter = PT->mask;
-			partition.length = filter_t::WIDTH;
-			partition.partition = pid;
-			partition.size = PT->end - PT->begin;
-			if (binary_format)
-				partition.write_binary(*prefixes_output);
-			else
-				partition.write_ascii(*prefixes_output);
-		}
-		++pid;
-		if (filters_output) {
-			partition_fib_entry f;
+		partition_prefix partition;
 
-			for(fib_t::iterator i = PT->begin; i != PT->end; ++i) {
-				f.filter = (*i)->filter;
-				f.ti_pairs = std::move((*i)->ti_pairs);
-				f.partition = pid;
+		partition.filter.fill();
+		partition.length = filter_t::WIDTH;
+		partition.partition = pid++;
+		partition.size = PT->end - PT->begin;
+
+		for(fib_t::iterator i = PT->begin; i != PT->end; ++i) {
+			partition_fib_entry f;
+			f.filter = (*i)->filter;
+			partition.filter &= f.filter;
+			f.ti_pairs = std::move((*i)->ti_pairs);
+			f.partition = partition.partition;
+			if (filters_output) {
 				if (binary_format)
 					f.write_binary(*filters_output);
 				else
 					f.write_ascii(*filters_output);
 			}
+		}
+		if (prefixes_output) {
+			if (binary_format)
+				partition.write_binary(*prefixes_output);
+			else
+				partition.write_ascii(*prefixes_output);
 		}
 		partition_candidate * tmp = PT;
 		PT = PT->next;
