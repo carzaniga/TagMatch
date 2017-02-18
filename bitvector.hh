@@ -243,6 +243,13 @@ public:
 			b[i] = 0xFFFFFFFFFFFFFFFF;
 	}
 
+	bool is_empty () const {
+		for (int i = 0; i < BLOCK_COUNT; ++i)
+			if (b[i] != 0)
+				return false;
+		return true;
+	}
+
 	void set_bit(unsigned int pos) {
 		b[pos/BLOCK_SIZE] |= (BLOCK_ONE << (pos % BLOCK_SIZE));
 	}
