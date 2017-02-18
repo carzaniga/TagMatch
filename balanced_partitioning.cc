@@ -99,7 +99,7 @@ struct has_bit {
 	bool operator()(const fib_entry * f) { return ! f->filter[b]; }
 };
 
-partition_candidate * nonzero_mask_partitioning(partition_candidate * P0) {
+static partition_candidate * nonzero_mask_partitioning(partition_candidate * P0) {
 	for(;;) {
 		P0->compute_frequencies();
 		unsigned int max_freq = P0->freq[0];
@@ -166,7 +166,8 @@ partition_candidate * balanced_partitioning(fib_t::iterator begin, fib_t::iterat
 			P1->next = Q;
 			Q = P1;
 			P0->next = PT;
-			P0 = nonzero_mask_partitioning(P0);
+			if (P0->mask.is_empty())
+				P0 = nonzero_mask_partitioning(P0);
 			PT = P0;
 		} else if (P0->size() > max_p) {
 			P0->compute_frequencies();
@@ -177,7 +178,8 @@ partition_candidate * balanced_partitioning(fib_t::iterator begin, fib_t::iterat
 		} else {
 			P1->next = PT;
 			P0->next = P1;
-			P0 = nonzero_mask_partitioning(P0);
+			if (P0->mask.is_empty())
+				P0 = nonzero_mask_partitioning(P0);
 			PT = P0;
 		}
 	}
