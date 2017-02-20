@@ -80,8 +80,6 @@ static void print_usage(const char* progname) {
 //
 typedef vector<fib_entry *> fib_t;
 
-static bool binary_format = false;
-
 static void read_filters(fib_t & fib, std::istream & input, bool binary_format) {
 	fib_entry * f = new fib_entry();
 	if (binary_format) {
@@ -119,8 +117,9 @@ struct partition_candidate {
 	filter_t mask;				// mask of pivot bits that identify this partition
 	filter_t used_bits;			// set of ALL pivot bits used so far
 
-	bool clean_freq;
+	bool clean_freq;					// frequencies do not need to be recalculated
 	unsigned int freq[filter_t::WIDTH]; // frequencies of one bits in the filters
+
 	struct partition_candidate * next;
 
 	partition_candidate(fib_t::iterator b, fib_t::iterator e)
@@ -142,6 +141,12 @@ struct partition_candidate {
 		return end - begin;
 	}
 
+	// Splits this partition in two sub-partitions accorting to the
+	// given pivot.  This partition will contain all the filters that
+	// have a one-bit in position pivot.  The result will be the
+	// zero-partition, meaning the sequence of all filters with a zero
+	// in the pivot position.
+	//
 	partition_candidate * split_zero(unsigned int pivot) {
 		vector<fib_entry *>::iterator m = std::stable_partition(begin, end, has_zero_bit(pivot));
 		partition_candidate * p0 = new partition_candidate(begin, m);
@@ -150,39 +155,14 @@ struct partition_candidate {
 	}
 };
 
-// Processes a partition candidate P0 that is already smaller than the
-// maximum partition size, but that is defined by an all-zero mask.
-// Looks for bit positions that are common to all filters in P0, and
-// if necessary, further partition P0 until such bit positions can be
-// found.
-//
-static partition_candidate * nonzero_mask_partitioning(partition_candidate * p) {
-	for(;;) {
-		p->compute_frequencies();
-		unsigned int max_freq = p->freq[0];
-		unsigned int pivot = 0;
-		for(unsigned int b = 1; b < filter_t::WIDTH; ++b) {
-			if (p->freq[b] > max_freq) {
-				pivot = b;
-				max_freq = p->freq[b];
-			}
-			if (p->freq[b] == p->size())
-				p->mask.set_bit(b);
-		}
-		if (max_freq == p->size())
-			return p;
-		partition_candidate * p0 = p->split_zero(pivot);
-		p->mask.set_bit(pivot);
-		p = p0;
-	}
-}
-
+// We maintain a queue of pending partitions.  These are partitions
+// whose size is creater than max_p and therefore that needs to be
+// recursively partitioned.  A pool of threads will then pick
+// partitions out of the queue for processing.
+// 
 static std::mutex queue_mtx;
 static std::condition_variable queue_cv;
 static partition_candidate * pending_queue = nullptr;
-
-static std::mutex pt_mtx;
-static partition_candidate * PT;
 
 static std::atomic<unsigned int> pending_partitions(0);
 
@@ -191,9 +171,8 @@ static void increment_pending_partitions() {
 }
 
 static void decrement_pending_partitions() {
-	unsigned int p = --pending_partitions;
-	if (p == 0) {
-		std::unique_lock<std::mutex> lock(pt_mtx);
+	if (--pending_partitions == 0) {
+		std::unique_lock<std::mutex> lock(queue_mtx);
 		queue_cv.notify_all();
 	}
 }
@@ -218,22 +197,74 @@ static partition_candidate * dequeue_partition_candidate() {
 	return res;
 }
 
+// We output a table of partition PT.  PT is the list of finished
+// partitions, meaning partitions whose size is less than max_p and
+// for which there is a non-zero mask.
+//
+static std::mutex pt_mtx;
+static partition_candidate * PT;
+
+// adds one partition to the PT list
+//
 static void PT_add(partition_candidate * p) {
 	std::unique_lock<std::mutex> lock(pt_mtx);
 	p->next = PT;
 	PT = p;
 }
 
-static void PT_add_list(partition_candidate * p1, partition_candidate * p2) {
+// adds a list of partitions to the PT list.
+//
+static void PT_add_list(partition_candidate * first, partition_candidate * last) {
 	std::unique_lock<std::mutex> lock(pt_mtx);
-	p2->next = PT;
-	PT = p1;
+	last->next = PT;
+	PT = first;
+}
+
+// Process a partition candidate p that is already smaller than the
+// maximum partition size, but that is defined by an all-zero mask.
+// Looks for bit positions that are common to all filters in p, and,
+// if necessary, further partition p until there are no more all-zero
+// masks, meaning that the zero split partition has a set of common
+// non-zero bit positions.
+//
+// Create and return a list of partitions.  In case p can be returned
+// without further partitioning (as a singleton list), returns p.
+// Otherwise, return the head P0 of a list of partitions such that p
+// is the last element of the list.  In other words, creates and
+// connects every new partition as the head of the list, and then
+// returns the head.
+// 
+static partition_candidate * nonzero_mask_partitioning(partition_candidate * p) {
+	for(;;) {
+		p->compute_frequencies();
+		unsigned int max_freq = p->freq[0];
+		unsigned int pivot = 0;
+		for(unsigned int b = 1; b < filter_t::WIDTH; ++b) {
+			if (p->freq[b] > max_freq) {
+				pivot = b;
+				max_freq = p->freq[b];
+			}
+			if (p->freq[b] == p->size())
+				p->mask.set_bit(b);
+		}
+		if (max_freq == p->size())
+			return p;
+		partition_candidate * p0 = p->split_zero(pivot);
+		p->mask.set_bit(pivot);
+		p = p0;
+	}
 }
 
 static unsigned int distance(unsigned int a, unsigned int b) {
 	return (a > b) ? (a - b) : (b - a);
 }
 
+// Select a "pivot" bit position that divides p as evenly as possible
+// into two sub-partitions p0 and p1.  The pivot bit is such that p0
+// and p1 have a zero and a one in the pivot position, respectively.
+// In other words, the pivot is the bit position whose frequency is
+// the closest to 50% in p.
+// 
 static unsigned int balancing_pivot(const partition_candidate * p) {
 	unsigned int pivot;
 	size_t p_half_size = p->size() / 2;
@@ -266,8 +297,22 @@ static void balanced_partitioning(size_t max_p) {
 			p->mask.set_bit(pivot);
 
 			if (p0->size() > max_p && p->size() > max_p) {
-				p0->compute_frequencies();
-				p->subtract_frequencies(p0);
+				// Both sub-partitions need to be further processed.
+				// So, we compute the frequencies for both parts,
+				// which can be done more efficiently in a joint
+				// computation, since p contains the total frequencies
+				// for both p and p0.  Therefore we can simply compute
+				// the frequencies of p0 and then subtract them from
+				// those of p.  Or vice-versa when p is smaller than
+				// p0.
+				if (p0->size() <= p->size()) {
+					p0->compute_frequencies();
+					p->subtract_frequencies(p0);
+				} else {
+					std::memcpy(p0->freq, p->freq, sizeof(p->freq));
+					p->compute_frequencies();
+					p0->subtract_frequencies(p);
+				}					
 				p0->clean_freq = true;
 				enqueue_partition_candidate(p0);
 			} else if (p->size() > max_p) {
@@ -301,8 +346,10 @@ int main(int argc, const char* argv[]) {
 	const char* filters_fname = nullptr;
 	const char* input_fname = nullptr;
 
-	static unsigned int max_size = 200000;
+	unsigned int max_size = 200000;
 	unsigned int thread_count = 4;
+	bool binary_format = false;
+
 	
 	for (int i = 1; i < argc; ++i) {
 		if (sscanf(argv[i], "m=%u", &max_size) || sscanf(argv[i], "N=%u", &max_size))
