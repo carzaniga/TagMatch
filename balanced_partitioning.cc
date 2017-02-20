@@ -45,6 +45,10 @@
 #include <cstring>
 #include <algorithm>
 #include <chrono>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 #include "packet.hh"
 #include "fib.hh"
@@ -97,6 +101,15 @@ static void read_filters(fib_t & fib, std::istream & input, bool binary_format) 
 	}
 }
 
+// Predicate object used in stable partitioning.
+//
+struct has_zero_bit {
+	unsigned int b;
+
+	has_zero_bit(unsigned int bitpos): b(bitpos) {};
+	bool operator()(const fib_entry * f) { return ! f->filter[b]; }
+};
+
 // We work with a list of partition candidates, which we then
 // recursively partition.  Each partition candidate consists of a
 // sequence of contiguous filters in the index (fib).
@@ -104,17 +117,15 @@ static void read_filters(fib_t & fib, std::istream & input, bool binary_format) 
 struct partition_candidate {
 	fib_t::iterator begin;		// beginning of contiguous sequence in fib
 	fib_t::iterator end;		// end of contiguous sequence in fib
+
 	filter_t mask;				// mask of pivot bits that identify this partition
 	filter_t used_bits;			// set of ALL pivot bits used so far
+
+	bool clean_freq;
 	unsigned int freq[filter_t::WIDTH]; // frequencies of one bits in the filters
 	struct partition_candidate * next;
 
-	partition_candidate(fib_t::iterator b, fib_t::iterator e, partition_candidate * n = nullptr)
-		: begin(b), end(e), mask(), used_bits(), next(n) {};
-
-	partition_candidate(fib_t::iterator b, fib_t::iterator e,
-						const filter_t & m, const filter_t & ub)
-		: begin(b), end(e), mask(m), used_bits(ub) {};
+	partition_candidate(fib_t::iterator b, fib_t::iterator e) : begin(b), end(e) {};
 
 	void compute_frequencies() {
 		std::memset(freq, 0, sizeof(freq));
@@ -131,20 +142,18 @@ struct partition_candidate {
 	size_t size() const {
 		return end - begin;
 	}
+
+	partition_candidate * split_zero(unsigned int pivot) {
+		vector<fib_entry *>::iterator m = std::stable_partition(begin, end, has_zero_bit(pivot));
+		partition_candidate * p0 = new partition_candidate(begin, m);
+		begin = m;
+		return p0;
+	}
 };
 
 static unsigned int distance(unsigned int a, unsigned int b) {
 	return (a > b) ? (a - b) : (b - a);
 }
-
-// Predicate object used in stable partitioning.
-//
-struct has_zero_bit {
-	unsigned int b;
-
-	has_zero_bit(unsigned int bitpos): b(bitpos) {};
-	bool operator()(const fib_entry * f) { return ! f->filter[b]; }
-};
 
 // Processes a partition candidate P0 that is already smaller than the
 // maximum partition size, but that is defined by an all-zero mask.
@@ -152,91 +161,134 @@ struct has_zero_bit {
 // if necessary, further partition P0 until such bit positions can be
 // found.
 //
-static partition_candidate * nonzero_mask_partitioning(partition_candidate * P0) {
+static partition_candidate * nonzero_mask_partitioning(partition_candidate * p) {
 	for(;;) {
-		P0->compute_frequencies();
-		unsigned int max_freq = P0->freq[0];
+		p->compute_frequencies();
+		unsigned int max_freq = p->freq[0];
 		unsigned int pivot = 0;
 		for(unsigned int b = 1; b < filter_t::WIDTH; ++b) {
-			if (P0->freq[b] > max_freq) {
+			if (p->freq[b] > max_freq) {
 				pivot = b;
-				max_freq = P0->freq[b];
+				max_freq = p->freq[b];
 			}
-			if (P0->freq[b] == P0->size())
-				P0->mask.set_bit(b);
+			if (p->freq[b] == p->size())
+				p->mask.set_bit(b);
 		}
-		if (max_freq == P0->size())
-			return P0;
-
-		vector<fib_entry *>::iterator middle = std::stable_partition(P0->begin, P0->end,
-																	 has_zero_bit(pivot));
-		partition_candidate * P1 = P0;
-		P0 = new partition_candidate(P0->begin, middle, P0);
-		P1->begin = middle;
-		P1->mask.set_bit(pivot);
+		if (max_freq == p->size())
+			return p;
+		partition_candidate * p0 = p->split_zero(pivot);
+		p->mask.set_bit(pivot);
+		p = p0;
 	}
 }
 
-partition_candidate * balanced_partitioning(fib_t::iterator begin, fib_t::iterator end,
-											size_t max_p) {
-	partition_candidate * Q = new partition_candidate(begin, end);
-	if (Q->size() <= max_p)
-		return Q;
+static std::mutex queue_mtx;
+static std::condition_variable queue_cv;
+static partition_candidate * pending_queue = nullptr;
 
-	partition_candidate * PT = nullptr;
-	Q->compute_frequencies();
-	while (Q) {
-		unsigned int pivot;
-		for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
-			if (! Q->used_bits[pivot])
+static std::mutex pt_mtx;
+static partition_candidate * PT;
+
+static std::atomic<unsigned int> pending_partitions(0);
+
+static void increment_pending_partitions() {
+	++pending_partitions;
+}
+
+static void decrement_pending_partitions() {
+	unsigned int p = --pending_partitions;
+	if (p == 0) {
+		std::unique_lock<std::mutex> lock(pt_mtx);
+		queue_cv.notify_all();
+	}
+}
+
+static void enqueue_partition_candidate(partition_candidate * p) {
+	increment_pending_partitions();
+	std::unique_lock<std::mutex> lock(queue_mtx);
+	p->next = pending_queue;
+	pending_queue = p;
+	queue_cv.notify_one();
+}
+
+static partition_candidate * dequeue_partition_candidate() {
+	std::unique_lock<std::mutex> lock(queue_mtx);
+	while (pending_queue == nullptr) {
+		if (pending_partitions == 0)
+			return nullptr;
+		queue_cv.wait(lock);
+	}
+	partition_candidate * res = pending_queue;
+	pending_queue = pending_queue->next;
+	return res;
+}
+
+static void PT_add(partition_candidate * p) {
+	std::unique_lock<std::mutex> lock(pt_mtx);
+	p->next = PT;
+	PT = p;
+}
+
+static void PT_add_list(partition_candidate * p1, partition_candidate * p2) {
+	std::unique_lock<std::mutex> lock(pt_mtx);
+	p2->next = PT;
+	PT = p1;
+}
+
+static void balanced_partitioning(size_t max_p) {
+	partition_candidate * p;
+	while ((p = dequeue_partition_candidate()) != nullptr) {
+		if (! p->clean_freq)
+			p->compute_frequencies();
+		for (;;) {
+			unsigned int pivot;
+			for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
+				if (! p->used_bits[pivot])
+					break;
+			unsigned int min_dist = distance(p->size() / 2, p->freq[pivot]);
+			for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
+				unsigned d = distance(p->size() / 2, p->freq[b]); 
+				if (d < min_dist) {
+					pivot = b;
+					if (d == 0) break;
+					min_dist = d;
+				}
+			}
+			partition_candidate * p0 = p->split_zero(pivot);
+			p->used_bits.set_bit(pivot);
+			p0->used_bits = p->used_bits;
+			p0->mask = p->mask;
+			p->mask.set_bit(pivot);
+
+			if (p0->size() > max_p && p->size() > max_p) {
+				p0->compute_frequencies();
+				p->subtract_frequencies(*p);
+				p0->clean_freq = true;
+				enqueue_partition_candidate(p0);
+			} else if (p->size() > max_p) {
+				if (p0->mask.is_empty()) {
+					p->clean_freq = false;
+					enqueue_partition_candidate(p);
+					PT_add_list(nonzero_mask_partitioning(p0), p0);
+					break; // loop to dequeue_partition_candidate()
+				} else {
+					p->compute_frequencies();
+					PT_add(p0);
+				}
+			} else if (p0->size() > max_p) {
+				p0->compute_frequencies();
+				PT_add(p);
+				p = p0;
+			} else {
+				p0->next = p;
+				if (p0->mask.is_empty())
+					p0 = nonzero_mask_partitioning(p0);
+				PT_add_list(p0, p);
 				break;
-		unsigned int min_dist = distance(Q->size() / 2, Q->freq[pivot]);
-		for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
-			unsigned d = distance(Q->size() / 2, Q->freq[b]); 
-			if (d < min_dist) {
-				pivot = b;
-				if (d == 0) break;
-				min_dist = d;
 			}
 		}
-		vector<fib_entry *>::iterator middle = std::stable_partition(Q->begin, Q->end,
-																	 has_zero_bit(pivot));
-		partition_candidate * P0;
-		partition_candidate * P1 = Q;
-		Q = Q->next;
-		P1->used_bits.set_bit(pivot);
-		P0 = new partition_candidate(P1->begin, middle, P1->mask, P1->used_bits);
-		P1->begin = middle;
-		P1->mask.set_bit(pivot);
-		if (P0->size() > max_p && P1->size() > max_p) {
-			P0->compute_frequencies();
-			P1->subtract_frequencies(*P0);
-			P1->next = Q;
-			P0->next = P1;
-			Q = P0;
-		} else if (P1->size() > max_p) {
-			P1->compute_frequencies();
-			P1->next = Q;
-			Q = P1;
-			P0->next = PT;
-			if (P0->mask.is_empty())
-				P0 = nonzero_mask_partitioning(P0);
-			PT = P0;
-		} else if (P0->size() > max_p) {
-			P0->compute_frequencies();
-			P0->next = Q;
-			Q = P0;
-			P1->next = PT;
-			PT = P1;
-		} else {
-			P1->next = PT;
-			P0->next = P1;
-			if (P0->mask.is_empty())
-				P0 = nonzero_mask_partitioning(P0);
-			PT = P0;
-		}
+		decrement_pending_partitions();
 	}
-	return PT;
 }
 
 int main(int argc, const char* argv[]) {
@@ -244,9 +296,12 @@ int main(int argc, const char* argv[]) {
 	const char* filters_fname = nullptr;
 	const char* input_fname = nullptr;
 	static unsigned int max_size = 200000;
+	unsigned int thread_count = 4;
 	
 	for (int i = 1; i < argc; ++i) {
 		if (sscanf(argv[i], "m=%u", &max_size) || sscanf(argv[i], "N=%u", &max_size))
+			continue;
+		if (sscanf(argv[i], "t=%u", &thread_count))
 			continue;
 		if (strcmp(argv[i], "-a") == 0) {
 			binary_format = false;
@@ -326,7 +381,19 @@ int main(int argc, const char* argv[]) {
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	partition_candidate * PT = balanced_partitioning(fib.begin(), fib.end(), max_size);
+	partition_candidate * p = new partition_candidate(fib.begin(), fib.end());
+
+	if (p->size() > max_size) {
+		std::vector<std::thread *> T(thread_count);
+		enqueue_partition_candidate(p);
+		for(unsigned int i = 0; i < thread_count; ++i)
+			T[i] = new std::thread(balanced_partitioning, max_size);
+
+		for(unsigned int i = 0; i < thread_count; ++i)
+			T[i]->join();
+	} else {
+		PT = nonzero_mask_partitioning(p);
+	}
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
