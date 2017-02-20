@@ -65,6 +65,7 @@ static void print_usage(const char* progname) {
 	<< " [<params>...]\n"
 	"\n  params: any combination of the following:\n"
 	"     [m=<N>]         :: maximum size for each partition (default=100)\n"
+	"     [t=<N>]         :: size of the thread pool (default=4)\n"
 	"     [p=<filename>]  :: output for partitions, '-' means stdout (default=OFF)\n"
 	"     [f=<filename>]  :: output for filters, '-' means stdout (default=OFF)\n"
 	"     [in=<filename>]  :: input for filters (default=stdin)\n"
@@ -80,9 +81,6 @@ static void print_usage(const char* progname) {
 typedef vector<fib_entry *> fib_t;
 
 static bool binary_format = false;
-
-static std::ostream* partitions_output = nullptr;
-static std::ostream* filters_output = nullptr;
 
 static void read_filters(fib_t & fib, std::istream & input, bool binary_format) {
 	fib_entry * f = new fib_entry();
@@ -125,7 +123,8 @@ struct partition_candidate {
 	unsigned int freq[filter_t::WIDTH]; // frequencies of one bits in the filters
 	struct partition_candidate * next;
 
-	partition_candidate(fib_t::iterator b, fib_t::iterator e) : begin(b), end(e) {};
+	partition_candidate(fib_t::iterator b, fib_t::iterator e)
+		: begin(b), end(e), clean_freq(false) {};
 
 	void compute_frequencies() {
 		std::memset(freq, 0, sizeof(freq));
@@ -134,9 +133,9 @@ struct partition_candidate {
 				freq[b] += 1;
 	}
 
-	void subtract_frequencies(const partition_candidate & x) {
+	void subtract_frequencies(const partition_candidate * x) {
 		for(unsigned int b = 0; b < filter_t::WIDTH; ++b)
-			freq[b] -= x.freq[b];
+			freq[b] -= x->freq[b];
 	}
 
 	size_t size() const {
@@ -150,10 +149,6 @@ struct partition_candidate {
 		return p0;
 	}
 };
-
-static unsigned int distance(unsigned int a, unsigned int b) {
-	return (a > b) ? (a - b) : (b - a);
-}
 
 // Processes a partition candidate P0 that is already smaller than the
 // maximum partition size, but that is defined by an all-zero mask.
@@ -235,25 +230,35 @@ static void PT_add_list(partition_candidate * p1, partition_candidate * p2) {
 	PT = p1;
 }
 
+static unsigned int distance(unsigned int a, unsigned int b) {
+	return (a > b) ? (a - b) : (b - a);
+}
+
+static unsigned int balancing_pivot(const partition_candidate * p) {
+	unsigned int pivot;
+	size_t p_half_size = p->size() / 2;
+	for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
+		if (! p->used_bits[pivot])
+			break;
+	unsigned int min_dist = distance(p_half_size, p->freq[pivot]);
+	for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
+		unsigned d = distance(p_half_size, p->freq[b]);
+		if (d < min_dist) {
+			pivot = b;
+			if (d == 0) break;
+			min_dist = d;
+		}
+	}
+	return pivot;
+}
+
 static void balanced_partitioning(size_t max_p) {
 	partition_candidate * p;
 	while ((p = dequeue_partition_candidate()) != nullptr) {
 		if (! p->clean_freq)
 			p->compute_frequencies();
 		for (;;) {
-			unsigned int pivot;
-			for(pivot = 0; pivot < filter_t::WIDTH; ++pivot)
-				if (! p->used_bits[pivot])
-					break;
-			unsigned int min_dist = distance(p->size() / 2, p->freq[pivot]);
-			for(unsigned int b = pivot + 1; b < filter_t::WIDTH; ++b) {
-				unsigned d = distance(p->size() / 2, p->freq[b]); 
-				if (d < min_dist) {
-					pivot = b;
-					if (d == 0) break;
-					min_dist = d;
-				}
-			}
+			unsigned int pivot = balancing_pivot(p);
 			partition_candidate * p0 = p->split_zero(pivot);
 			p->used_bits.set_bit(pivot);
 			p0->used_bits = p->used_bits;
@@ -262,7 +267,7 @@ static void balanced_partitioning(size_t max_p) {
 
 			if (p0->size() > max_p && p->size() > max_p) {
 				p0->compute_frequencies();
-				p->subtract_frequencies(*p);
+				p->subtract_frequencies(p0);
 				p0->clean_freq = true;
 				enqueue_partition_candidate(p0);
 			} else if (p->size() > max_p) {
@@ -295,6 +300,7 @@ int main(int argc, const char* argv[]) {
 	const char* partitions_fname = nullptr;
 	const char* filters_fname = nullptr;
 	const char* input_fname = nullptr;
+
 	static unsigned int max_size = 200000;
 	unsigned int thread_count = 4;
 	
@@ -331,6 +337,9 @@ int main(int argc, const char* argv[]) {
 	std::ofstream partitions_file;
 	std::ofstream filters_file;
 	std::ifstream input_file;
+
+	std::ostream* partitions_output = nullptr;
+	std::ostream* filters_output = nullptr;
 
 	static fib_t fib;
 	
