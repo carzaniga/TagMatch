@@ -1,3 +1,40 @@
+//
+// This program is part of TagMatch, a subset-matching engine based on
+// a hybrid CPU/GPU system.  TagMatch is also related to TagNet, a
+// tag-based information and network system.
+//
+// This program implememnts the off-line partitioning algorithm of
+// TagMatch.  The input is a set of Bloom filters, each representing a
+// set of tags, and associated with a set of keys.  So:
+//
+// INPUT:
+//
+//    BF_1, k1, k2, ..
+//    BF_2, k3, k4, ...
+//    ...
+//
+// The program partitions the set of filters (and associated keys)
+// into partitions so that all the filters in a partition share a
+// common "mask" (a non-empty set of one-bits).  So, the output consists of two files:
+//
+// OUTPUT:
+//
+// Filters: This is the same as the input where each filter is also
+// assigned a partition id:
+//
+//    Filters:
+//    BF_1, partition-id_1, k1, k2, ..
+//    BF_2, partition-id_2, k3, k4, ...
+//    ...
+//
+// Partitions: This is the set of partitions, characterized by
+// partition id, mask, size, etc.
+//
+//    Partitions:
+//    partition-id_1, mask_1, size_1
+//    partition-id_2, mask_2, size_2
+//    ...
+//
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -24,7 +61,7 @@ static void print_usage(const char* progname) {
 	<< " [<params>...]\n"
 	"\n  params: any combination of the following:\n"
 	"     [m=<N>]         :: maximum size for each partition (default=100)\n"
-	"     [p=<filename>]  :: output for prefixes, '-' means stdout (default=OFF)\n"
+	"     [p=<filename>]  :: output for partitions, '-' means stdout (default=OFF)\n"
 	"     [f=<filename>]  :: output for filters, '-' means stdout (default=OFF)\n"
 	"     [in=<filename>]  :: input for filters (default=stdin)\n"
 	"     [-a]  :: ascii input\n"
@@ -32,11 +69,15 @@ static void print_usage(const char* progname) {
 	<< std::endl;
 }
 
+// We read and store fib_entry objects (see fib.hh).  We allocate each
+// individual object, and then store the pointers to the objects in a
+// vector that serves as an index.
+//
 typedef vector<fib_entry *> fib_t;
 
 static bool binary_format = false;
 
-static std::ostream* prefixes_output = nullptr;
+static std::ostream* partitions_output = nullptr;
 static std::ostream* filters_output = nullptr;
 
 static void read_filters(fib_t & fib, std::istream & input, bool binary_format) {
@@ -56,12 +97,16 @@ static void read_filters(fib_t & fib, std::istream & input, bool binary_format) 
 	}
 }
 
+// We work with a list of partition candidates, which we then
+// recursively partition.  Each partition candidate consists of a
+// sequence of contiguous filters in the index (fib).
+//
 struct partition_candidate {
-	fib_t::iterator begin;
-	fib_t::iterator end;
-	filter_t mask;
-	filter_t used_bits;
-	unsigned int freq[filter_t::WIDTH];
+	fib_t::iterator begin;		// beginning of contiguous sequence in fib
+	fib_t::iterator end;		// end of contiguous sequence in fib
+	filter_t mask;				// mask of pivot bits that identify this partition
+	filter_t used_bits;			// set of ALL pivot bits used so far
+	unsigned int freq[filter_t::WIDTH]; // frequencies of one bits in the filters
 	struct partition_candidate * next;
 
 	partition_candidate(fib_t::iterator b, fib_t::iterator e, partition_candidate * n = nullptr)
@@ -92,13 +137,21 @@ static unsigned int distance(unsigned int a, unsigned int b) {
 	return (a > b) ? (a - b) : (b - a);
 }
 
-struct has_bit {
+// Predicate object used in stable partitioning.
+//
+struct has_zero_bit {
 	unsigned int b;
 
-	has_bit(unsigned int bitpos): b(bitpos) {};
+	has_zero_bit(unsigned int bitpos): b(bitpos) {};
 	bool operator()(const fib_entry * f) { return ! f->filter[b]; }
 };
 
+// Processes a partition candidate P0 that is already smaller than the
+// maximum partition size, but that is defined by an all-zero mask.
+// Looks for bit positions that are common to all filters in P0, and
+// if necessary, further partition P0 until such bit positions can be
+// found.
+//
 static partition_candidate * nonzero_mask_partitioning(partition_candidate * P0) {
 	for(;;) {
 		P0->compute_frequencies();
@@ -116,7 +169,7 @@ static partition_candidate * nonzero_mask_partitioning(partition_candidate * P0)
 			return P0;
 
 		vector<fib_entry *>::iterator middle = std::stable_partition(P0->begin, P0->end,
-																	 has_bit(pivot));
+																	 has_zero_bit(pivot));
 		partition_candidate * P1 = P0;
 		P0 = new partition_candidate(P0->begin, middle, P0);
 		P1->begin = middle;
@@ -147,7 +200,7 @@ partition_candidate * balanced_partitioning(fib_t::iterator begin, fib_t::iterat
 			}
 		}
 		vector<fib_entry *>::iterator middle = std::stable_partition(Q->begin, Q->end,
-																	 has_bit(pivot));
+																	 has_zero_bit(pivot));
 		partition_candidate * P0;
 		partition_candidate * P1 = Q;
 		Q = Q->next;
@@ -187,7 +240,7 @@ partition_candidate * balanced_partitioning(fib_t::iterator begin, fib_t::iterat
 }
 
 int main(int argc, const char* argv[]) {
-	const char* prefixes_fname = nullptr;
+	const char* partitions_fname = nullptr;
 	const char* filters_fname = nullptr;
 	const char* input_fname = nullptr;
 	static unsigned int max_size = 200000;
@@ -200,7 +253,7 @@ int main(int argc, const char* argv[]) {
 			continue;
 		}
 		if (strncmp(argv[i], "p=", 2) == 0) {
-			prefixes_fname = argv[i] + 2;
+			partitions_fname = argv[i] + 2;
 			continue;
 		}
 		if (strncmp(argv[i], "f=", 2) == 0) {
@@ -220,7 +273,7 @@ int main(int argc, const char* argv[]) {
 		return 1;
 	}
 	
-	std::ofstream prefixes_file;
+	std::ofstream partitions_file;
 	std::ofstream filters_file;
 	std::ifstream input_file;
 
@@ -241,17 +294,17 @@ int main(int argc, const char* argv[]) {
 	}
 	std::cerr << "\t\t\t" << std::setw(12) << fib.size() << " filters." << endl;
 	
-	if (prefixes_fname) {
-		if (strcmp(prefixes_fname, "-") == 0) {
-			prefixes_output = &std::cout;
+	if (partitions_fname) {
+		if (strcmp(partitions_fname, "-") == 0) {
+			partitions_output = &std::cout;
 		} else {
-			prefixes_file.open(prefixes_fname);
-			if (!prefixes_file) {
-				std::cerr << "error opening prefixes file " << prefixes_fname
+			partitions_file.open(partitions_fname);
+			if (!partitions_file) {
+				std::cerr << "error opening partitions file " << partitions_fname
 				<< std::endl;
 				return -1;
 			}
-			prefixes_output = &prefixes_file;
+			partitions_output = &partitions_file;
 		}
 	}
 	
@@ -303,11 +356,11 @@ int main(int argc, const char* argv[]) {
 					f.write_ascii(*filters_output);
 			}
 		}
-		if (prefixes_output) {
+		if (partitions_output) {
 			if (binary_format)
-				partition.write_binary(*prefixes_output);
+				partition.write_binary(*partitions_output);
 			else
-				partition.write_ascii(*prefixes_output);
+				partition.write_ascii(*partitions_output);
 		}
 		partition_candidate * tmp = PT;
 		PT = PT->next;
@@ -320,6 +373,6 @@ int main(int argc, const char* argv[]) {
 		delete(*i);
 	fib.clear();
 	
-	if (prefixes_output == &prefixes_file) prefixes_file.close();
+	if (partitions_output == &partitions_file) partitions_file.close();
 	if (filters_output == &filters_file) filters_file.close();
 }
