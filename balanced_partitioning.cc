@@ -159,7 +159,7 @@ struct partition_candidate {
 // whose size is creater than max_p and therefore that needs to be
 // recursively partitioned.  A pool of threads will then pick
 // partitions out of the queue for processing.
-// 
+//
 static std::mutex queue_mtx;
 static std::condition_variable queue_cv;
 static partition_candidate * pending_queue = nullptr;
@@ -233,7 +233,7 @@ static void PT_add_list(partition_candidate * first, partition_candidate * last)
 // is the last element of the list.  In other words, creates and
 // connects every new partition as the head of the list, and then
 // returns the head.
-// 
+//
 static partition_candidate * nonzero_mask_partitioning(partition_candidate * p) {
 	for(;;) {
 		p->compute_frequencies();
@@ -264,7 +264,7 @@ static unsigned int distance(unsigned int a, unsigned int b) {
 // and p1 have a zero and a one in the pivot position, respectively.
 // In other words, the pivot is the bit position whose frequency is
 // the closest to 50% in p.
-// 
+//
 static unsigned int balancing_pivot(const partition_candidate * p) {
 	unsigned int pivot;
 	size_t p_half_size = p->size() / 2;
@@ -312,7 +312,7 @@ static void balanced_partitioning(size_t max_p) {
 					std::memcpy(p0->freq, p->freq, sizeof(p->freq));
 					p->compute_frequencies();
 					p0->subtract_frequencies(p);
-				}					
+				}
 				p0->clean_freq = true;
 				enqueue_partition_candidate(p0);
 			} else if (p->size() > max_p) {
