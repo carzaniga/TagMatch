@@ -438,6 +438,8 @@ int main(int argc, const char* argv[]) {
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
 	partition_candidate * p = new partition_candidate(fib.begin(), fib.end());
+	p->used_bits.clear();
+	p->mask.clear();
 
 	if (p->size() > max_size) {
 		std::vector<std::thread *> T(thread_count);
@@ -445,9 +447,12 @@ int main(int argc, const char* argv[]) {
 		for(unsigned int i = 0; i < thread_count; ++i)
 			T[i] = new std::thread(balanced_partitioning, max_size);
 
-		for(unsigned int i = 0; i < thread_count; ++i)
+		for(unsigned int i = 0; i < thread_count; ++i) {
 			T[i]->join();
+			delete(T[i]);
+		}
 	} else {
+		p->next = nullptr;
 		PT = nonzero_mask_partitioning(p);
 	}
 
