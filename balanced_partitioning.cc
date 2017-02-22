@@ -251,6 +251,7 @@ static partition_candidate * nonzero_mask_partitioning(partition_candidate * p) 
 			return p;
 		partition_candidate * p0 = p->split_zero(pivot);
 		p->mask.set_bit(pivot);
+		p0->next = p;
 		p = p0;
 	}
 }
