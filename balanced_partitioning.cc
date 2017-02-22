@@ -80,20 +80,43 @@ static void print_usage(const char* progname) {
 //
 typedef vector<fib_entry *> fib_t;
 
+struct fib_entry_block {
+	static const size_t FE_BLOCK_SIZE = 10000;
+	fib_entry_block * next_block;
+	size_t used_entries;
+	fib_entry entries[FE_BLOCK_SIZE];
+	fib_entry_block(fib_entry_block * n) : next_block(n), used_entries(0) {};
+};
+
+static fib_entry_block * fib_block_list = nullptr;
+
+static fib_entry * new_fib_entry() {
+	if (fib_block_list == nullptr || fib_block_list->used_entries == fib_entry_block::FE_BLOCK_SIZE) {
+		fib_block_list = new fib_entry_block(fib_block_list);
+	}
+	return fib_block_list->entries + (fib_block_list->used_entries)++;
+}
+
+static void release_all_fib_entries() {
+	while(fib_block_list) {
+		fib_entry_block * tmp = fib_block_list;
+		fib_block_list = fib_block_list->next_block;
+		delete(tmp);
+	}
+}
+
 static void read_filters(fib_t & fib, std::istream & input, bool binary_format) {
-	fib_entry * f = new fib_entry();
+	fib_entry * f = new_fib_entry();
 	if (binary_format) {
 		while(f->read_binary(input)) {
 			fib.push_back(f);
-			f = new fib_entry();
+			f = new_fib_entry();
 		}
-		delete(f);
 	} else {
 		while(f->read_ascii(input)) {
 			fib.push_back(f);
-			f = new fib_entry();
+			f = new_fib_entry();
 		}
-		delete(f);
 	}
 }
 
@@ -498,8 +521,7 @@ int main(int argc, const char* argv[]) {
 
 	std::cerr << "Number of partitions:\t\t\t" << std::setw(12) << pid << " partitions." << endl;
 
-	for(fib_t::iterator i = fib.begin(); i != fib.end(); ++i)
-		delete(*i);
+	release_all_fib_entries();
 	fib.clear();
 	
 	if (partitions_output == &partitions_file) partitions_file.close();
