@@ -91,12 +91,12 @@ static unsigned int read_queries(vector<packet> & packets, string fname, bool bi
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.interface());
+			packets.emplace_back(p.filter, p.ti_pair);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.interface());
+			//packets.emplace_back(p.filter, p.ti_pair.interface());
 			++res;
 		}
 	}
@@ -318,12 +318,14 @@ int main(int argc, const char * argv[]) {
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
+	if (packets.size()) {
 	if (print_progress_steps) {
 		cout << "\t" << std::setw(10)
 			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
 			 << "ns average matching time." << endl;
 	} else if (print_matching_time_only) {
 		cout << duration_cast<nanoseconds>(stop - start).count()/packets.size() << endl;
+	}
 	}
 	if (print_statistics) {
 		cout << "Front-end Statistics:" << endl;

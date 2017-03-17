@@ -78,8 +78,7 @@ public:
 						   result_t * dev_results_data,
 						   unsigned int stream, 
 						   unsigned int gpu,
-						   unsigned char blocks,
-						   uint32_t * intersections);
+						   unsigned char blocks);
 
 	static void synchronize_stream(unsigned int stream, unsigned int gpu);
 	static void synchronize_device();

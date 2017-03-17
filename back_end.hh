@@ -15,8 +15,8 @@ class back_end {
 public:
 	static void add_partition(unsigned int id, const filter_t & prefix, unsigned int prefix_length);
 	static void add_filter(unsigned int partition, const filter_t & f, 
-						   std::vector<tree_interface_pair>::const_iterator begin,
-						   std::vector<tree_interface_pair>::const_iterator end);
+						   std::vector<tagmatch_key_t>::const_iterator begin,
+						   std::vector<tagmatch_key_t>::const_iterator end);
 	static void start();
 	static void * process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr);
 	static void * second_flush_stream();

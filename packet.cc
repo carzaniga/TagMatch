@@ -10,20 +10,22 @@
 
 std::ostream & network_packet::write_binary(std::ostream & output) const {
 	filter.write_binary(output);
-	ti_pair.write_binary(output);
+//	ti_pair.write_binary(output);
+	io_util_write_binary(output, ti_pair);
 	return output;
 }
 
 std::istream & network_packet::read_binary(std::istream & input) {
 	filter.read_binary(input);
-	ti_pair.read_binary(input);
+//	ti_pair.read_binary(input);
+	io_util_read_binary(input, ti_pair);
 	return input;
 }
 
 std::ostream & network_packet::write_ascii(std::ostream & output) const {
 	output.put('!');
 	output.put(' ');
-	ti_pair.write_ascii(output);
+//	ti_pair.write_ascii(output);
 	output.put(' ');
 	filter.write_ascii(output);
 	output.put('\n');
@@ -37,8 +39,8 @@ std::istream & network_packet::read_ascii(std::istream & input) {
 		std::string command;
 		line_s >> command;
 		if (command == "!") {
-			if (ti_pair.read_ascii(line_s))
-				filter.read_ascii(line_s);
+//			if (ti_pair.read_ascii(line_s))
+//				filter.read_ascii(line_s);
 		}
 	}
 	return input;

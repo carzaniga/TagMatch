@@ -20,7 +20,10 @@
 #include <mutex> 
 
 typedef uint32_t interface_t;
-/** tree--interface pair */ 
+typedef uint32_t tagmatch_key_t;
+
+#if 0
+/** key class */ 
 class tree_interface_pair {
 // 
 // ASSUMPTIONS: 
@@ -86,6 +89,7 @@ public:
 		return input;
 	}
 };
+#endif
 
 //
 // A packet is whatever we get from the network.  At this point, the
@@ -100,7 +104,7 @@ typedef bitvector<192> filter_t;
 class network_packet {
 public:
 	filter_t filter;
-	tree_interface_pair ti_pair;
+	tagmatch_key_t ti_pair;
 
 	network_packet() : filter(), ti_pair() {};
 
