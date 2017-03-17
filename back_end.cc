@@ -159,11 +159,9 @@
 		// store the results that come back from the GPU.
 		// 
 		bool flip;
-		uint32_t * host_queries[2];
-		result_t * host_results[2];
-
-		// PACKETS_BATCH_SIZE * INTERFACES
-		result_t * dev_results[2];
+		uint32_t * host_queries[GPU_NUM];
+		result_t * host_results[GPU_NUM];
+		result_t * dev_results[GPU_NUM];
 		uint32_t last_partition;
 		uint32_t second_last_partition;
 
@@ -174,27 +172,23 @@
 			
 			gpu::set_device(gpu);
 
-			host_queries[0] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
-			host_queries[1] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
-					
-			host_results[0] = gpu::allocate_host_pinned<result_t>(1);
-			host_results[1] = gpu::allocate_host_pinned<result_t>(1);
-			host_results[0]->count = 0;
-			host_results[1]->count = 0;
-			dev_results[0] = gpu::allocate<result_t>(1);
-			dev_results[1] = gpu::allocate<result_t>(1);
-			gpu::async_set_zero(dev_results[0], sizeof(result_t),0,gpu);
-			gpu::async_set_zero(dev_results[1], sizeof(result_t),0,gpu);
+			for (int g = 0; g < GPU_NUM; g++) {
+				host_queries[g] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
+				host_results[g] = gpu::allocate_host_pinned<result_t>(1);
+				host_results[g]->count = 0;
+				dev_results[g] = gpu::allocate<result_t>(1);
+				gpu::async_set_zero(dev_results[g], sizeof(result_t),0,gpu);
+			}
 			last_batch = second_last_batch = nullptr;
 			last_batch_ptr = second_last_batch_ptr = nullptr;
 			last_batch_size = second_last_batch_size = 0;
 	}
 
 	void destroy() {
-		gpu::release_pinned_memory(host_queries[0]);
-		gpu::release_pinned_memory(host_queries[1]);
-		gpu::release_pinned_memory(host_results[0]);
-		gpu::release_pinned_memory(host_results[1]);
+		for (int g = 0; g < GPU_NUM; g++) {
+			gpu::release_pinned_memory(host_queries[g]);
+			gpu::release_pinned_memory(host_results[g]);
+		}
 	}
 };
 
@@ -297,8 +291,11 @@ static void compile_fibs() {
 
 	filter_t cbits; //common bits
 
-	//for(auto const & pf : tmp_fib) {
+#if SORT_FILTERS
 	for(auto & pf : tmp_fib) {
+#else
+	for(auto const & pf : tmp_fib) {
+#endif
 		cbits.fill();
 
 		unsigned int part = pf.first;
