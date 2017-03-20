@@ -852,7 +852,7 @@ void gpu::syncOnResults(unsigned int stream, unsigned int gpu) {
 }
 
 void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, unsigned int size) {
-	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, size * INTERFACES * sizeof(ifx_result_t), cudaMemcpyDeviceToHost));
+	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, size * sizeof(ifx_result_t), cudaMemcpyDeviceToHost));
 }
 
 void gpu::synchronize_device() {

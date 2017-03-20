@@ -90,7 +90,7 @@ void split(filter_t partition, filter_t checked, vector<int>& fib_index) {
 				if (binary_format)
 					for (unsigned int i = 0; i < fib_index.size(); i++) {
 						f.filter = fibs[fib_index[i]].filter;
-						f.ti_pairs = fibs[fib_index[i]].ti_pairs;
+						f.keys = fibs[fib_index[i]].keys;
 						f.filter = fibs[fib_index[i]].filter;
 						f.partition = pid;
 						f.write_binary(*filters_output);
@@ -98,7 +98,7 @@ void split(filter_t partition, filter_t checked, vector<int>& fib_index) {
 				else
 					for (unsigned int i = 0; i < fib_index.size(); i++) {
 						f.filter = fibs[fib_index[i]].filter;
-						f.ti_pairs = fibs[fib_index[i]].ti_pairs;
+						f.keys = fibs[fib_index[i]].keys;
 						f.filter = fibs[fib_index[i]].filter;
 						f.partition = pid;
 						f.write_ascii(*filters_output);

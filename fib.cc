@@ -9,7 +9,7 @@
 #include "io_util.hh"
 #include "fib.hh"
 
-std::ostream & ti_vector::write_binary(std::ostream & output) const {
+std::ostream & tk_vector::write_binary(std::ostream & output) const {
 	uint32_t vector_size = size();
 	io_util_write_binary(output, vector_size);
 	for(const_iterator i = begin(); i != end(); ++i)
@@ -18,7 +18,7 @@ std::ostream & ti_vector::write_binary(std::ostream & output) const {
 	return output;
 }
 
-std::istream & ti_vector::read_binary(std::istream & input) {
+std::istream & tk_vector::read_binary(std::istream & input) {
 	uint32_t vector_size;
 	if (!io_util_read_binary(input, vector_size))
 		return input;
@@ -34,12 +34,12 @@ std::istream & ti_vector::read_binary(std::istream & input) {
 
 std::ostream & fib_entry::write_ascii(std::ostream & output) const {
 	output << "+ ";
-	//ti_pairs[0].write_ascii(output);
+	//keys[0].write_ascii(output);
 	output << " ";
 	filter.write_ascii(output);
-	for(unsigned int i = 1; i < ti_pairs.size(); ++i) {
+	for(unsigned int i = 1; i < keys.size(); ++i) {
 		output << " ";
-		//ti_pairs[i].write_ascii(output);
+		//keys[i].write_ascii(output);
 	}
 	output << std::endl;
 	return output;
@@ -61,10 +61,10 @@ std::istream & fib_entry::read_ascii(std::istream & input) {
 //			if (! filter.read_ascii(input_line))
 //				return input;
 
-			ti_pairs.clear();
+			keys.clear();
 
 //			do {
-//				ti_pairs.push_back(ti);
+//				keys.push_back(ti);
 //			} while (ti.read_ascii(input_line));
 		}
 	}
@@ -102,9 +102,9 @@ std::istream & partition_prefix::read_ascii(std::istream & input) {
 std::ostream & partition_fib_entry::write_ascii(std::ostream & output) const {
 	output << "f " << partition << ' ';
 	filter.write_ascii(output);
-	for(unsigned int i = 0; i < ti_pairs.size(); ++i) {
+	for(unsigned int i = 0; i < keys.size(); ++i) {
 		output << " ";
-//		ti_pairs[i].write_ascii(output);
+//		keys[i].write_ascii(output);
 	}
 	output << std::endl;
 	return output;
@@ -124,9 +124,9 @@ std::istream & partition_fib_entry::read_ascii(std::istream & input) {
 				if (! filter.read_ascii(input_line))
 					return input;
 
-//				ti_pairs.clear();
+//				keys.clear();
 //				while(ti.read_ascii(input_line))
-//					ti_pairs.push_back(ti);
+//					keys.push_back(ti);
 			}
 		}
 	}

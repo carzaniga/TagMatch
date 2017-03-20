@@ -630,7 +630,7 @@ int main(int argc, const char* argv[]) {
 			partition_fib_entry f;
 			f.filter = (*i)->filter;
 			partition.filter &= f.filter;
-			f.ti_pairs = std::move((*i)->ti_pairs);
+			f.keys = std::move((*i)->keys);
 			f.partition = partition.partition;
 			if (filters_output) {
 				if (binary_format)

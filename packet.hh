@@ -104,18 +104,19 @@ typedef bitvector<192> filter_t;
 class network_packet {
 public:
 	filter_t filter;
-	tagmatch_key_t ti_pair;
+	// TODO: is this thing here still useful at all? Does it state the origin of the packet?
+	tagmatch_key_t key;
 
-	network_packet() : filter(), ti_pair() {};
+	network_packet() : filter(), key() {};
 
 	network_packet(const filter_t f, interface_t i)
-		: filter(f), ti_pair(i) {};
+		: filter(f), key(i) {};
 
 	network_packet(const std::string & f, interface_t i)
-		: filter(f), ti_pair(i) {};
+		: filter(f), key(i) {};
 
 	network_packet(const network_packet & p) 
-		: filter(p.filter), ti_pair(p.ti_pair) {};
+		: filter(p.filter), key(p.key) {};
 
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);

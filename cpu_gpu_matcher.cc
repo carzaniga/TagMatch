@@ -67,12 +67,12 @@ static int read_filters(string fname, bool binary_format) {
 	partition_fib_entry f;
 	if (binary_format) {
 		while(f.read_binary(is)) {
-			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			back_end::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
 			++res;
 		}
 	} else {
 		while(f.read_ascii(is)) {
-			back_end::add_filter(f.partition, f.filter, f.ti_pairs.begin(), f.ti_pairs.end());
+			back_end::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
 			++res;
 		}
 	}
@@ -91,7 +91,7 @@ static unsigned int read_queries(vector<packet> & packets, string fname, bool bi
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair);
+			packets.emplace_back(p.filter, p.key);
 			++res;
 		}
 	} else {

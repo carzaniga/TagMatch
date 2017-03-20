@@ -10,15 +10,13 @@
 
 std::ostream & network_packet::write_binary(std::ostream & output) const {
 	filter.write_binary(output);
-//	ti_pair.write_binary(output);
-	io_util_write_binary(output, ti_pair);
+	io_util_write_binary(output, key);
 	return output;
 }
 
 std::istream & network_packet::read_binary(std::istream & input) {
 	filter.read_binary(input);
-//	ti_pair.read_binary(input);
-	io_util_read_binary(input, ti_pair);
+	io_util_read_binary(input, key);
 	return input;
 }
 

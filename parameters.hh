@@ -30,8 +30,6 @@
 #define COALESCED_READS
 #endif
 
-#define INTERFACES				1U
-
 #define DEFAULT_THREAD_COUNT	5U
 
 // WITH_MATCH_STATISTICS makes cpu_gpu_matcher print statistics about the matches generated

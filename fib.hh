@@ -11,7 +11,7 @@
 #include "io_util.hh"
 #include "packet.hh"
 
-class ti_vector : public std::vector<tagmatch_key_t> {
+class tk_vector : public std::vector<tagmatch_key_t> {
 public:
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);
@@ -20,19 +20,19 @@ public:
 class fib_entry {
 public:
 	filter_t filter;
-	ti_vector ti_pairs;
+	tk_vector keys;
 
-	fib_entry() : filter(), ti_pairs() {}
+	fib_entry() : filter(), keys() {}
 
 	std::ostream & write_binary(std::ostream & output) const {
 		filter.write_binary(output);
-		ti_pairs.write_binary(output);
+		keys.write_binary(output);
 		return output;
 	}
 
 	std::istream & read_binary(std::istream & input) {
 		if (filter.read_binary(input))
-			ti_pairs.read_binary(input);
+			keys.read_binary(input);
 		return input;
 	}
 

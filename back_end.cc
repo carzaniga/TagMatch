@@ -448,14 +448,15 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 #if COMBO
 	if (dev_partitions[0][part].size < COMBO_SIZE){
 		const f_descr_vector & filters = tmp_fib[part];
+		uint32_t fidx = 0;
 		for(const filter_descr & fd : filters){ 
-			for(unsigned int i = 0; i < batch_size; ++i) 
+			for(unsigned int i = 0; i < batch_size; ++i) {
 				if (fd.filter.subset_of(batch[i]->filter)){
-					for(const key & tip : fd.keys)
-						if (batch[i]->ti_pair.interface() != tip.interface()) {
-							//What??
-						}
+					for(const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys)
+						batch[i]->add_output_user(k);
 				}
+			}
+			fidx++;
 		}
 
 		for(unsigned int i=0; i< batch_size; i++)

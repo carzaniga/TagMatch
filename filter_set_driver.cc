@@ -63,12 +63,12 @@ static int read_queries(vector<packet> & packets, string fname, bool binary_form
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			packets.emplace_back(p.filter, p.key);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.ti_pair.tree(), p.ti_pair.interface());
+			packets.emplace_back(p.filter, p.key);
 			++res;
 		}
 	}

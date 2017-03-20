@@ -72,22 +72,13 @@ static int read_filters(string fname, bool binary_format) {
 }
 
 static void match(const network_packet & p) {
-	bool results[INTERFACES] = { false };
-
-    //const tree_t tree = p.ti_pair.tree();
-	const interface_t iface = p.ti_pair.interface();
-
 	for(const fib_entry & entry : fib) 
 		if (entry.filter.subset_of(p.filter)){ 
 			entry.write_ascii(std::cout);
 			std::cout<<std::endl;
-			for(const tree_interface_pair & tip : entry.ti_pairs)
-				if (/*tree == tip.tree() &&*/ iface != tip.interface())
-					results[tip.interface()] = true;
+			for(auto k : entry.keys) 
+				cout << ' ' << k;
 		}
-	for(unsigned i = 0; i < INTERFACES; ++i) 
-		if (results[i])
-			cout << ' ' << i;
 	cout << endl;
 }
 
