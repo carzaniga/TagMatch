@@ -14,7 +14,6 @@ std::ostream & tk_vector::write_binary(std::ostream & output) const {
 	io_util_write_binary(output, vector_size);
 	for(const_iterator i = begin(); i != end(); ++i)
 		io_util_write_binary(output, *i);
-		//i->write_binary(output);
 	return output;
 }
 
@@ -26,21 +25,16 @@ std::istream & tk_vector::read_binary(std::istream & input) {
 	resize(vector_size);
 	for(iterator i = begin(); i != end(); ++i)
 		if (!io_util_read_binary(input, *i))
-		//if (!i->read_binary(input))
 			return input;
 
 	return input;
 }
 
 std::ostream & fib_entry::write_ascii(std::ostream & output) const {
-	output << "+ ";
-	//keys[0].write_ascii(output);
-	output << " ";
+	output << "+ " << keys[0] << " ";
 	filter.write_ascii(output);
-	for(unsigned int i = 1; i < keys.size(); ++i) {
-		output << " ";
-		//keys[i].write_ascii(output);
-	}
+	for(unsigned int i = 1; i < keys.size(); ++i) 
+		output << " " << keys[i];
 	output << std::endl;
 	return output;
 }
@@ -53,19 +47,18 @@ std::istream & fib_entry::read_ascii(std::istream & input) {
 		input_line >> command;
 
 		if (command == "+") {
-//			tree_interface_pair ti;
-
-//			if (! ti.read_ascii(input_line))
-//				return input;
-
-//			if (! filter.read_ascii(input_line))
-//				return input;
+			tagmatch_key_t key;
+			if (!(input >> key))
+				return input;
+			
+			if (! filter.read_ascii(input_line))
+				return input;
 
 			keys.clear();
 
-//			do {
-//				keys.push_back(ti);
-//			} while (ti.read_ascii(input_line));
+			do {
+				keys.push_back(key);
+			} while (input_line >> key);
 		}
 	}
 	return input;

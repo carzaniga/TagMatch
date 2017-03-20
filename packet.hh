@@ -19,83 +19,14 @@
 #include "io_util.hh"
 #include <mutex> 
 
-typedef uint32_t interface_t;
 typedef uint32_t tagmatch_key_t;
 
-#if 0
-/** key class */ 
-class tree_interface_pair {
-// 
-// ASSUMPTIONS: 
-//   1. the router has at most 2^13 = 8192 interfaces
-//   2. the are at most 2^3 = 8 trees
-//
-	uint32_t value;
-
-public:
-
-	tree_interface_pair()
-		: value(0) {};
-	
-	tree_interface_pair(const tree_interface_pair & p)
-		: value(p.value) {};
-	tree_interface_pair(interface_t ifx) {
-		value =ifx  ;
-	}
-
-	bool equals(interface_t ifx) const {
-		return value == ifx ;
-	}
-	uint32_t get_uint32_value() const {
-		return value;
-	}
-	//is this cast correct?
-	uint32_t interface() const {
-		return value;
-	}
-	//     static uint16_t tree(uint16_t value) {
-	//     +//             return value >> TREE_OFFSET;;
-	//     +//     }
-	//     +//
-	//     +//     static uint16_t interface(uint16_t value) {
-	//     +//             return value & IFX_MASK;
-	//     +//     }
-	//
-	
-	bool operator < (const tree_interface_pair &x) const {
-		return value < x.value;
-	}
-	bool operator == (const tree_interface_pair & rhs) const {
-		return value == rhs.value;
-	}
-
-	std::ostream & write_binary(std::ostream & output) const {
-		return io_util_write_binary(output, value);
-	}
-
-	std::istream & read_binary(std::istream & input) {
-		return io_util_read_binary(input, value);
-	}
-
-	std::ostream & write_ascii(std::ostream & output) const {
-		return output << interface();
-	}
-
-	std::istream & read_ascii(std::istream & input) {
-		uint32_t i;
-		if (input >> i) {
-			value = i ;
-		}
-		return input;
-	}
-};
-#endif
 
 //
 // A packet is whatever we get from the network.  At this point, the
 // only important components are the filter, which is a 192-bit Bloom
-// filter, the tree that the packet is routed on, and the interface it
-// comes from.
+// filter, the tree that the packet is routed on, and the origin (in
+// terms of key) it comes from.
 
 typedef bitvector<192> filter_t;
 
@@ -109,10 +40,10 @@ public:
 
 	network_packet() : filter(), key() {};
 
-	network_packet(const filter_t f, interface_t i)
+	network_packet(const filter_t f, tagmatch_key_t i)
 		: filter(f), key(i) {};
 
-	network_packet(const std::string & f, interface_t i)
+	network_packet(const std::string & f, tagmatch_key_t i)
 		: filter(f), key(i) {};
 
 	network_packet(const network_packet & p) 
@@ -153,10 +84,6 @@ private:
 	//
 	std::atomic<unsigned int> pending_partitions;
 
-	// Array of flags (0/1) when a flag is set then we have a match on
-	// the corresponding interface.  We could use a bit vector but
-	// this should be faster
-	//
 #ifdef WITH_ATOMIC_OUTPUT
 #else   
 	std::mutex mtx;
