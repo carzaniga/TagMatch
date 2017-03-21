@@ -21,7 +21,6 @@
 
 typedef uint32_t tagmatch_key_t;
 
-
 //
 // A packet is whatever we get from the network.  At this point, the
 // only important components are the filter, which is a 192-bit Bloom
@@ -153,7 +152,7 @@ public:
 	}
 
 	void add_output_user(uint32_t user) {
-		//Warning: you should lock the mutex before calling this method! 
+		// Warning: you should lock the mutex before calling this method! 
 		output_users.push_back(user);
 	}
 
@@ -166,27 +165,32 @@ public:
 		// In this experimental code, instead, we simply collect statistics
 		// about the matching.  In order to do that, we still perform a "merge"
 		// over the set of output "users".
+		//
 		if (!atomic_exchange(&finalized, true)) {
 #ifdef WITH_MATCH_STATISTICS
 			pre = output_users.size();
 			assert(pre > 0);
 #endif
-#if 1
+#if MATCH_UNIQUE
+			// Delete duplicates from the list of output keys
 			std::sort( output_users.begin(), output_users.end() );
 			output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
 #endif
 #ifdef WITH_MATCH_STATISTICS
 			post = output_users.size();
 #endif
-			//Flush the output vector and release its memory
+#if 0
+			// Flush the output vector and release its memory... used as a workaround for test purposes
+			// when the memory available is not enough for specific workloads
 			output_users.clear();
 			std::vector<uint32_t>().swap(output_users);
 			// For some reason output.resize(0) doesn't really free the memory
 			// output_users.resize(0);
+#endif
 			return true;
 		}
 		else {
-			//Nothing to do
+			// Nothing to do
 			return false;
 		}
 	}

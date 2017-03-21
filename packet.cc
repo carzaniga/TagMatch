@@ -23,7 +23,7 @@ std::istream & network_packet::read_binary(std::istream & input) {
 std::ostream & network_packet::write_ascii(std::ostream & output) const {
 	output.put('!');
 	output.put(' ');
-//	ti_pair.write_ascii(output);
+	output.put(key);
 	output.put(' ');
 	filter.write_ascii(output);
 	output.put('\n');
@@ -37,8 +37,8 @@ std::istream & network_packet::read_ascii(std::istream & input) {
 		std::string command;
 		line_s >> command;
 		if (command == "!") {
-//			if (ti_pair.read_ascii(line_s))
-//				filter.read_ascii(line_s);
+			if (line_s >> key)
+				filter.read_ascii(line_s);
 		}
 	}
 	return input;

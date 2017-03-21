@@ -350,6 +350,7 @@ void partition_queue::enqueue(packet * p) noexcept {
 			  // (good) position in the queue, even earlier position
 			  // than this one, actually completes the writing in the
 			  // queue
+			  //
 		b = batch_pool::get();
 #ifdef WITH_FRONTEND_STATISTICS
 		update_flush_statistics();
@@ -400,6 +401,7 @@ void partition_queue::flush() noexcept {
 		; // we loop waiting until every thread that acquired some
 	      // (good) position in the queue, even earlier position than
 	      // this one, actually completes the writing in the queue
+		  //
 	b = batch_pool::get();
 #ifdef WITH_FRONTEND_STATISTICS
 	update_flush_statistics();
@@ -506,6 +508,7 @@ void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) 
 	for (int i=0; i< 192; i++ ){
 		if( f[i]==1){
 			// Here I find the least crowded array to store the new one partition.
+			//
 			if(tmp_pp[i].p64.size() < min){
 				min = tmp_pp[i].p64.size() ;
 				index = i;
@@ -578,6 +581,7 @@ static void match(packet * pkt) {
 			int m = leftmost_bit(curr_block);
 			p1_container & c = pp1[m];
 
+			
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
 				if (q->common_bits.subset_of(pkt->filter)) 
 					q->enqueue(pkt);
@@ -615,8 +619,9 @@ static void match(packet * pkt) {
 
 	pkt->frontend_done();
 	
-	// Now we need to check whether some packet has already been processed
+	// Now we need to check whether any packet has already been processed
 	// and has already finished the match in the back_end
+	//
 	if (pkt->is_matching_complete()) {
 		if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
@@ -902,7 +907,7 @@ void front_end::stop(unsigned int gpu_count) {
 #ifdef WITH_MATCH_STATISTICS
 	std::cout << "Total matches before merge: " << macthes_pre_merge << std::endl;
 	std::cout << "Total matches after merge: " << matches_post_merge << std::endl;
-	for (uint32_t i=0; i<matches.size(); i++)
+	for (uint32_t i=0; i < matches.size(); i++)
 	{
 		assert(matches[i]>0);
 		std::cout << matches[i] << std::endl;

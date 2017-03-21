@@ -74,8 +74,8 @@ static int read_filters(string fname, bool binary_format) {
 static void match(const network_packet & p) {
 	for(const fib_entry & entry : fib) 
 		if (entry.filter.subset_of(p.filter)){ 
-			entry.write_ascii(std::cout);
-			std::cout<<std::endl;
+			//entry.write_ascii(std::cout);
+			//std::cout<<std::endl;
 			for(auto k : entry.keys) 
 				cout << ' ' << k;
 		}
@@ -93,11 +93,13 @@ static unsigned int read_and_match_queries(string fname, bool binary_format) {
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
+			cout << "packet=" << res; 
 			match(p);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
+			cout << "packet=" << res; 
 			match(p);
 			++res;
 		}
@@ -108,7 +110,8 @@ static unsigned int read_and_match_queries(string fname, bool binary_format) {
 
 void print_usage(const char * progname) {
 	cout << "usage: " << progname 
-		 << " f=filters_file_name q=queries_file_name"
+		 << " (f|F)=<filters_file_name> (q|Q)=<queries_file_name>" << endl
+		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl;
 }
 

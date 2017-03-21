@@ -440,7 +440,7 @@ else
 		else if (prop.major == major && prop.minor < minor)
 			minor = prop.minor;
 	}
-	printf("%d%d\n", prop.major, prop.minor);
+	printf("%d%d\n", major, minor);
 	}
 EOF
     if $NVCC $NVCCFLAGS smv.cu -o smv; then

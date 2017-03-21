@@ -166,6 +166,8 @@
 		uint32_t second_last_partition;
 
 		void initialize(unsigned int s, unsigned int n, unsigned int gpu_count) {
+			// Stream handlers are initialized so that they are assigned evenly to all the gpus available, going round robin
+			//
 			stream = s / gpu_count;
 			gpu = s % gpu_count;
 			next = n;
@@ -173,6 +175,7 @@
 			gpu::set_device(gpu);
 			
 			// Here we initialize two buffers for each stream for each gpu for the staged computation that is taking place in process_batch
+			//
 			for (unsigned int f = 0; f < 2; f++) {
 				host_queries[f] = gpu::allocate_host_pinned<uint32_t>(PACKETS_BATCH_SIZE*GPU_FILTER_WORDS);
 				host_results[f] = gpu::allocate_host_pinned<result_t>(1);
@@ -283,6 +286,7 @@ static void compile_fibs(unsigned int gpu_count) {
 	// since we only need to know the number of partitions, instead of
 	// dev_partitions_size we could have a simple counter in the
 	// previous for loop.
+	//
 	for (unsigned int g = 0; g < gpu_count; g++)
 		dev_partitions[g] = new part_descr[dev_partitions_size];
 
@@ -350,7 +354,8 @@ static void compile_fibs(unsigned int gpu_count) {
 
 		}
 		// this thing doesn't really need to be in the partition_descriptors!
-			dev_partitions[0][part].common_bits = cbits; 
+		//
+		dev_partitions[0][part].common_bits = cbits; 
 	}
 
 	delete[](host_rep);
@@ -386,6 +391,7 @@ void* back_end::flush_stream()
 			}
 #else
 				// You need to get unique ids from the gpu to use this
+				//
 				pkt->add_output_user(id);
 #endif
 			pkt->unlock_mtx();	
@@ -467,7 +473,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 #endif
 	stream_handle * sh = allocate_stream_handle();
 	uint8_t blocks = prefix_block_lengths[part];
-	//
+
 	// Flip the buffers for the staged computation to avoid overwriting
 	//
 	sh->flip = !sh->flip;
@@ -477,6 +483,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	// over to the device.  To do that we first assemble the whole
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
+	//
 
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
@@ -498,6 +505,10 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
 		gpu::syncOnResults(sh->stream, sh->gpu);
+		
+		// If there are more results than slots available for the results, some results will be
+		// ignored, and the following assertion is triggered
+		//
 	 	assert(sh->host_results[sh->flip]->count <= MAX_MATCHES); 
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			unsigned char pkt_idx = (sh->host_results[!sh->flip]->keys[5*(i/4)] >> (8*(i%4))) & 0xFF;

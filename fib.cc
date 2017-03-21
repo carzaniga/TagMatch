@@ -31,9 +31,9 @@ std::istream & tk_vector::read_binary(std::istream & input) {
 }
 
 std::ostream & fib_entry::write_ascii(std::ostream & output) const {
-	output << "+ " << keys[0] << " ";
+	output << "+ ";
 	filter.write_ascii(output);
-	for(unsigned int i = 1; i < keys.size(); ++i) 
+	for(unsigned int i = 0; i < keys.size(); ++i) 
 		output << " " << keys[i];
 	output << std::endl;
 	return output;
@@ -96,8 +96,7 @@ std::ostream & partition_fib_entry::write_ascii(std::ostream & output) const {
 	output << "f " << partition << ' ';
 	filter.write_ascii(output);
 	for(unsigned int i = 0; i < keys.size(); ++i) {
-		output << " ";
-//		keys[i].write_ascii(output);
+		output << " " << keys[i];
 	}
 	output << std::endl;
 	return output;
@@ -112,14 +111,14 @@ std::istream & partition_fib_entry::read_ascii(std::istream & input) {
 
 		if (command == "f") {
 			if (input_line >> partition) {
-//				tree_interface_pair ti;
+				tagmatch_key_t key;
 
 				if (! filter.read_ascii(input_line))
 					return input;
 
-//				keys.clear();
-//				while(ti.read_ascii(input_line))
-//					keys.push_back(ti);
+				keys.clear();
+				while(input_line >> key)
+					keys.push_back(key);
 			}
 		}
 	}
