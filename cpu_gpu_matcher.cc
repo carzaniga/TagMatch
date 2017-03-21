@@ -145,6 +145,7 @@ static void print_usage(const char * progname) {
 		 << "\t-Q\t: disable output of progress steps" << endl
 		 << "\t-s\t: enable output of front-end statistics" << endl
 		 << "\tt=<N>\t: runs front-end with N threads (default=" << DEFAULT_THREAD_COUNT << ")" << endl
+		 << "\tg=<N>\t: runs back-end with N gpus (default=" << DEFAULT_GPU_COUNT << ")" << endl
 		 << "\tl=<L>\t: runs front-end with a latency limit of L milliseconds (default=no limit)" << endl;
 }
 
@@ -163,6 +164,7 @@ int main(int argc, const char * argv[]) {
 	bool queries_binary_format = false;
 	const char * permutation_fname = nullptr; 
 	unsigned int thread_count = DEFAULT_THREAD_COUNT;
+	unsigned int gpu_count = DEFAULT_GPU_COUNT;
 
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"p=",2)==0) {
@@ -216,6 +218,10 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strncmp(argv[i],"t=",2)==0) {
 			thread_count = atoi(argv[i] + 2);
+			continue;
+		} else
+		if (strncmp(argv[i],"g=",2)==0) {
+			gpu_count = atoi(argv[i] + 2);
 			continue;
 		} else
 		if (strncmp(argv[i],"l=",2)==0) {
@@ -286,7 +292,7 @@ int main(int argc, const char * argv[]) {
 		cerr << "No packets to process.  Bailing out." << endl;
 
 		front_end::clear();
-		back_end::clear();
+		back_end::clear(gpu_count);
 		return 0;
 	};
 
@@ -296,14 +302,14 @@ int main(int argc, const char * argv[]) {
 		cout << "Back-end FIB compilation..." << std::flush;
 #endif
 
-	back_end::start();
+	back_end::start(gpu_count);
 
 	if (print_progress_steps) {
 #ifndef BACK_END_IS_VOID
 		cout << "\t\t" << std::setw(10) 
 			 << back_end::bytesize()/(1024*1024) << "MB back-end FIB" << endl;
 #endif
-		cout << "Matching packets with " << thread_count << " threads and " << GPU_NUM << " gpus..." << std::flush;
+		cout << "Matching packets with " << thread_count << " threads and " << gpu_count << " gpus..." << std::flush;
 	}
 
 	front_end::start(thread_count);
@@ -313,8 +319,8 @@ int main(int argc, const char * argv[]) {
 	for(packet & p : packets)
 		front_end::match(&p);
 
-	front_end::stop();
-	back_end::stop();
+	front_end::stop(gpu_count);
+	back_end::stop(gpu_count);
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
@@ -332,7 +338,7 @@ int main(int argc, const char * argv[]) {
 		front_end::print_statistics(cout);
 	}
 
-	back_end::clear();
+	back_end::clear(gpu_count);
 	front_end::clear();
 	
 

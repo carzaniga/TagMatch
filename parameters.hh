@@ -31,6 +31,7 @@
 #endif
 
 #define DEFAULT_THREAD_COUNT	5U
+#define DEFAULT_GPU_COUNT		1U
 
 // WITH_MATCH_STATISTICS makes cpu_gpu_matcher print statistics about the matches generated
 // on the stdout

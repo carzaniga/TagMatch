@@ -17,13 +17,13 @@ public:
 	static void add_filter(unsigned int partition, const filter_t & f, 
 						   std::vector<tagmatch_key_t>::const_iterator begin,
 						   std::vector<tagmatch_key_t>::const_iterator end);
-	static void start();
+	static void start(unsigned int gpu_count);
 	static void * process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr);
 	static void * second_flush_stream();
 	static void * flush_stream();
-	static void release_stream_handles();
-	static void stop();
-	static void clear();
+	static void release_stream_handles(unsigned int gpu_count);
+	static void stop(unsigned int gpu_count);
+	static void clear(unsigned int gpu_count);
 	static filter_t get_cbits(unsigned int id);
 
 	static size_t bytesize();

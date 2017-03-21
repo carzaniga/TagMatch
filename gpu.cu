@@ -53,8 +53,8 @@ __device__ bool BV_BLOCK_NOT_SUBSET(uint32_t x, uint32_t y) {
 #define RECORD_MATCHING_FILTER(id,msg)\
 rescount = atomicAdd(&(results_count->count), 1);\
 if (rescount < MAX_MATCHES) {\
-	                  atomicOr(&results_data->pairs[5*(rescount/4)], ((uint32_t)msg << (8 * (rescount % 4))));\
-	                  results_data->pairs[5*(rescount/4)+1+(rescount%4)] = id;\
+	                  atomicOr(&results_data->keys[5*(rescount/4)], ((uint32_t)msg << (8 * (rescount % 4))));\
+	                  results_data->keys[5*(rescount/4)+1+(rescount%4)] = id;\
 }
 
 __global__ void 
@@ -87,7 +87,7 @@ three_phase_matching(const uint32_t * __restrict__ fib,
 	// in tid==0 rather than check it at the begining of every
 	// block. I did it that way and it was slower!.
 	// 
-	// this is the counter for the output tree-interface pairs. only 1 thread in the current  
+	// this is the counter for the output tree-interface keys. only 1 thread in the current  
 	// kernel has to set it
 	
 	uint32_t rescount;
@@ -775,8 +775,8 @@ next_msg:
 }
 #endif
 
-void gpu::initialize() {
-	for (int g = 0; g < GPU_NUM; g++) {
+void gpu::initialize(unsigned int gpu_count) {
+	for (unsigned int g = 0; g < gpu_count; g++) {
 		cudaSetDevice(g);
 		cudaDeviceReset() ; 
 		ABORT_ON_ERROR(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
@@ -793,12 +793,12 @@ void gpu::set_device(unsigned int dev) {
 	ABORT_ON_ERROR(cudaSetDevice(dev));
 }
 
-void gpu::mem_info(gpu_mem_info * mi) {
+void gpu::mem_info(gpu_mem_info * mi, unsigned int gpu_count) {
 	gpu_mem_info temp;
 	mi->free = 0;
 	mi->total = 0;
-	for (int i = 0; i < GPU_NUM; i++) {
-		ABORT_ON_ERROR(cudaSetDevice(i));
+	for (unsigned int g = 0; g < gpu_count; g++) {
+		ABORT_ON_ERROR(cudaSetDevice(g));
 		ABORT_ON_ERROR(cudaDeviceSynchronize());
 		ABORT_ON_ERROR(cudaMemGetInfo(&(temp.free), &(temp.total)));
 		mi->free += temp.free;
@@ -851,8 +851,8 @@ void gpu::syncOnResults(unsigned int stream, unsigned int gpu) {
 	ABORT_ON_ERROR(cudaEventSynchronize(copiedBack[gpu][stream]));
 }
 
-void gpu::get_results(ifx_result_t * host_results, ifx_result_t * dev_results, unsigned int size) {
-	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, size * sizeof(ifx_result_t), cudaMemcpyDeviceToHost));
+void gpu::get_results(result_t * host_results, result_t * dev_results, unsigned int size) {
+	ABORT_ON_ERROR(cudaMemcpy(host_results, dev_results, sizeof(uint32_t)*(1+size+(size+3)/4), cudaMemcpyDeviceToHost));
 }
 
 void gpu::synchronize_device() {
@@ -912,11 +912,11 @@ void gpu::run_kernel(uint32_t * fib,
 #endif
 }
 
-void gpu::shutdown() {
-	for (int i = 0; i < GPU_NUM; i++) {
-		ABORT_ON_ERROR(cudaSetDevice(i));
+void gpu::shutdown(unsigned int gpu_count) {
+	for (int g = 0; g < gpu_count; g++) {
+		ABORT_ON_ERROR(cudaSetDevice(g));
 		for(unsigned int j = 0; j < GPU_STREAMS; ++j)
-			ABORT_ON_ERROR(cudaStreamDestroy(streams[i][j]));
+			ABORT_ON_ERROR(cudaStreamDestroy(streams[g][j]));
 		cudaDeviceSynchronize();
 		cudaDeviceReset();
 	}

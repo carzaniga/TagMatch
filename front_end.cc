@@ -819,7 +819,7 @@ void front_end::start(unsigned int threads) {
 	}
 }
 
-void front_end::stop() {
+void front_end::stop(unsigned int gpu_count) {
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		processing_state = FE_FINALIZE_MATCHING;
@@ -852,50 +852,50 @@ void front_end::stop() {
 
 	thread_pool.clear();
 
-	for (int s=0; s < GPU_NUM * GPU_STREAMS; s++){ 
+	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){ 
 		batch * bx = (batch *)back_end::flush_stream();
-		if(bx==0)
+		if(!bx)
 			continue;
-			for (unsigned int r = 0; r < bx->bsize; r++) {
-				packet * pkt = bx->packets[r];
-		  		pkt->partition_done();
-				if (pkt->is_matching_complete()) {
-					if (pkt->finalize_matching()) {
+		for (unsigned int r = 0; r < bx->bsize; r++) {
+			packet * pkt = bx->packets[r];
+			pkt->partition_done();
+			if (pkt->is_matching_complete()) {
+				if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-						macthes_pre_merge += pkt->getpre();
-						matches_post_merge += pkt->getpost();
-						mtx.lock();
-						matches.push_back(pkt->getpost());
-						mtx.unlock();
+					macthes_pre_merge += pkt->getpre();
+					matches_post_merge += pkt->getpost();
+					mtx.lock();
+					matches.push_back(pkt->getpost());
+					mtx.unlock();
 #endif
-					}
 				}
 			}
-			batch_pool::put(bx) ;
+		}
+		batch_pool::put(bx) ;
 	}
 	
-	back_end::release_stream_handles();	
+	back_end::release_stream_handles(gpu_count);	
 		
-	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
+	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){ 
 		batch * bx = (batch *)back_end::second_flush_stream();
-		if(bx==0)
+		if(!bx)
 			continue;
-			for (unsigned int r = 0; r < bx->bsize; r++) {
-				packet * pkt = bx->packets[r];
-		  		pkt->partition_done();
-				if (pkt->is_matching_complete()) {
-					if (pkt->finalize_matching()) {
+		for (unsigned int r = 0; r < bx->bsize; r++) {
+			packet * pkt = bx->packets[r];
+			pkt->partition_done();
+			if (pkt->is_matching_complete()) {
+				if (pkt->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-						macthes_pre_merge += pkt->getpre();
-						matches_post_merge += pkt->getpost();
-						mtx.lock();
-						matches.push_back(pkt->getpost());
-						mtx.unlock();
+					macthes_pre_merge += pkt->getpre();
+					matches_post_merge += pkt->getpost();
+					mtx.lock();
+					matches.push_back(pkt->getpost());
+					mtx.unlock();
 #endif
-					}
 				}
 			}
-			batch_pool::put(bx) ;
+		}
+		batch_pool::put(bx) ;
 	}
 
 	processing_state = FE_INITIAL;
