@@ -448,5 +448,6 @@ EOF
 	   NVCCFLAGS="-arch sm_$NVCCSMVER"
 	   AC_MSG_RESULT([$NVCCSMVER])
     fi
+	rm -f smv.cu smv
 fi
 AM_CONDITIONAL([WORKING_NVCC], [test "x$working_nvcc" = "xyes"]) ])
