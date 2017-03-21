@@ -502,38 +502,16 @@ static tmp_prefix_pos_descr tmp_pp[192];
 // 
 void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
 	int index = -1;
-#if 0
-	for (int i=0; i< 192; i++ ){
-		if( f[i]==1){
-			index = i;
-			break;
-		}
-	}
-#endif
-
-#if 1
 	unsigned int min = UINT_MAX; 
 	for (int i=0; i< 192; i++ ){
 		if( f[i]==1){
-//			Here I find the least crowded array to store the new one partition.
+			// Here I find the least crowded array to store the new one partition.
 			if(tmp_pp[i].p64.size() < min){
 				min = tmp_pp[i].p64.size() ;
 				index = i;
 			}
 		}
 	}
-#else
-	int max = 0; 
-	for (int i=0; i< 192; i++ ){
-		if( f[i]==1){
-//			Here I find the least crowded array to store the new one partition.
-			if(tmp_pp[i].p64.size() >= max){
-				max = tmp_pp[i].p64.size() ;
-				index = i;
-			}
-		}
-	}
-#endif
 	tmp_pp[index].p64.emplace_back(id,f) ;
 }
 
@@ -874,7 +852,7 @@ void front_end::stop() {
 
 	thread_pool.clear();
 
-	for (int s=0; s<GPU_NUM * GPU_STREAMS; s++){ 
+	for (int s=0; s < GPU_NUM * GPU_STREAMS; s++){ 
 		batch * bx = (batch *)back_end::flush_stream();
 		if(bx==0)
 			continue;

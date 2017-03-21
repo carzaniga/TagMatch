@@ -23,7 +23,7 @@ libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 bin_PROGRAMS = router gen gen2 split_prefixes \
 		cpu_gpu_matcher test_matcher \
 		analyze_workload convert_workload sample_workload split_workload \
-		subset_counter new_partitioning balanced_partitioning
+		subset_counter balanced_partitioning balanced_partitioning_cuda
 
 gen_SOURCES = gen.cc params.h
 
@@ -70,9 +70,12 @@ subset_counter_SOURCES = filter_set_driver.cc trie_filter_set.cc \
 			filter_set.hh packet.hh packet.cc bitvector.hh \
 			fib.hh fib.cc
 
-new_partitioning_SOURCES = new_partitioning.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
-
 balanced_partitioning_SOURCES = balanced_partitioning.cc packet.cc fib.cc \
 			packet.hh fib.hh bitvector.hh
 
+if WORKING_NVCC
+NVCCFLAGS += -std=c++11 -D_MWAITXINTRIN_H_INCLUDED
+balanced_partitioning_cuda_SOURCES = balanced_partitioning_cuda.cu packet.cc fib.cc \
+			packet.hh fib.hh bitvector.hh
+balanced_partitioning_cuda_LDFLAGS = -lcudart
+endif

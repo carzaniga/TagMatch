@@ -44,7 +44,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
-#include <chrono>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -513,6 +512,12 @@ int main(int argc, const char* argv[]) {
 			input_fname = argv[i] + 3;
 			continue;
 		}
+		print_usage(argv[0]);
+		return 1;
+	}
+	if (!partitions_fname 
+			|| !filters_fname
+			|| !input_fname) {
 		print_usage(argv[0]);
 		return 1;
 	}

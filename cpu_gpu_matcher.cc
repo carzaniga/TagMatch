@@ -340,7 +340,7 @@ int main(int argc, const char * argv[]) {
 		for(unsigned int pid = 0; pid < packets.size(); ++pid) {
 			bool this_pid_printed = false;
 			if (packets[pid].is_matching_complete()) {
-				std::vector<uint32_t> users = packets[pid].get_users();
+				std::vector<uint32_t> users = packets[pid].get_output_users();
 					if (users.size()) {
 						cout << "packet=" << pid; 
 						this_pid_printed = true;

@@ -157,7 +157,7 @@ public:
 		output_users.push_back(user);
 	}
 
-	std::vector<uint32_t> get_users() {
+	std::vector<uint32_t> get_output_users() {
 		return output_users;
 	}
 

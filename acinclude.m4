@@ -389,8 +389,10 @@ dnl AC_CHECK_NVCC
 dnl
 AC_DEFUN([AC_CHECK_NVCC], [
 AC_ARG_VAR([NVCCFLAGS], [special flags for nvcc compiler])
+AC_ARG_VAR([NVCCSMVER], [compute architecture for the CUDA GPU])
 if test "x$NVCCFLAGS" = "x"; then
-   NVCCFLAGS="-arch sm_21"
+   NVCCSMVER="21"
+   NVCCFLAGS="-arch sm_$NVCCSMVER"
 fi
 AC_ARG_VAR([NVCC], [nvcc compiler to use])
 AC_PATH_PROG([NVCC], [nvcc], [no])
@@ -420,6 +422,31 @@ it did use the appropriate compilation flags.  You may use the NVCC
 variable to specify which nvcc compiler to use.  You may also use the
 NVCCFLAGS variable to pass special compilation flags.  The default
 flags are "-arch sm_21".]])
-
+else
+    AC_MSG_CHECKING([gpu compute architecture])
+    cat>smv.cu<<EOF
+	#include <stdio.h>
+	int main() {
+	cudaDeviceProp prop;
+	int dn;
+	cudaGetDeviceCount(&dn);
+	int minor = 9999, major = 9999;
+	for (int device = 0; device < dn; device++) {
+		cudaGetDeviceProperties(&prop, device);
+		if (prop.major < major) {
+			major = prop.major;
+			minor = prop.minor;
+		}
+		else if (prop.major == major && prop.minor < minor)
+			minor = prop.minor;
+	}
+	printf("%d%d\n", prop.major, prop.minor);
+	}
+EOF
+    if $NVCC $NVCCFLAGS smv.cu -o smv; then
+	   NVCCSMVER=$(./smv) 
+	   NVCCFLAGS="-arch sm_$NVCCSMVER"
+	   AC_MSG_RESULT([$NVCCSMVER])
+    fi
 fi
 AM_CONDITIONAL([WORKING_NVCC], [test "x$working_nvcc" = "xyes"]) ])

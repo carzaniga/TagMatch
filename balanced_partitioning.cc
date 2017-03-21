@@ -404,6 +404,12 @@ int main(int argc, const char* argv[]) {
 		print_usage(argv[0]);
 		return 1;
 	}
+	if (!partitions_fname 
+			|| !filters_fname
+			|| !input_fname) {
+		print_usage(argv[0]);
+		return 1;
+	}
 	
 	std::ofstream partitions_file;
 	std::ofstream filters_file;
