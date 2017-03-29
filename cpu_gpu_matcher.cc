@@ -11,8 +11,7 @@
 #include <string>
 #include <cstdlib>
 
-#include "front_end.hh"
-#include "back_end.hh"
+#include "tagmatch.hh"
 #include "fib.hh"
 #include "packet.hh"
 
@@ -38,14 +37,12 @@ static int read_prefixes(const char * fname, bool binary_format) {
 	int res = 0;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			front_end::add_prefix(p.partition, p.filter, p.length);
-			back_end::add_partition(p.partition, p.filter, p.length);
+			tagmatch::add_partition(p.partition, p.filter);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			front_end::add_prefix(p.partition, p.filter, p.length);
-			back_end::add_partition(p.partition, p.filter, p.length);
+			tagmatch::add_partition(p.partition, p.filter);
 			++res;
 		}
 	}
@@ -65,12 +62,12 @@ static int read_filters(string fname, bool binary_format) {
 	partition_fib_entry f;
 	if (binary_format) {
 		while(f.read_binary(is)) {
-			back_end::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
+			tagmatch::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
 			++res;
 		}
 	} else {
 		while(f.read_ascii(is)) {
-			back_end::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
+			tagmatch::add_filter(f.partition, f.filter, f.keys.begin(), f.keys.end());
 			++res;
 		}
 	}
@@ -79,7 +76,7 @@ static int read_filters(string fname, bool binary_format) {
 }
 #endif
 
-static unsigned int read_queries(vector<packet> & packets, string fname, bool binary_format) {
+static unsigned int read_queries(vector<synchronous_match_handler> & packets, string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -87,15 +84,17 @@ static unsigned int read_queries(vector<packet> & packets, string fname, bool bi
 		return -1;
 
 	int res = 0;
-	network_packet p;
+	network_packet np;
 	if (binary_format) {
-		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.key);
+		while(np.read_binary(is)) {
+			packet * p = new packet(np.filter, np.key);
+			packets.emplace_back(p);
 			++res;
 		}
 	} else {
-		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.key);
+		while(np.read_ascii(is)) {
+			packet * p = new packet(np.filter, np.key);
+			packets.emplace_back(p);
 			++res;
 		}
 	}
@@ -121,12 +120,12 @@ static int read_bit_permutation(const char * fname) {
 
 		line_s >> old_bit_pos;
 
-		front_end::set_bit_permutation_pos(old_bit_pos, new_bit_pos);
+		//front_end::set_bit_permutation_pos(old_bit_pos, new_bit_pos);
 		++new_bit_pos;
 	}
 	is.close();
-	for(;new_bit_pos < filter_t::WIDTH; ++new_bit_pos)
-		front_end::set_bit_permutation_pos(new_bit_pos, new_bit_pos);
+	//for(;new_bit_pos < filter_t::WIDTH; ++new_bit_pos)
+		//front_end::set_bit_permutation_pos(new_bit_pos, new_bit_pos);
 
 	return new_bit_pos;
 }
@@ -225,7 +224,7 @@ int main(int argc, const char * argv[]) {
 		} else
 		if (strncmp(argv[i],"l=",2)==0) {
 			unsigned int latency_limit = atoi(argv[i] + 2);
-			front_end::set_latency_limit_ms(latency_limit);
+			tagmatch::set_latency_limit_ms(latency_limit);
 			continue;
 		} else {
 			print_usage(argv[0]);
@@ -254,7 +253,7 @@ int main(int argc, const char * argv[]) {
 		if (print_progress_steps)
 			cout << "\t\t" << std::setw(12) << res << " bits." << endl;
 	} else {
-		front_end::set_identity_permutation();
+		//front_end::set_identity_permutation();
 	}
 	
 	if (print_progress_steps)
@@ -277,11 +276,11 @@ int main(int argc, const char * argv[]) {
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 #endif
 	
-	vector<packet> packets;
+	vector<synchronous_match_handler> mhandlers;
 	
 	if (print_progress_steps)
 		cout << "Reading packets..." << std::flush;
-	if ((res = read_queries(packets, queries_fname, queries_binary_format)) < 0) {
+	if ((res = read_queries(mhandlers, queries_fname, queries_binary_format)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
@@ -290,8 +289,7 @@ int main(int argc, const char * argv[]) {
 	if (res == 0) {
 		cerr << "No packets to process.  Bailing out." << endl;
 
-		front_end::clear();
-		back_end::clear(gpu_count);
+		tagmatch::clear();
 		return 0;
 	};
 
@@ -301,7 +299,7 @@ int main(int argc, const char * argv[]) {
 		cout << "Back-end FIB compilation..." << std::flush;
 #endif
 
-	back_end::start(gpu_count);
+	tagmatch::start(thread_count, gpu_count);
 
 	if (print_progress_steps) {
 #ifndef BACK_END_IS_VOID
@@ -311,41 +309,38 @@ int main(int argc, const char * argv[]) {
 		cout << "Matching packets with " << thread_count << " threads and " << gpu_count << " gpus..." << std::flush;
 	}
 
-	front_end::start(thread_count);
-
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	for(packet & p : packets)
-		front_end::match(&p);
+	int cidx = 0;
+	for(match_handler & m : mhandlers) {
+		cout << "Starting a new match! " << cidx++ << endl;
+		tagmatch::match(&m);
+	}
 
-	front_end::stop(gpu_count);
-	back_end::stop(gpu_count);
+	tagmatch::stop();
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
-	if (packets.size()) {
 	if (print_progress_steps) {
 		cout << "\t" << std::setw(10)
-			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
+			 << duration_cast<nanoseconds>(stop - start).count()/mhandlers.size() 
 			 << "ns average matching time." << endl;
 	} else if (print_matching_time_only) {
-		cout << duration_cast<nanoseconds>(stop - start).count()/packets.size() << endl;
-	}
+		cout << duration_cast<nanoseconds>(stop - start).count()/mhandlers.size() << endl;
 	}
 	if (print_statistics) {
-		cout << "Front-end Statistics:" << endl;
-		front_end::print_statistics(cout);
+		cout << "Front-end Statistics: TODO!" << endl;
+		//front_end::print_statistics(cout);
 	}
 
-	back_end::clear(gpu_count);
-	front_end::clear();
+	tagmatch::clear();
 	
 
 	if (print_matching_results) {
-		for(unsigned int pid = 0; pid < packets.size(); ++pid) {
+		for(unsigned int pid = 0; pid < mhandlers.size(); ++pid) {
 			bool this_pid_printed = false;
-			if (packets[pid].is_matching_complete()) {
-				std::vector<uint32_t> users = packets[pid].get_output_users();
+			if (mhandlers[pid].p->is_matching_complete()) {
+				std::vector<uint32_t> users = mhandlers[pid].p->get_output_users();
 					if (users.size()) {
 						cout << "packet=" << pid; 
 						this_pid_printed = true;

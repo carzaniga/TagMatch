@@ -23,6 +23,8 @@ public:
 	tk_vector keys;
 
 	fib_entry() : filter(), keys() {}
+	
+	fib_entry(filter_t f, tk_vector k) : filter(f), keys(k) {}
 
 	std::ostream & write_binary(std::ostream & output) const {
 		filter.write_binary(output);

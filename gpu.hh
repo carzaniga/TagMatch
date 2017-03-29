@@ -4,10 +4,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "parameters.hh"
+#include "match_handler.hh"
 
 #define GPU_MSG_BLOCKS 6
 #define GPU_STREAMS 10
-#define GPU_NUM 2
+#define GPU_NUM 10
 
 #if GPU_STREAMS > 254
 #error "too many GPU streams."

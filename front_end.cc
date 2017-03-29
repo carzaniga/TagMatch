@@ -95,7 +95,7 @@ private:
 public:
 	struct {
 		unsigned int bsize;
-		packet * packets[PACKETS_BATCH_SIZE];
+		match_handler * handlers[PACKETS_BATCH_SIZE];
 	};
 };
 
@@ -219,7 +219,7 @@ public:
 #endif
 	}
 
-	void enqueue(packet * p) noexcept;
+	void enqueue(match_handler * h) noexcept;
 	void flush() noexcept;
 
 	// Flush the first pending queue.  Returns false when no pending
@@ -313,7 +313,6 @@ partition_queue * partition_queue::first_pending(milliseconds latency_limit) noe
 		= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
 	if (current_latency < latency_limit)
 		return nullptr;
-
 	return q;
 }
 
@@ -327,9 +326,9 @@ partition_queue * partition_queue::first_pending() {
 	return q;
 }
 
-void partition_queue::enqueue(packet * p) noexcept {
+void partition_queue::enqueue(match_handler * h) noexcept {
 	assert(tail <= PACKETS_BATCH_SIZE);
-
+	packet * p = h->p;
 	p->add_partition(partition_id);
 	unsigned int t = tail.load(std::memory_order_acquire);
 	
@@ -341,7 +340,7 @@ void partition_queue::enqueue(packet * p) noexcept {
 #ifdef WITH_FRONTEND_STATISTICS
 	enqueue_count += 1;
 #endif
-	b->packets[t] = p;
+	b->handlers[t] = h;
 	++written;
 	if (t + 1 == PACKETS_BATCH_SIZE) {
 		batch * bx = b;
@@ -359,13 +358,17 @@ void partition_queue::enqueue(packet * p) noexcept {
 		written.store(0, std::memory_order_release);
 		tail.store(0, std::memory_order_release);
 		bx->bsize = PACKETS_BATCH_SIZE;
-		bx = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
+		bx = (batch *)back_end::process_batch(partition_id, bx->handlers, PACKETS_BATCH_SIZE, (void *)bx);
 		if (bx != NULL) {
 			for (unsigned int r = 0; r < bx->bsize; r++) {
-				packet * pkt = bx->packets[r];
+				match_handler * h = bx->handlers[r];
+				packet * pkt = h->p;
 		  		pkt->partition_done();
 				if (pkt->is_matching_complete()) {
-					if (pkt->finalize_matching()) {
+					if (pkt->finalize_matching(h->match_unique)) {
+					// TODO: do something with the match handler!!
+					//
+					h->match_done();
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
 					matches_post_merge += pkt->getpost();
@@ -410,13 +413,15 @@ void partition_queue::flush() noexcept {
 	written.store(0, std::memory_order_release);
 	tail.store(0, std::memory_order_release);
 	bx->bsize = bx_size;
-	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
+	bx = (batch *)back_end::process_batch(partition_id, bx->handlers, bx_size, (void *)bx);
 	if (bx != NULL) {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
+			match_handler * h = bx->handlers[r]; 
+			packet * pkt = h->p;
 		  	pkt->partition_done();
 			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+				if (pkt->finalize_matching(h->match_unique)) {
+					h->match_done();
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
 					matches_post_merge += pkt->getpost();
@@ -505,12 +510,12 @@ static tmp_prefix_pos_descr tmp_pp[192];
 void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
 	int index = -1;
 	unsigned int min = UINT_MAX; 
-	for (int i=0; i< 192; i++ ){
-		if( f[i]==1){
+	for (int i=0; i< 192; i++) {
+		if (f[i]==1) {
 			// Here I find the least crowded array to store the new one partition.
 			//
-			if(tmp_pp[i].p64.size() < min){
-				min = tmp_pp[i].p64.size() ;
+			if (tmp_pp[i].p64.size() < min) {
+				min = tmp_pp[i].p64.size();
 				index = i;
 			}
 		}
@@ -572,7 +577,8 @@ void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new
 
 // This is the main matching function
 // 
-static void match(packet * pkt) {
+static void match(match_handler * h) {
+	packet * pkt = h->p;
 	const block_t * b = pkt->filter.begin();
 
 	if (*b) {
@@ -581,10 +587,9 @@ static void match(packet * pkt) {
 			int m = leftmost_bit(curr_block);
 			p1_container & c = pp1[m];
 
-			
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
 				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+					q->enqueue(h);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -597,7 +602,7 @@ static void match(packet * pkt) {
 
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){ 
 				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+					q->enqueue(h);
 			}
 
 			curr_block ^= (BLOCK_ONE << m);
@@ -611,19 +616,22 @@ static void match(packet * pkt) {
 
 			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
 				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+					q->enqueue(h);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 	}
 
 	pkt->frontend_done();
-	
+
 	// Now we need to check whether any packet has already been processed
 	// and has already finished the match in the back_end
 	//
 	if (pkt->is_matching_complete()) {
-		if (pkt->finalize_matching()) {
+		if (pkt->finalize_matching(h->match_unique)) {
+			// TODO: do something with the match handler!
+				h->match_done();
+
 #ifdef WITH_MATCH_STATISTICS
 			macthes_pre_merge += pkt->getpre();
 			matches_post_merge += pkt->getpost();
@@ -669,12 +677,12 @@ static condition_variable processing_cv;
 // mutually exclusive.
 // 
 union job {
-	packet * p;
-	partition_queue * q;
+	match_handler * volatile h;
+	partition_queue * volatile q;
 };
 
 static const size_t JOB_QUEUE_SIZE = 1024*1024; // must be a power of 2 for efficiency
-volatile static job job_queue[JOB_QUEUE_SIZE];
+static job job_queue[JOB_QUEUE_SIZE];
 
 // However, we must still maintain two separate pairs of indexes
 // (head,tail), one used by the matching loop, and the other used by
@@ -683,7 +691,7 @@ volatile static job job_queue[JOB_QUEUE_SIZE];
 // matching job queue indexes
 // 
 static atomic<unsigned int> matching_job_queue_head(0);	// position of the first element 
-static unsigned int matching_job_queue_tail = 0;		// one-past position of the last element
+static atomic<unsigned int> matching_job_queue_tail(0);		// one-past position of the last element
 
 // flushing job queue indexes
 // 
@@ -698,14 +706,14 @@ static unsigned int matching_threads;
 // 
 // ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. ** 
 // 
-void front_end::match(packet * pkt) noexcept {
+void front_end::match(match_handler * h) noexcept {
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
 	while (tail_plus_one == matching_job_queue_head.load(std::memory_order_acquire))
 		;		// full queue => spin
 
-	job_queue[matching_job_queue_tail].p = pkt;
+	job_queue[matching_job_queue_tail].h = h;
 	matching_job_queue_tail = tail_plus_one;
 }
 
@@ -721,22 +729,22 @@ void front_end::set_latency_limit_ms(unsigned int l) {
 
 static void match_loop() {
 	unsigned int head, head_plus_one;
-	packet * p;
+	match_handler * h;
 
 	for(;;) {
+check_latency:
 		if (flush_limit > milliseconds(0)) {
 			partition_queue * q;
 			while((q = partition_queue::first_pending(flush_limit)))
 				q->flush();
 		}
-		head = matching_job_queue_head.load(std::memory_order_acquire);
 		do {
+			head = matching_job_queue_head.load(std::memory_order_acquire);
 			while (head == matching_job_queue_tail) {  
 				// empty queue
 				if (processing_state == FE_MATCHING) {
 					// if we are still matching, then we spin
-					head = matching_job_queue_head.load(std::memory_order_acquire);
-					continue;
+					goto check_latency;
 				} else {
 					// otherwise, if we are stopped, then we switch to flushing
 					unique_lock<mutex> lock(processing_mtx);
@@ -749,10 +757,10 @@ static void match_loop() {
 					return;
 				}
 			}
-			p = job_queue[head].p;
+			h = job_queue[head].h;
 			head_plus_one = (head + 1) % JOB_QUEUE_SIZE;
 		} while (!matching_job_queue_head.compare_exchange_weak(head, head_plus_one));
-		match(p);
+		match(h);
 	}
 }
 
@@ -862,10 +870,13 @@ void front_end::stop(unsigned int gpu_count) {
 		if(!bx)
 			continue;
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
+			match_handler * h = bx->handlers[r];
+			packet * pkt = h->p;
 			pkt->partition_done();
 			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+				if (pkt->finalize_matching(h->match_unique)) {
+					// TODO: do something!
+					h->match_done();
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
 					matches_post_merge += pkt->getpost();
@@ -886,10 +897,13 @@ void front_end::stop(unsigned int gpu_count) {
 		if(!bx)
 			continue;
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
+			match_handler * h = bx->handlers[r];
+			packet * pkt = h->p;
 			pkt->partition_done();
 			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+				if (pkt->finalize_matching(h->match_unique)) {
+					h->match_done();
+					// TODO: do something!
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
 					matches_post_merge += pkt->getpost();

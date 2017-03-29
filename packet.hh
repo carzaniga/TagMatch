@@ -96,11 +96,13 @@ public:
 	packet(const filter_t f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
+//			output_users.reserve(32768);
 	};
 
 	packet(const std::string & f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
+//			output_users.reserve(32768);
 	};
 
 	packet(const packet & p) 
@@ -160,32 +162,27 @@ public:
 		return output_users;
 	}
 
-	bool finalize_matching() {
-		// This is where we should implement the actual forwarding code.
-		// In this experimental code, instead, we simply collect statistics
-		// about the matching.  In order to do that, we still perform a "merge"
-		// over the set of output "users".
-		//
+	bool finalize_matching(bool match_unique) {
 		if (!atomic_exchange(&finalized, true)) {
 #ifdef WITH_MATCH_STATISTICS
 			pre = output_users.size();
 			assert(pre > 0);
 #endif
-#if MATCH_UNIQUE
-			// Delete duplicates from the list of output keys
-			std::sort( output_users.begin(), output_users.end() );
-			output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
-#endif
+			if (match_unique) {
+				// Delete duplicates from the list of output keys
+				std::sort( output_users.begin(), output_users.end() );
+				output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
+			}
 #ifdef WITH_MATCH_STATISTICS
 			post = output_users.size();
 #endif
-#if 0
-			// Flush the output vector and release its memory... used as a workaround for test purposes
-			// when the memory available is not enough for specific workloads
+#if 1
+			// Flush the output vector and release its memory... used as a workaround for
+			// test purposes when the memory available is not enough for specific workloads
+			//
 			output_users.clear();
-			std::vector<uint32_t>().swap(output_users);
-			// For some reason output.resize(0) doesn't really free the memory
-			// output_users.resize(0);
+	//		std::vector<uint32_t>().swap(output_users);
+			output_users.shrink_to_fit();
 #endif
 			return true;
 		}

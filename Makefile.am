@@ -9,21 +9,38 @@ AM_LDFLAGS = $(LDFLAGS_prof)
 #
 # CUDA build variables
 #
-# These things should be checked and set through some autocont
-# parameters and tests.
-#
 if WORKING_NVCC
-.cu.$(OBJEXT):
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+NVCCFLAGS += -std=c++11 -D_MWAITXINTRIN_H_INCLUDED
+#.cu.$(OBJEXT):
+#	$(NVCC) $(NVCCFLAGS) -o $@ -c $<    
+.cu.lo:
+	./compilerCudaStuff.sh $@
 endif
+
+#$(NVCC) -Xcompiler -fPIC -DPIC $(NVCCFLAGS) -c $< -o $@
+#	$(LIBTOOL) --tag=CC --mode=compile $(NVCC) $(NVCCFLAGS) -o $@  -c $< 
+#gpu.lo:
+#	./compileGPUcu.sh
+#partitioner.cu.lo:
+#./compilePARTcu.sh
 
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
 
+lib_LTLIBRARIES = libtagmatch.la
+libtagmatch_la_SOURCES = fib.cc packet.cc \
+		packet.hh io_util.hh fib.hh bitvector.hh parameters.hh \
+		front_end.cc front_end.hh back_end.cc back_end.hh \
+		gpu.cu partitioner_gpu.cu partitioner.cc \
+		tagmatch.cc tagmatch.hh
+
+libtagmatch_la_LDFLAGS = -lcudart
+# partitioner.cu 
+
 bin_PROGRAMS = router gen gen2 split_prefixes \
-		cpu_gpu_matcher test_matcher \
+		cpu_gpu_matcher test_matcher test_partitioning_client \
 		analyze_workload convert_workload sample_workload split_workload \
-		subset_counter balanced_partitioning balanced_partitioning_cuda
+		subset_counter allinone
 
 gen_SOURCES = gen.cc params.h
 
@@ -33,49 +50,59 @@ router_SOURCES = main2.cc predicate.hh timing.hh \
 		router.cc router.hh	
 router_LDADD = $(LIBS_prof) libpredicate.la
 
-if WORKING_NVCC
-cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
-			cpu_gpu_matcher.cc fib.cc packet.cc \
-			front_end.cc front_end.hh back_end.cc back_end.hh \
-			gpu.cu 
+#tagmatch_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh \
+#			fib.cc packet.cc tagmatch.cc tagmatch.hh \
+#			partitioner.cc partitioner.hh front_end.cc front_end.hh back_end.cc back_end.hh 
 
-#cpu_gpu_matcher_LDFLAGS = -lcudart
+test_partitioning_client_SOURCES = tagmatch.hh test_partitioning_client.cc
+test_partitioning_client_LDADD = libtagmatch.la
+test_partitioning_client_LDFLAGS = -lcudart
+
+allinone_SOURCES = tagmatch.hh allinone.cc
+allinone_LDADD = libtagmatch.la
+allinone_LDFLAGS = -lcudart
+
+if WORKING_NVCC
+cpu_gpu_matcher_SOURCES = tagmatch.hh cpu_gpu_matcher.cc   
+			
+cpu_gpu_matcher_LDADD = libtagmatch.la
+
 cpu_gpu_matcher_LDFLAGS = -lcudart
 else
 ##
 ## this can only work with --disable-backend
 ##
-cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
-			cpu_gpu_matcher.cc fib.cc packet.cc \
-			front_end.cc front_end.hh back_end.cc back_end.hh
+#cpu_gpu_matcher_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh gpu.hh \
+#			cpu_gpu_matcher.cc fib.cc packet.cc tagmatch.cc tagmatch.hh \
+#			front_end.cc front_end.hh back_end.cc back_end.hh
 endif
 
-test_matcher_SOURCES = test_matcher.cc parameters.hh packet.cc fib.cc io_util.hh
+#test_matcher_SOURCES = test_matcher.cc parameters.hh packet.cc fib.cc io_util.hh
 
-split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
+#split_prefixes_SOURCES = split_prefixes.cc bv.hh predicates.hh
 
-analyze_workload_SOURCES = analyze_workload.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
+#analyze_workload_SOURCES = analyze_workload.cc packet.cc fib.cc \
+#			packet.hh fib.hh bitvector.hh
 
-convert_workload_SOURCES = convert_workload.cc fib.cc packet.cc \
-			fib.hh packet.hh bitvector.hh
+#convert_workload_SOURCES = convert_workload.cc fib.cc packet.cc \
+#			fib.hh packet.hh bitvector.hh
 
-sample_workload_SOURCES = sample_workload.cc fib.cc packet.cc \
-			fib.hh packet.hh bitvector.hh
+#sample_workload_SOURCES = sample_workload.cc fib.cc packet.cc \
+#			fib.hh packet.hh bitvector.hh
 
-split_workload_SOURCES = split_workload.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
+#split_workload_SOURCES = split_workload.cc packet.cc fib.cc \
+#			packet.hh fib.hh bitvector.hh
 
-subset_counter_SOURCES = filter_set_driver.cc trie_filter_set.cc \
-			filter_set.hh packet.hh packet.cc bitvector.hh \
-			fib.hh fib.cc
+#subset_counter_SOURCES = filter_set_driver.cc trie_filter_set.cc \
+#			filter_set.hh packet.hh packet.cc bitvector.hh \
+#			fib.hh fib.cc
 
-balanced_partitioning_SOURCES = balanced_partitioning.cc packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
+#balanced_partitioning_SOURCES = balanced_partitioning.cc packet.cc fib.cc \
+#			packet.hh fib.hh bitvector.hh
 
-if WORKING_NVCC
-NVCCFLAGS += -std=c++11 -D_MWAITXINTRIN_H_INCLUDED
-balanced_partitioning_cuda_SOURCES = balanced_partitioning_cuda.cu packet.cc fib.cc \
-			packet.hh fib.hh bitvector.hh
-balanced_partitioning_cuda_LDFLAGS = -lcudart
-endif
+#if WORKING_NVCC
+#NVCCFLAGS += -std=c++11 -D_MWAITXINTRIN_H_INCLUDED
+#balanced_partitioning_cuda_SOURCES = balanced_partitioning_cuda.cu packet.cc fib.cc \
+#			packet.hh fib.hh bitvector.hh
+#balanced_partitioning_cuda_LDFLAGS = -lcudart
+#endif

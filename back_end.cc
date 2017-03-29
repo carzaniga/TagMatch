@@ -18,8 +18,8 @@
 #include <mutex>
 
 #define SORT_FILTERS 0
-#define COMBO 0
-#define COMBO_SIZE 3000
+#define COMBO 1
+#define COMBO_SIZE 30000000
 
 	using std::vector;
 	using std::map;
@@ -149,7 +149,7 @@
 		unsigned int stream;
 		unsigned int gpu;
 
-		packet ** last_batch, ** second_last_batch;
+		match_handler ** last_batch, ** second_last_batch;
 		unsigned int last_batch_size, second_last_batch_size;
 		void *last_batch_ptr, *second_last_batch_ptr;
 		// these are the buffers we use to communicate with the GPU for
@@ -382,7 +382,8 @@ void* back_end::flush_stream()
 	  for(unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
 			unsigned char pkt_idx = (sh->host_results[sh->flip]->keys[5*(i/4)] >> (8*(i%4)))& 0xFF;
 			uint32_t id = sh->host_results[sh->flip]->keys[5*(i/4)+1+(i%4)];
-			packet * pkt = sh->second_last_batch[pkt_idx];  
+			match_handler * h = sh->second_last_batch[pkt_idx];  
+			packet * pkt = h->p;
 			pkt->lock_mtx();	
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
@@ -430,7 +431,8 @@ void* back_end::second_flush_stream()
 	  	for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			unsigned char pkt_idx = (sh->host_results[!sh->flip]->keys[5*(i/4)] >> (8*(i%4)))& 0xFF;
 			uint32_t id = sh->host_results[!sh->flip]->keys[5*(i/4)+1+i%4];
-			packet * pkt = sh->last_batch[pkt_idx];
+			match_handler * h = sh->last_batch[pkt_idx];  
+			packet * pkt = h->p;
 			pkt->lock_mtx();	
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->last_partition][id];
@@ -446,28 +448,26 @@ void* back_end::second_flush_stream()
 }
 
 
-void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr) {
+void * back_end::process_batch(unsigned int part, match_handler ** batch, unsigned int batch_size, void *batch_ptr) {
 	void *res = nullptr;
 #ifndef BACK_END_IS_VOID
 
 // If the partition is small, compute it entirely on the CPU
 // 
 #if COMBO
-	if (dev_partitions[0][part].size < COMBO_SIZE){
+	if (dev_partitions[0][part].size < COMBO_SIZE) {
 		const f_descr_vector & filters = tmp_fib[part];
 		uint32_t fidx = 0;
-		for(const filter_descr & fd : filters){ 
+		for(const filter_descr & fd : filters) { 
 			for(unsigned int i = 0; i < batch_size; ++i) {
-				if (fd.filter.subset_of(batch[i]->filter)){
+				if (fd.filter.subset_of(batch[i]->p->filter)) {
 					for(const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys)
-						batch[i]->add_output_user(k);
+						batch[i]->p->add_output_user(k);
 				}
 			}
 			fidx++;
 		}
 
-		for(unsigned int i=0; i< batch_size; i++)
-			batch[i]->partition_done();
 		return batch_ptr; 
 	}
 #endif
@@ -487,7 +487,7 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
-			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
+			*curr_p_buf++ = batch[i]->p->filter.uint32_value(j);
 	}
 	gpu::set_device(sh->gpu);
 	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
@@ -513,7 +513,8 @@ void * back_end::process_batch(unsigned int part, packet ** batch, unsigned int 
 		for(unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
 			unsigned char pkt_idx = (sh->host_results[!sh->flip]->keys[5*(i/4)] >> (8*(i%4))) & 0xFF;
 			uint32_t id = sh->host_results[!sh->flip]->keys[5*(i/4)+1+(i%4)];
-			packet * pkt = sh->second_last_batch[pkt_idx];
+			match_handler * h = sh->second_last_batch[pkt_idx];
+			packet * pkt = h->p;
 			pkt->lock_mtx();
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
