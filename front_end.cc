@@ -623,7 +623,6 @@ static void match(match_handler * h) {
 	}
 
 	pkt->frontend_done();
-
 	// Now we need to check whether any packet has already been processed
 	// and has already finished the match in the back_end
 	//
@@ -916,16 +915,19 @@ void front_end::stop(unsigned int gpu_count) {
 		}
 		batch_pool::put(bx) ;
 	}
+	back_end::release_stream_handles(gpu_count);	
 
 	processing_state = FE_INITIAL;
 #ifdef WITH_MATCH_STATISTICS
 	std::cout << "Total matches before merge: " << macthes_pre_merge << std::endl;
 	std::cout << "Total matches after merge: " << matches_post_merge << std::endl;
+#if 0
 	for (uint32_t i=0; i < matches.size(); i++)
 	{
 		assert(matches[i]>0);
 		std::cout << matches[i] << std::endl;
 	}
+#endif
 #endif
 }
 

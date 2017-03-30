@@ -49,7 +49,7 @@
 #include <mutex>
 #include <condition_variable>
 
-#define USE_GPU 0
+#define USE_GPU 1
 
 #include "partitioner.hh"
 
@@ -387,6 +387,7 @@ unsigned int max_size = 200000;
 unsigned int part_thread_count = 4;
 
 void partitioner::initialize() {
+	PT = nullptr;
 	std::cout << "\t\t\t" << std::setw(12) << fib.size() << " filters." << endl;
 #if USE_GPU
 	partitioner_gpu::init(part_thread_count, &fib);
@@ -424,7 +425,7 @@ void partitioner::consolidate() {
 std::vector<partition_prefix> * partitioner::get_consolidated_prefixes() {
 	std::vector<partition_prefix> * res = new std::vector<partition_prefix>();
 	partition_id_t pid = 0;
-	static partition_candidate * tmp_PT = PT;
+	partition_candidate * tmp_PT = PT;
 	while(tmp_PT) {
 		partition_prefix partition;
 
@@ -443,7 +444,7 @@ std::vector<partition_prefix> * partitioner::get_consolidated_prefixes() {
 	std::vector<partition_fib_entry> * res = new std::vector<partition_fib_entry>();
 	partition_id_t pid = 0;
 	
-	static partition_candidate * tmp_PT = PT;
+	partition_candidate * tmp_PT = PT;
 
 	while(tmp_PT) {
 		partition_prefix partition;

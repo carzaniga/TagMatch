@@ -13,6 +13,15 @@ void tagmatch::add_set(filter_t set, tk_vector keys) {
 
 std::map<filter_t, std::set<tagmatch_key_t>> fib_map;
 std::map<filter_t, std::set<tagmatch_key_t>> additions;
+std::map<filter_t, std::set<tagmatch_key_t>> deletions;
+
+void tagmatch::delete_set(filter_t set, tagmatch_key_t key) {
+	// I should already have a map in the disk, that will
+	// be loaded on the next consolidate() call... For
+	// now, just enqueue the request for later
+	std::set<tagmatch_key_t> keys = deletions[set];
+	keys.insert(key);
+}
 
 void tagmatch::add_set(filter_t set, tagmatch_key_t key) {
 	// I should already have a map in the disk, that will
@@ -22,9 +31,17 @@ void tagmatch::add_set(filter_t set, tagmatch_key_t key) {
 	keys.insert(key);
 }
 
+static uint32_t partition_size = 1000;
+static uint32_t partitioning_threads = 1; 
+
+void tagmatch::consolidate(uint32_t psize, uint32_t threads) {
+	partition_size = psize;
+	partitioning_threads = threads;
+	consolidate();
+}
+
 void tagmatch::consolidate() {
 	if (already_consolidated) {
-		partitioner::clear();
 		// Here I should read the map from a file
 		std::ifstream cache_file_in("map.tmp");
 		fib_entry f;
@@ -40,9 +57,16 @@ void tagmatch::consolidate() {
 	// Apply the changes!
 	//
 	for (std::pair<filter_t, std::set<tagmatch_key_t>> a : additions) {
-		fib_map[a.first] = a.second;
+		fib_map[a.first].insert(a.second.begin(), a.second.end());
 	}
 	additions.clear();
+	for (std::pair<filter_t, std::set<tagmatch_key_t>> a : deletions) {
+		std::set<tagmatch_key_t> keys = fib_map.at(a.first);
+		keys.erase(a.second.begin(), a.second.end());
+		if (keys.empty())
+			fib_map.erase(a.first);
+	}
+	deletions.clear();
 	
 	std::ofstream cache_file_out("map.tmp");
 
@@ -65,15 +89,17 @@ void tagmatch::consolidate() {
 	// clear the map and destroy its elements
 	fib_map.clear();
 
-	partitioner::consolidate();
-	already_consolidated = true;
+	partitioner::consolidate(partition_size, partitioning_threads);
 
 	// Pass these things to the matcher!
-	for (partition_prefix pp : *partitioner::get_consolidated_prefixes()) 
+	for (partition_prefix pp : *partitioner::get_consolidated_prefixes())
 		add_partition(pp.partition, pp.filter);
 
 	for (partition_fib_entry pfe : *partitioner::get_consolidated_filters())
 		add_filter(pfe.partition, pfe.filter, pfe.keys.begin(), pfe.keys.end());
+	
+	partitioner::clear();
+	already_consolidated = true;
 }
 
 void tagmatch::add_partition(unsigned int id, const filter_t & mask) {
@@ -101,6 +127,7 @@ void tagmatch::start() {
 }
 
 void tagmatch::start(unsigned int ccount, unsigned int gcount) {
+	// This calls initialize on both the frontend and the backend
 	thread_count = ccount;
 	gpu_count = gcount;
 	

@@ -33,7 +33,25 @@ using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 using std::chrono::duration_cast;
 	
-vector<synchronous_match_handler> mhandlers;
+
+std::atomic<unsigned int> tot_matches;
+std::atomic<unsigned int> tot_keys;
+
+class my_match_handler : public match_handler {
+	public:
+		my_match_handler() {};
+		
+		my_match_handler(packet * pkt) {
+			p = pkt;
+		};
+
+		void match_done() {
+			tot_matches++;
+			tot_keys += p->get_output_keys().size();
+		}
+};
+
+vector<my_match_handler> mhandlers;
 
 static void print_usage(const char* progname) {
 	std::cerr << "usage: " << progname
@@ -47,14 +65,14 @@ static void print_usage(const char* progname) {
 	<< std::endl;
 }
 
-static unsigned int read_queries(vector<synchronous_match_handler> & packets, string fname, bool binary_format, uint32_t limit) {
+static unsigned int read_queries(vector<my_match_handler> & packets, string fname, bool binary_format, uint32_t limit) {
 	ifstream is (fname) ;
 	string line;
 
 	if (!is)
 		return -1;
 
-	int res = 0;
+	uint32_t res = 0;
 	network_packet np;
 	if (binary_format) {
 		while(np.read_binary(is) && res < limit) {
@@ -94,6 +112,7 @@ static void read_filters(std::istream & input, bool binary_format, uint32_t howm
 
 
 int main(int argc, const char* argv[]) {
+	tot_keys = tot_matches = 0;
 	const char* input_fname = nullptr;
 	const char * queries_fname = nullptr; 
 
@@ -136,12 +155,6 @@ int main(int argc, const char* argv[]) {
 	std::ofstream filters_file;
 	std::ifstream input_file;
 
-	int res;
-	if ((res = read_queries(mhandlers, queries_fname, true, 100)) < 0) {
-		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
-		return 1;
-	};
-
 	if (input_fname != nullptr) {
 		std::ifstream input_file(input_fname);
 		if (!input_file) {
@@ -150,28 +163,29 @@ int main(int argc, const char* argv[]) {
 		}
 		std::cerr << "Reading filters..." << std::flush;
 		int cnt = 0;
-		while (cnt+=1000000 < 40000000) {
-			read_filters(input_file, binary_format, 1000000);
+		while (cnt < 21288259) {
+			read_filters(input_file, binary_format, 5000000);
 			std::cerr << "Balanced partitioning..." << std::flush;
 
 			high_resolution_clock::time_point start = high_resolution_clock::now();
 
-			tagmatch::consolidate();
+			// Partition size 100000, 8 threads
+			tagmatch::consolidate(100000, 8);
 
 			high_resolution_clock::time_point stop = high_resolution_clock::now();
 
 			std::cerr << "\t\t" << std::setw(12)
 					  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
-			tagmatch::set_latency_limit_ms(100);
-			tagmatch::start(2,1);
 			
-			mhandlers.clear();
 			std::cerr << "Reading queries..." << std::endl;
-			read_queries(mhandlers, queries_fname, true, 100);
+			read_queries(mhandlers, queries_fname, true, 10000);
 
-			std::cerr << "Matching... " << mhandlers.size() << std::flush;
+			tagmatch::set_latency_limit_ms(10000);
+			// Use 16 threads, 2 gpu
+			tagmatch::start(16,2);
+			std::cerr << "Matching " << mhandlers.size() << " packets..." << std::flush;
 			start = high_resolution_clock::now();
-			for(match_handler & m : mhandlers) {
+			for(my_match_handler & m : mhandlers) {
 				//cout << "Starting a new match! " << cidx++ << endl;
 				tagmatch::match(&m);
 			}
@@ -179,12 +193,12 @@ int main(int argc, const char* argv[]) {
 
 			std::cerr << "\t\t" << std::setw(12)
 					  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
+			std::cerr << tot_matches << "/" << tot_keys << " matches so far..." << std::endl;
 			tagmatch::stop();
-
+			tagmatch::clear();
+			mhandlers.clear();
+			cnt+=5000000;
 		}
 		input_file.close();
-	} else {
 	}
-	std::cerr << "\t\t\t" << std::setw(12) << "fib.size()" << " filters." << endl;
-
 }

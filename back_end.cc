@@ -18,7 +18,7 @@
 #include <mutex>
 
 #define SORT_FILTERS 0
-#define COMBO 1
+#define COMBO 0
 #define COMBO_SIZE 30000000
 
 	using std::vector;

@@ -12,7 +12,16 @@ class match_handler {
 	public:
 		packet * p;
 		bool match_unique;
+		
+		match_handler() {};
+		
+		match_handler(packet * pkt) {
+			p = pkt;
+		};
 
+		match_handler(const match_handler & mh) {
+			p = mh.p;
+		};
 		virtual void match_hold() {};
 		virtual void match_done() = 0;
 };

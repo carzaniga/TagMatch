@@ -95,7 +95,7 @@ void partitioner_gpu::fibToArray(std::vector<fib_entry *> * fib, uint32_t size) 
 }
 
 void partitioner_gpu::init(unsigned int part_thread_count, std::vector<fib_entry *> * fib) {
-	std::cout << "Setting up gpu... ";
+	cudaSetDevice(0);
 	cudaMallocHost(&h_fib, sizeof(uint64_t) * fib->size() * CPU_WORDS_PER_FILTER);
 	fibToArray(fib, fib->size());
 	cudaMalloc(&g_fib, sizeof(uint32_t) * fib->size() * GPU_WORDS_PER_FILTER);
@@ -114,7 +114,6 @@ void partitioner_gpu::init(unsigned int part_thread_count, std::vector<fib_entry
 	cudaError_t err;
 	if ((err = cudaGetLastError()) != 0)
 		std::cout << "CUDA error on init: " << err << std::endl;
-	std::cout << "\t\t\t" << std::setw(12) << "done!" << endl;
 }
 
 void partitioner_gpu::reset_buffers(unsigned int tid) {
@@ -125,14 +124,18 @@ void partitioner_gpu::reset_buffers(unsigned int tid) {
 }
 
 void partitioner_gpu::clear(unsigned int part_thread_count) {
-	cudaFree(&g_fib);
+	cudaSetDevice(0);
+	cudaFree(g_fib);
+	cudaFree(g_buffer);
 	for (int t=0; t<part_thread_count; t++) {
-		cudaFree(&(g_rcounter[t]));
-		cudaFree(&(g_lcounter[t]));
-		cudaFree(&(g_freqs[t]));
+		cudaFree(g_rcounter[t]);
+		cudaFree(g_lcounter[t]);
+		cudaFree(g_freqs[t]);
 		cudaStreamDestroy(gstream[t]);
 	}
-	cudaFree(&g_buffer);
+	cudaError_t err;
+	if ((err = cudaGetLastError()) != 0)
+		std::cout << "CUDA error on clear: " << err << std::endl;
 }
 
 void partitioner_gpu::get_frequencies(unsigned int tid, unsigned int size, unsigned int first, unsigned int * freq, size_t buffer_size) {

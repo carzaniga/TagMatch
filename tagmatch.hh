@@ -15,8 +15,9 @@ public:
 		//
 		static void add_set(filter_t set, tk_vector keys);
 		static void add_set(filter_t set, tagmatch_key_t key);
-//		static void delete_set(set, key);
+		static void delete_set(filter_t set, tagmatch_key_t key);
 		static void consolidate(); 
+		static void consolidate(uint32_t psize, uint32_t threads);
 		// TODO: shall consolidate also pass the data to the matcher???
 		// TODO TODO: Or maybe we want to have another method to do that specifically...
 

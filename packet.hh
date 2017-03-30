@@ -86,7 +86,7 @@ private:
 #ifdef WITH_ATOMIC_OUTPUT
 #else   
 	std::mutex mtx;
-	std::vector<uint32_t> output_users;
+	std::vector<uint32_t> output_keys;
 #ifdef WITH_MATCH_STATISTICS
 	std::atomic<uint32_t> pre,post;
 #endif
@@ -96,13 +96,11 @@ public:
 	packet(const filter_t f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
-//			output_users.reserve(32768);
 	};
 
 	packet(const std::string & f, uint32_t i)
 		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
-//			output_users.reserve(32768);
 	};
 
 	packet(const packet & p) 
@@ -111,7 +109,7 @@ public:
 		pre = 0;
 		post = 0;
 #endif
-		output_users = p.output_users;
+		output_keys = p.output_keys;
 		finalized = false;
 	};
 
@@ -155,34 +153,34 @@ public:
 
 	void add_output_user(uint32_t user) {
 		// Warning: you should lock the mutex before calling this method! 
-		output_users.push_back(user);
+		output_keys.push_back(user);
 	}
 
-	std::vector<uint32_t> get_output_users() {
-		return output_users;
+	std::vector<uint32_t> get_output_keys() {
+		return output_keys;
 	}
 
 	bool finalize_matching(bool match_unique) {
 		if (!atomic_exchange(&finalized, true)) {
 #ifdef WITH_MATCH_STATISTICS
-			pre = output_users.size();
+			pre = output_keys.size();
 			assert(pre > 0);
 #endif
 			if (match_unique) {
 				// Delete duplicates from the list of output keys
-				std::sort( output_users.begin(), output_users.end() );
-				output_users.erase( unique( output_users.begin(), output_users.end() ), output_users.end() );
+				std::sort( output_keys.begin(), output_keys.end() );
+				output_keys.erase( unique(output_keys.begin(), output_keys.end() ), output_keys.end());
 			}
 #ifdef WITH_MATCH_STATISTICS
-			post = output_users.size();
+			post = output_keys.size();
 #endif
-#if 1
+#if 0
 			// Flush the output vector and release its memory... used as a workaround for
 			// test purposes when the memory available is not enough for specific workloads
 			//
-			output_users.clear();
-	//		std::vector<uint32_t>().swap(output_users);
-			output_users.shrink_to_fit();
+			output_keys.clear();
+	//		std::vector<uint32_t>().swap(output_keys);
+			output_keys.shrink_to_fit();
 #endif
 			return true;
 		}
