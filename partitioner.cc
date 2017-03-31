@@ -388,7 +388,6 @@ unsigned int part_thread_count = 4;
 
 void partitioner::initialize() {
 	PT = nullptr;
-	std::cout << "\t\t\t" << std::setw(12) << fib.size() << " filters." << endl;
 #if USE_GPU
 	partitioner_gpu::init(part_thread_count, &fib);
 #endif
@@ -445,7 +444,7 @@ void partitioner::get_consolidated_prefixes_and_filters(
 			f.keys = std::move((*i)->keys);
 			f.partition = partition.partition;
 			(*filters)->emplace_back(f);
-			std::cout << "PP Adding filter to p " << f.partition << "; size=" <<  f.keys.end()-f.keys.begin() << " --- " << (*i)->keys.size() << std::endl;
+			//std::cout << "PP Adding filter to p " << f.partition << "; size=" <<  f.keys.end()-f.keys.begin() << " --- " << std::endl;
 		}
 
 		(*prefixes)->emplace_back(partition);

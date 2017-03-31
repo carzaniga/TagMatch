@@ -58,7 +58,9 @@ static void print_usage(const char* progname) {
 	<< " [<params>...]\n"
 	"\n  params: any combination of the following:\n"
 	"     [m=<N>]         :: maximum size for each partition (default=100)\n"
-	"     [t=<N>]         :: size of the thread pool (default=4)\n"
+	"     [t=<N>]         :: size of the thread pool for the matcher (default=4)\n"
+	"     [u=<N>]         :: size of the thread pool for the partitioner (default=4)\n"
+	"     [g=<N>]         :: number of GPUs for the matcher (default=1)\n"
 	"     [in=<filename>]  :: input for filters (default=stdin)\n"
 	"     [-a]  :: ascii input\n"
 	"     [-b]  :: binary input\n"
@@ -76,13 +78,13 @@ static unsigned int read_queries(vector<my_match_handler> & packets, string fnam
 	network_packet np;
 	if (binary_format) {
 		while(np.read_binary(is) && res < limit) {
-			packet * p = new packet(np.filter, np.key);
+			packet * p = new packet(np.filter);
 			packets.emplace_back(p);
 			++res;
 		}
 	} else {
 		while(np.read_ascii(is)) {
-			packet * p = new packet(np.filter, np.key);
+			packet * p = new packet(np.filter);
 			packets.emplace_back(p);
 			++res;
 		}
@@ -118,6 +120,8 @@ int main(int argc, const char* argv[]) {
 
 	unsigned int max_size = 200000;
 	unsigned int thread_count = 4;
+	unsigned int thread_count_part = 4;
+	unsigned int gpu_count = 1;
 	bool binary_format = false;
 
 	
@@ -126,11 +130,14 @@ int main(int argc, const char* argv[]) {
 			continue;
 		if (sscanf(argv[i], "t=%u", &thread_count))
 			continue;
+		if (sscanf(argv[i], "u=%u", &thread_count_part))
+			continue;
+		if (sscanf(argv[i], "gg=%u", &gpu_count))
+			continue;
 		if (strcmp(argv[i], "-a") == 0) {
 			binary_format = false;
 			continue;
 		}
-		
 		if (strcmp(argv[i], "-b") == 0) {
 			binary_format = true;
 			continue;
@@ -161,43 +168,47 @@ int main(int argc, const char* argv[]) {
 			std::cerr << "could not open input file " << input_fname << std::endl;
 			return 1;
 		}
-		std::cerr << "Reading filters..." << std::flush;
 		int cnt = 0;
 		while (cnt < 21288259) {
+			std::cerr << "Reading filters..." << std::flush;
 			read_filters(input_file, binary_format, 5000000);
+			std::cerr << " done!" << std::endl;
+
 			std::cerr << "Balanced partitioning..." << std::flush;
-
 			high_resolution_clock::time_point start = high_resolution_clock::now();
-
-			// Partition size 100000, 8 threads
-			tagmatch::consolidate(100000, 8);
-
+			// Partition size max_size, thread_count_part threads
+			tagmatch::consolidate(max_size, thread_count_part);
 			high_resolution_clock::time_point stop = high_resolution_clock::now();
-
 			std::cerr << "\t\t" << std::setw(12)
 					  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
 			
-			std::cerr << "Reading queries..." << std::endl;
+			std::cerr << "Reading queries...";
 			read_queries(mhandlers, queries_fname, true, 10000);
+			std::cerr << " done!" << std::endl;
 
+			std::cerr << "Setting up TagMatch...";
 			tagmatch::set_latency_limit_ms(10000);
-			// Use 16 threads, 2 gpu
-			tagmatch::start(16,2);
+			// Use thread_count threads, gpu_count gpus
+			tagmatch::start(thread_count, gpu_count);
+			std::cerr << " done!" << std::endl;
 			std::cerr << "Matching " << mhandlers.size() << " packets..." << std::flush;
 			start = high_resolution_clock::now();
 			for(my_match_handler & m : mhandlers) {
-				//cout << "Starting a new match! " << cidx++ << endl;
 				tagmatch::match(&m);
 			}
 			stop = high_resolution_clock::now();
 
 			std::cerr << "\t\t" << std::setw(12)
 					  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
+		
 			std::cerr << tot_matches << "/" << tot_keys << " matches so far..." << std::endl;
+		
+			std::cerr << "Clearing...";
 			tagmatch::stop();
 			tagmatch::clear();
 			mhandlers.clear();
 			cnt+=5000000;
+			std::cerr << " done!" << std::endl;
 		}
 		input_file.close();
 	}

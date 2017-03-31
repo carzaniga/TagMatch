@@ -19,10 +19,6 @@ endif
 
 #$(NVCC) -Xcompiler -fPIC -DPIC $(NVCCFLAGS) -c $< -o $@
 #	$(LIBTOOL) --tag=CC --mode=compile $(NVCC) $(NVCCFLAGS) -o $@  -c $< 
-#gpu.lo:
-#	./compileGPUcu.sh
-#partitioner.cu.lo:
-#./compilePARTcu.sh
 
 noinst_LTLIBRARIES = libpredicate.la
 libpredicate_la_SOURCES = predicate.cc predicate.hh bv192.hh bv.hh
@@ -37,10 +33,8 @@ libtagmatch_la_SOURCES = fib.cc packet.cc \
 libtagmatch_la_LDFLAGS = -lcudart
 # partitioner.cu 
 
-bin_PROGRAMS = router gen gen2 split_prefixes \
-		cpu_gpu_matcher test_matcher test_partitioning_client \
-		analyze_workload convert_workload sample_workload split_workload \
-		subset_counter allinone
+bin_PROGRAMS = test_partitioning_client \
+		allinone
 
 gen_SOURCES = gen.cc params.h
 
@@ -49,10 +43,6 @@ gen2_SOURCES = gen2.cc predicate.hh
 router_SOURCES = main2.cc predicate.hh timing.hh \
 		router.cc router.hh	
 router_LDADD = $(LIBS_prof) libpredicate.la
-
-#tagmatch_SOURCES = packet.hh io_util.hh fib.hh bitvector.hh parameters.hh \
-#			fib.cc packet.cc tagmatch.cc tagmatch.hh \
-#			partitioner.cc partitioner.hh front_end.cc front_end.hh back_end.cc back_end.hh 
 
 test_partitioning_client_SOURCES = tagmatch.hh test_partitioning_client.cc
 test_partitioning_client_LDADD = libtagmatch.la

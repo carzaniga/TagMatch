@@ -190,12 +190,13 @@ int main(int argc, const char* argv[]) {
 	std::cerr << "\t\t" << std::setw(12)
 			  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
 
-	std::vector<partition_prefix> * partitions = partitioner::get_consolidated_prefixes();
-	std::vector<partition_fib_entry> * partitioned_filters = partitioner::get_consolidated_filters();
+	std::vector<partition_prefix> * partitions;	
+	std::vector<partition_fib_entry> * filters;	
+	partitioner::get_consolidated_prefixes_and_filters(&partitions, &filters);
 
 	// get partitions
 	std::cerr << "Number of partitions:\t\t\t" << std::setw(12) << partitions->size() << " partitions." << endl;
-	std::cerr << "Number of filters:\t\t\t" << std::setw(12) << partitioned_filters->size() << " partitions." << endl;
+	std::cerr << "Number of filters:\t\t\t" << std::setw(12) << filters->size() << " partitions." << endl;
 
 	for (partition_prefix pp : *partitions) {
 		if (partitions_output) {
@@ -206,7 +207,7 @@ int main(int argc, const char* argv[]) {
 		}
 	}
 			
-	for (partition_fib_entry pfe : *partitioned_filters) {	
+	for (partition_fib_entry pfe : *filters) {	
 		if (filters_output) {
 			if (binary_format)
 				pfe.write_binary(*filters_output);
@@ -217,4 +218,6 @@ int main(int argc, const char* argv[]) {
 	partitioner::clear();
 	if (partitions_output == &partitions_file) partitions_file.close();
 	if (filters_output == &filters_file) filters_file.close();
+	delete filters;
+	delete partitions;
 }

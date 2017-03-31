@@ -18,7 +18,7 @@
 #include <mutex>
 
 #define SORT_FILTERS 0
-#define COMBO 1
+#define COMBO 0
 #define COMBO_SIZE 30000000
 
 	using std::vector;
@@ -288,7 +288,6 @@ static void compile_fibs(unsigned int gpu_count) {
 
 		total_filters += filters.size();
 	}
-	std::cout << "Compiled fib: " << total_filters << std::endl;
 	// since we only need to know the number of partitions, instead of
 	// dev_partitions_size we could have a simple counter in the
 	// previous for loop.
@@ -396,12 +395,12 @@ void* back_end::flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.keys.size(); ++i) { 
-				pkt->add_output_user(filter.keys[i]);
+				pkt->add_output_key(filter.keys[i]);
 			}
 #else
 				// You need to get unique ids from the gpu to use this
 				//
-				pkt->add_output_user(id);
+				pkt->add_output_key(id);
 #endif
 			pkt->unlock_mtx();	
 	  }
@@ -445,9 +444,9 @@ void* back_end::second_flush_stream()
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->last_partition][id];
 			for(unsigned int i = 0; i < filter.keys.size(); ++i) 
-				pkt->add_output_user(filter.keys[i]);
+				pkt->add_output_key(filter.keys[i]);
 #else
-			pkt->add_output_user(id);
+			pkt->add_output_key(id);
 #endif
 			pkt->unlock_mtx();	
 		}
@@ -470,7 +469,7 @@ void * back_end::process_batch(unsigned int part, match_handler ** batch, unsign
 			for(unsigned int i = 0; i < batch_size; ++i) {
 				if (fd.filter.subset_of(batch[i]->p->filter)) {
 					for(const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys) {
-						batch[i]->p->add_output_user(k);
+						batch[i]->p->add_output_key(k);
 					}
 				}
 			}
@@ -528,9 +527,9 @@ void * back_end::process_batch(unsigned int part, match_handler ** batch, unsign
 #if 1
 			const filter_descr_users & filter = tmp_fib_users[sh->second_last_partition][id];
 			for(unsigned int i = 0; i < filter.keys.size(); ++i) 
-				pkt->add_output_user(filter.keys[i]);
+				pkt->add_output_key(filter.keys[i]);
 #else
-			pkt->add_output_user(id);
+			pkt->add_output_key(id);
 #endif
 			pkt->unlock_mtx();	
 		}

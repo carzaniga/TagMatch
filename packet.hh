@@ -34,19 +34,17 @@ typedef bitvector<192> filter_t;
 class network_packet {
 public:
 	filter_t filter;
-	// TODO: is this thing here still useful at all? Does it state the origin of the packet?
-	tagmatch_key_t key;
 
-	network_packet() : filter(), key() {};
+	network_packet() : filter() {};
 
-	network_packet(const filter_t f, tagmatch_key_t i)
-		: filter(f), key(i) {};
+	network_packet(const filter_t f)
+		: filter(f) {};
 
-	network_packet(const std::string & f, tagmatch_key_t i)
-		: filter(f), key(i) {};
+	network_packet(const std::string & f)
+		: filter(f) {};
 
 	network_packet(const network_packet & p) 
-		: filter(p.filter), key(p.key) {};
+		: filter(p.filter) {};
 
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);
@@ -93,13 +91,13 @@ private:
 	std::atomic<bool> finalized;
 #endif
 public:
-	packet(const filter_t f, uint32_t i)
-		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+	packet(const filter_t f)
+		: network_packet(f), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
 	};
 
-	packet(const std::string & f, uint32_t i)
-		: network_packet(f, i), state(FrontEnd), pending_partitions(0) {
+	packet(const std::string & f)
+		: network_packet(f), state(FrontEnd), pending_partitions(0) {
 			finalized = false;
 	};
 
@@ -151,9 +149,9 @@ public:
 		mtx.unlock();
 	}
 
-	void add_output_user(uint32_t user) {
+	void add_output_key(tagmatch_key_t key) {
 		// Warning: you should lock the mutex before calling this method! 
-		output_keys.push_back(user);
+		output_keys.push_back(key);
 	}
 
 	std::vector<uint32_t> get_output_keys() {
@@ -179,7 +177,6 @@ public:
 			// test purposes when the memory available is not enough for specific workloads
 			//
 			output_keys.clear();
-	//		std::vector<uint32_t>().swap(output_keys);
 			output_keys.shrink_to_fit();
 #endif
 			return true;

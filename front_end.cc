@@ -366,8 +366,6 @@ void partition_queue::enqueue(match_handler * h) noexcept {
 		  		pkt->partition_done();
 				if (pkt->is_matching_complete()) {
 					if (pkt->finalize_matching(h->match_unique)) {
-					// TODO: do something with the match handler!!
-					//
 					h->match_done();
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
@@ -628,15 +626,13 @@ static void match(match_handler * h) {
 	//
 	if (pkt->is_matching_complete()) {
 		if (pkt->finalize_matching(h->match_unique)) {
-			// TODO: do something with the match handler!
 				h->match_done();
-
 #ifdef WITH_MATCH_STATISTICS
-			macthes_pre_merge += pkt->getpre();
-			matches_post_merge += pkt->getpost();
-			mtx.lock();
-			matches.push_back(pkt->getpost());
-			mtx.unlock();
+				macthes_pre_merge += pkt->getpre();
+				matches_post_merge += pkt->getpost();
+				mtx.lock();
+				matches.push_back(pkt->getpost());
+				mtx.unlock();
 #endif
 		}
 	}
@@ -874,7 +870,6 @@ void front_end::stop(unsigned int gpu_count) {
 			pkt->partition_done();
 			if (pkt->is_matching_complete()) {
 				if (pkt->finalize_matching(h->match_unique)) {
-					// TODO: do something!
 					h->match_done();
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
@@ -902,7 +897,6 @@ void front_end::stop(unsigned int gpu_count) {
 			if (pkt->is_matching_complete()) {
 				if (pkt->finalize_matching(h->match_unique)) {
 					h->match_done();
-					// TODO: do something!
 #ifdef WITH_MATCH_STATISTICS
 					macthes_pre_merge += pkt->getpre();
 					matches_post_merge += pkt->getpost();

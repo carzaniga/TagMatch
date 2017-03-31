@@ -6,11 +6,6 @@
 
 static bool already_consolidated = false;
 
-void tagmatch::add_set(filter_t set, tk_vector keys) {
-	// TODO: update this method so that it also populates fib_map
-	partitioner::add_set(set, keys);
-}
-
 std::map<filter_t, std::set<tagmatch_key_t>> fib_map;
 std::map<filter_t, std::set<tagmatch_key_t>> additions;
 std::map<filter_t, std::set<tagmatch_key_t>> deletions;
@@ -19,16 +14,19 @@ void tagmatch::delete_set(filter_t set, tagmatch_key_t key) {
 	// I should already have a map in the disk, that will
 	// be loaded on the next consolidate() call... For
 	// now, just enqueue the request for later
-	std::set<tagmatch_key_t> keys = deletions[set];
-	keys.insert(key);
+	deletions[set].insert(key);
+}
+
+void tagmatch::add_set(filter_t set, tk_vector keys) {
+	for (tagmatch_key_t k : keys)
+		add_set(set, k);
 }
 
 void tagmatch::add_set(filter_t set, tagmatch_key_t key) {
 	// I should already have a map in the disk, that will
 	// be loaded on the next consolidate() call... For
 	// now, just enqueue the request for later
-	std::set<tagmatch_key_t> keys = additions[set];
-	keys.insert(key);
+	additions[set].insert(key);
 }
 
 static uint32_t partition_size = 1000;
@@ -42,20 +40,24 @@ void tagmatch::consolidate(uint32_t psize, uint32_t threads) {
 
 void tagmatch::consolidate() {
 	if (already_consolidated) {
+		std::cerr << std::endl << "\tReading previous fib from disk...";
 		// Here I should read the map from a file
 		std::ifstream cache_file_in("map.tmp");
 		fib_entry f;
 		while(f.read_binary(cache_file_in)) {
-			std::set<tagmatch_key_t> keys = fib_map[f.filter];
 			for (tagmatch_key_t k : f.keys) {
-				keys.insert(k);
+				fib_map[f.filter].insert(k);
 			}
 		}
 		cache_file_in.close();
-
+		std::cerr << " done";
 	}
-	// Apply the changes!
+
+	// Apply changes!
+	// TODO: the changes should have an order, so this thing needs to be refactored into
+	// some kind of log with timestamps, or with an order preserving container...
 	//
+	std::cerr << std::endl << "\tApplying changes...";
 	for (std::pair<filter_t, std::set<tagmatch_key_t>> a : additions) {
 		fib_map[a.first].insert(a.second.begin(), a.second.end());
 	}
@@ -67,9 +69,10 @@ void tagmatch::consolidate() {
 			fib_map.erase(a.first);
 	}
 	deletions.clear();
+	std::cerr << " done" << std::endl;
 	
+	std::cerr << "\tUpdating on disk cache...";
 	std::ofstream cache_file_out("map.tmp");
-
 	// Flush the set-key map
 	// TODO: This does NOT check for duplicated sets, that may be added
 	// with the *add_set(filter_t set, tagmatch_key_t key)* api
@@ -88,8 +91,11 @@ void tagmatch::consolidate() {
 	cache_file_out.close();
 	// clear the map and destroy its elements
 	fib_map.clear();
+	std::cerr << " done" << std::endl;
 
+	std::cerr << "\tConsolidating...";
 	partitioner::consolidate(partition_size, partitioning_threads);
+	std::cerr << " done";
 
 	// Pass these things to the matcher!
 	//
@@ -100,7 +106,6 @@ void tagmatch::consolidate() {
 		add_partition(pp.partition, pp.filter);
 
 	for (partition_fib_entry pfe : *filters) {
-		//std::cout << "Adding filter to p " << pfe.partition << "; size=" <<  pfe.keys.end()-pfe.keys.begin() << std::endl;
 		add_filter(pfe.partition, pfe.filter, pfe.keys.begin(), pfe.keys.end());
 	}
 	delete prefixes;
