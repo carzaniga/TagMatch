@@ -507,6 +507,7 @@ int main(int argc, const char* argv[]) {
 			partition.filter &= f.filter;
 			f.keys = std::move((*i)->keys);
 			f.partition = partition.partition;
+			std::cout << "FS " << f.keys.size() << std::endl;
 			if (filters_output) {
 				if (binary_format)
 					f.write_binary(*filters_output);

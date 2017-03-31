@@ -38,7 +38,7 @@
 // WITH_MATCH_STATISTICS makes cpu_gpu_matcher print statistics about the matches generated
 // on the stdout
 //
-#if 0
+#if 1
 #define WITH_MATCH_STATISTICS
 #endif
 

@@ -422,26 +422,39 @@ void partitioner::consolidate() {
 	}
 }
 
-std::vector<partition_prefix> * partitioner::get_consolidated_prefixes() {
-	std::vector<partition_prefix> * res = new std::vector<partition_prefix>();
+void partitioner::get_consolidated_prefixes_and_filters(
+			std::vector<partition_prefix> ** prefixes,
+			std::vector<partition_fib_entry> ** filters
+			) {
+	*prefixes = new std::vector<partition_prefix>();
+	*filters = new std::vector<partition_fib_entry>();
+
 	partition_id_t pid = 0;
-	partition_candidate * tmp_PT = PT;
-	while(tmp_PT) {
+	while(PT) {
 		partition_prefix partition;
 
 		partition.filter.fill();
 		partition.length = filter_t::WIDTH;
 		partition.partition = pid++;
-		partition.size = tmp_PT->end - tmp_PT->begin;
+		partition.size = PT->end - PT->begin;
+		
+		for(fib_t::iterator i = PT->begin; i != PT->end; ++i) {
+			partition_fib_entry f;
+			f.filter = (*i)->filter;
+			partition.filter &= f.filter;
+			f.keys = std::move((*i)->keys);
+			f.partition = partition.partition;
+			(*filters)->emplace_back(f);
+			std::cout << "PP Adding filter to p " << f.partition << "; size=" <<  f.keys.end()-f.keys.begin() << " --- " << (*i)->keys.size() << std::endl;
+		}
 
-		res->emplace_back(partition);
-		tmp_PT = tmp_PT->next;
+		(*prefixes)->emplace_back(partition);
+		PT = PT->next;
 	}
-	return res;
 }
 
+/*
  std::vector<partition_fib_entry> * partitioner::get_consolidated_filters() {
-	std::vector<partition_fib_entry> * res = new std::vector<partition_fib_entry>();
 	partition_id_t pid = 0;
 	
 	partition_candidate * tmp_PT = PT;
@@ -466,6 +479,7 @@ std::vector<partition_prefix> * partitioner::get_consolidated_prefixes() {
 	}
 	return res;
 }
+*/
 
 void partitioner::clear() {
 	release_all_fib_entries();

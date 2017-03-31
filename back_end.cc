@@ -18,7 +18,7 @@
 #include <mutex>
 
 #define SORT_FILTERS 0
-#define COMBO 0
+#define COMBO 1
 #define COMBO_SIZE 30000000
 
 	using std::vector;
@@ -80,7 +80,12 @@
 							  keys_vector::const_iterator begin,
 							  keys_vector::const_iterator end) {
 		// we simply add this filter to our temporary table
-		// 
+		//
+		//std::cout << "Adding a filter to part " << part << std::endl;
+		//std::cout << "flt: ";
+		//f.write_ascii(std::cout);
+		//std::cout << std::endl;
+
 		tmp_fib[part].emplace_back(f, absolute_id++);
 		tmp_fib_users[part].emplace_back(begin, end);
 	}
@@ -283,6 +288,7 @@ static void compile_fibs(unsigned int gpu_count) {
 
 		total_filters += filters.size();
 	}
+	std::cout << "Compiled fib: " << total_filters << std::endl;
 	// since we only need to know the number of partitions, instead of
 	// dev_partitions_size we could have a simple counter in the
 	// previous for loop.
@@ -359,7 +365,9 @@ static void compile_fibs(unsigned int gpu_count) {
 	}
 
 	delete[](host_rep);
+#if !COMBO
 	tmp_fib.clear();
+#endif
 }
 #endif
 
@@ -461,8 +469,9 @@ void * back_end::process_batch(unsigned int part, match_handler ** batch, unsign
 		for(const filter_descr & fd : filters) { 
 			for(unsigned int i = 0; i < batch_size; ++i) {
 				if (fd.filter.subset_of(batch[i]->p->filter)) {
-					for(const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys)
+					for(const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys) {
 						batch[i]->p->add_output_user(k);
+					}
 				}
 			}
 			fidx++;
@@ -484,11 +493,11 @@ void * back_end::process_batch(unsigned int part, match_handler ** batch, unsign
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
 	//
-
 	for(unsigned int i = 0; i < batch_size; ++i) {
 		for(int j = blocks; j < GPU_FILTER_WORDS; ++j)
 			*curr_p_buf++ = batch[i]->p->filter.uint32_value(j);
 	}
+
 	gpu::set_device(sh->gpu);
 	gpu::async_copy_packets(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
 	gpu::run_kernel(dev_partitions[sh->gpu][part].fib,  

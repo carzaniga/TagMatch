@@ -92,12 +92,19 @@ void tagmatch::consolidate() {
 	partitioner::consolidate(partition_size, partitioning_threads);
 
 	// Pass these things to the matcher!
-	for (partition_prefix pp : *partitioner::get_consolidated_prefixes())
+	//
+	std::vector<partition_prefix> * prefixes;
+	std::vector<partition_fib_entry> * filters;
+	partitioner::get_consolidated_prefixes_and_filters(&prefixes, &filters);	
+	for (partition_prefix pp : *prefixes)
 		add_partition(pp.partition, pp.filter);
 
-	for (partition_fib_entry pfe : *partitioner::get_consolidated_filters())
+	for (partition_fib_entry pfe : *filters) {
+		//std::cout << "Adding filter to p " << pfe.partition << "; size=" <<  pfe.keys.end()-pfe.keys.begin() << std::endl;
 		add_filter(pfe.partition, pfe.filter, pfe.keys.begin(), pfe.keys.end());
-	
+	}
+	delete prefixes;
+	delete filters;
 	partitioner::clear();
 	already_consolidated = true;
 }
