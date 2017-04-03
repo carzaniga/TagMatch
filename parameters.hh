@@ -21,8 +21,6 @@
 //
 #define MAX_MATCHES MAX_MATCHES_PP * PACKETS_BATCH_SIZE
 
-#define NEW_PARTITIONING 1
-
 // COALESCED_READS lays out the data so that each thread reads from a
 // consecutive address so as to obtain higher memory throughput.  In
 // practice this does not seem to be that effective.  So, we exclude

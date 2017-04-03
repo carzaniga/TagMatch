@@ -6,15 +6,34 @@
 
 static bool already_consolidated = false;
 
+//TODO: do we want the library to be thread safe? We need to
+// add some locks in that case
+//
+enum operation_type {
+	ADD = 0,
+	DELETE = 1,
+};
+
+struct fib_update_operation {
+	fib_update_operation(operation_type t, filter_t f, tagmatch_key_t k) {
+		type = t;
+		filter = f;
+		key = k;
+	};
+	operation_type type;
+	filter_t filter;
+	tagmatch_key_t key;
+};
+
 std::map<filter_t, std::set<tagmatch_key_t>> fib_map;
-std::map<filter_t, std::set<tagmatch_key_t>> additions;
-std::map<filter_t, std::set<tagmatch_key_t>> deletions;
+std::vector<fib_update_operation> updates;
 
 void tagmatch::delete_set(filter_t set, tagmatch_key_t key) {
 	// I should already have a map in the disk, that will
 	// be loaded on the next consolidate() call... For
 	// now, just enqueue the request for later
-	deletions[set].insert(key);
+	struct fib_update_operation op(DELETE, set, key);
+	updates.push_back(op);
 }
 
 void tagmatch::add_set(filter_t set, tk_vector keys) {
@@ -26,7 +45,8 @@ void tagmatch::add_set(filter_t set, tagmatch_key_t key) {
 	// I should already have a map in the disk, that will
 	// be loaded on the next consolidate() call... For
 	// now, just enqueue the request for later
-	additions[set].insert(key);
+	struct fib_update_operation op(ADD, set, key);
+	updates.push_back(op);
 }
 
 static uint32_t partition_size = 1000;
@@ -42,7 +62,7 @@ void tagmatch::consolidate() {
 	if (already_consolidated) {
 		std::cerr << std::endl << "\tReading previous fib from disk...";
 		// Here I should read the map from a file
-		std::ifstream cache_file_in("map.tmp");
+		std::ifstream cache_file_in(".map.tmp");
 		fib_entry f;
 		while(f.read_binary(cache_file_in)) {
 			for (tagmatch_key_t k : f.keys) {
@@ -54,29 +74,29 @@ void tagmatch::consolidate() {
 	}
 
 	// Apply changes!
-	// TODO: the changes should have an order, so this thing needs to be refactored into
-	// some kind of log with timestamps, or with an order preserving container...
 	//
 	std::cerr << std::endl << "\tApplying changes...";
-	for (std::pair<filter_t, std::set<tagmatch_key_t>> a : additions) {
-		fib_map[a.first].insert(a.second.begin(), a.second.end());
+	for (struct fib_update_operation fuo : updates) {
+		if (fuo.type == ADD) {
+			fib_map[fuo.filter].insert(fuo.key);
+		}
+		else if (fuo.type == DELETE) {
+			std::set<tagmatch_key_t> keys = fib_map.at(fuo.filter);
+			if (keys.size() == 1) {
+				fib_map.erase(fuo.filter);
+			}
+			else {
+				fib_map.at(fuo.filter).erase(fuo.key);
+			}
+		}
 	}
-	additions.clear();
-	for (std::pair<filter_t, std::set<tagmatch_key_t>> a : deletions) {
-		std::set<tagmatch_key_t> keys = fib_map.at(a.first);
-		keys.erase(a.second.begin(), a.second.end());
-		if (keys.empty())
-			fib_map.erase(a.first);
-	}
-	deletions.clear();
+
+	updates.clear();
 	std::cerr << " done" << std::endl;
 	
 	std::cerr << "\tUpdating on disk cache...";
 	std::ofstream cache_file_out("map.tmp");
 	// Flush the set-key map
-	// TODO: This does NOT check for duplicated sets, that may be added
-	// with the *add_set(filter_t set, tagmatch_key_t key)* api
-	//
 	for (std::pair<filter_t, std::set<tagmatch_key_t>> fk : fib_map) {
 		tk_vector keys;
 		for (tagmatch_key_t k : fk.second) {
@@ -85,7 +105,6 @@ void tagmatch::consolidate() {
 		fib_entry fe(fk.first, keys);
 		// Write this fib_entry to a file (I'm filling the on disk map)
 		fe.write_binary(cache_file_out);
-
 		partitioner::add_set(fk.first, keys);
 	}
 	cache_file_out.close();
@@ -108,16 +127,15 @@ void tagmatch::consolidate() {
 	for (partition_fib_entry pfe : *filters) {
 		add_filter(pfe.partition, pfe.filter, pfe.keys.begin(), pfe.keys.end());
 	}
+	already_consolidated = true;
 	delete prefixes;
 	delete filters;
 	partitioner::clear();
-	already_consolidated = true;
 }
 
 void tagmatch::add_partition(unsigned int id, const filter_t & mask) {
-		// TODO: the last parameter is unused... remove it?
-		front_end::add_prefix(id, mask, 0);
-		back_end::add_partition(id, mask, 0);
+		front_end::add_prefix(id, mask);
+		back_end::add_partition(id, mask);
 }
 
 void tagmatch::add_filter(unsigned int partition_id, const filter_t & f, 

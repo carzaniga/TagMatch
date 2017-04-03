@@ -15,7 +15,7 @@
 /// 
 class back_end {
 public:
-	static void add_partition(unsigned int id, const filter_t & prefix, unsigned int prefix_length);
+	static void add_partition(unsigned int id, const filter_t & prefix);
 	static void add_filter(unsigned int partition, const filter_t & f, 
 						   std::vector<tagmatch_key_t>::const_iterator begin,
 						   std::vector<tagmatch_key_t>::const_iterator end);

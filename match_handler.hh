@@ -48,7 +48,7 @@ class synchronous_match_handler : public match_handler {
 		virtual void match_done() {
 			std::unique_lock<std::mutex> lock(mtx);
 			done = true;
-			cv.notify_all(); // TODO: or one... which is better?
+			cv.notify_all(); 
 		};
 
 		virtual void match_hold() {

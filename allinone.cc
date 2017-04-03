@@ -33,6 +33,7 @@ using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 using std::chrono::duration_cast;
 	
+#define CHUNK_SIZE 5000000
 
 std::atomic<unsigned int> tot_matches;
 std::atomic<unsigned int> tot_keys;
@@ -93,11 +94,11 @@ static unsigned int read_queries(vector<my_match_handler> & packets, string fnam
 	return res;
 }
 
-static void read_filters(std::istream & input, bool binary_format, uint32_t howmany) {
+static uint32_t read_filters(std::istream & input, bool binary_format, uint32_t howmany) {
 	fib_entry f;
 	uint32_t cnt = 0;
 	if (binary_format) {
-		while(f.read_binary(input) && cnt++ < howmany) {
+		while(f.read_binary(input) && ++cnt < howmany) {
 #if 0
 			tagmatch::add_set(f.filter, f.keys);
 #else
@@ -110,6 +111,7 @@ static void read_filters(std::istream & input, bool binary_format, uint32_t howm
 			tagmatch::add_set(f.filter, f.keys);
 		}
 	}
+	return cnt;
 }
 
 
@@ -168,12 +170,11 @@ int main(int argc, const char* argv[]) {
 			std::cerr << "could not open input file " << input_fname << std::endl;
 			return 1;
 		}
-		int cnt = 0;
-		while (cnt < 21288259) {
-			std::cerr << "Reading filters..." << std::flush;
-			read_filters(input_file, binary_format, 5000000);
+		uint32_t filters_read;
+		std::cerr << "Reading filters..." << std::flush;
+		do {
+			filters_read = read_filters(input_file, binary_format, CHUNK_SIZE);
 			std::cerr << " done!" << std::endl;
-
 			std::cerr << "Balanced partitioning..." << std::flush;
 			high_resolution_clock::time_point start = high_resolution_clock::now();
 			// Partition size max_size, thread_count_part threads
@@ -207,9 +208,11 @@ int main(int argc, const char* argv[]) {
 			tagmatch::stop();
 			tagmatch::clear();
 			mhandlers.clear();
-			cnt+=5000000;
+		
 			std::cerr << " done!" << std::endl;
-		}
+			std::cerr << std::endl;
+			std::cerr << "Reading filters..." << std::flush;
+		} while (filters_read == CHUNK_SIZE);
 		input_file.close();
 	}
 }

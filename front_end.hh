@@ -14,7 +14,7 @@
 /// 
 class front_end {
 public:
-	static void add_prefix(unsigned int id, const filter_t & f, unsigned int n);
+	static void add_prefix(unsigned int id, const filter_t & f);
 	static void start(unsigned int threads);
 	static void match(match_handler * h) noexcept;
 	static void stop(unsigned int gpu_count);

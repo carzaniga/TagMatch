@@ -81,25 +81,16 @@
 							  keys_vector::const_iterator end) {
 		// we simply add this filter to our temporary table
 		//
-		//std::cout << "Adding a filter to part " << part << std::endl;
-		//std::cout << "flt: ";
-		//f.write_ascii(std::cout);
-		//std::cout << std::endl;
-
 		tmp_fib[part].emplace_back(f, absolute_id++);
 		tmp_fib_users[part].emplace_back(begin, end);
 	}
 
 	vector<uint8_t> prefix_block_lengths;
 
-	void back_end::add_partition(unsigned int id, const filter_t & prefix, unsigned int prefix_length) {
+	void back_end::add_partition(unsigned int id, const filter_t & prefix) {
 		if (id >= prefix_block_lengths.size())
 			prefix_block_lengths.resize(id + 1);
-#if NEW_PARTITIONING
 		prefix_block_lengths[id] = 0;
-#else
-		prefix_block_lengths[id] = prefix_length / BACKEND_BLOCK_SIZE;
-#endif
 	}
 
 	// ACTUAL FIB

@@ -505,7 +505,7 @@ static tmp_prefix_pos_descr tmp_pp[192];
 
 // This is how we compile the temporary FIB
 // 
-void front_end::add_prefix(unsigned int id, const filter_t & f, unsigned int n) {
+void front_end::add_prefix(unsigned int id, const filter_t & f) {
 	int index = -1;
 	unsigned int min = UINT_MAX; 
 	for (int i=0; i< 192; i++) {
