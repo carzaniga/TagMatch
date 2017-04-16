@@ -383,23 +383,75 @@ if test "x$ax_cv_boost_unit_test_framework" != "xyes"; then
    AC_MSG_WARN([Without the Boost Unit Test Framework you will not be able to run the tests.])
 fi
 ])
-
 dnl
-dnl AC_CHECK_NVCC
+dnl CUDA LANGUAGE and NVCC checks
 dnl
-AC_DEFUN([AC_CHECK_NVCC], [
-AC_ARG_VAR([NVCCFLAGS], [special flags for nvcc compiler])
+AC_LANG_DEFINE([CUDA], [cuda], [cuda], [CUDA], [C],
+[ac_ext=cu
+ac_cpp='$NVCC -E $CPPFLAGS'
+ac_compile='$NVCC -c $CPPFLAGS $NVCCFLAGS conftest.$ac_ext >&AS_MESSAGE_LOG_FD'
+ac_link='$NVCC -o conftest$ac_exeext $CPPFLAGS $NVCCFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&AS_MESSAGE_LOG_FD'
+])
+dnl
+AC_DEFUN([AC_LANG_COMPILER(CUDA)],
+[AC_REQUIRE([AC_PROG_NVCC])])
+dnl
+AC_DEFUN([AC_PROG_NVCC],
+[AC_LANG_PUSH(CUDA)dnl
+AC_ARG_VAR([NVCC],     [NVCC compiler command])dnl
+AC_ARG_VAR([NVCCFLAGS], [NVCC compiler flags])dnl
 AC_ARG_VAR([NVCCSMVER], [compute architecture for the CUDA GPU])
 if test "x$NVCCFLAGS" = "x"; then
    NVCCSMVER="21"
    NVCCFLAGS="-arch sm_$NVCCSMVER"
 fi
-AC_ARG_VAR([NVCC], [nvcc compiler to use])
-AC_PATH_PROG([NVCC], [nvcc], [no])
-working_nvcc=no
-if test "x$NVCC" != "xno"; then
-    AC_MSG_CHECKING([whether nvcc works])
-    cat>conftest.cu<<EOF
+m4_ifval([$1],
+[AC_CHECK_TOOLS(NVCC, [$1])],
+[AC_CHECK_TOOL(NVCC, nvcc)
+if test -z "$NVCC"; then
+  if test -n "$ac_tool_prefix"; then
+    AC_CHECK_PROG(NVCC, [${ac_tool_prefix}nvcc], [${ac_tool_prefix}nvcc])
+  fi
+fi
+if test -z "$NVCC"; then
+  AC_CHECK_PROG(NVCC, nvcc, nvcc, , , )
+fi
+])])
+dnl
+AC_DEFUN([AC_LANG_PREPROC(CUDA)],
+[AC_REQUIRE([AC_PROG_NVCCPP])])
+dnl
+AC_DEFUN([AC_PROG_NVCCPP],
+[AC_REQUIRE([AC_PROG_NVCC])dnl
+AC_ARG_VAR([NVCCPP],   [CUDA preprocessor])dnl
+_AC_ARG_VAR_CPPFLAGS()dnl
+AC_LANG_PUSH(CUDA)dnl
+AC_MSG_CHECKING([how to run the CUDA preprocessor])
+if test -z "$NVCCPP"; then
+  AC_CACHE_VAL(ac_cv_prog_NVCCPP,
+  [dnl
+    for NVCCPP in "$NVCC -E"
+    do
+      _AC_PROG_PREPROC_WORKS_IFELSE([break])
+    done
+    ac_cv_prog_NVCCPP=$NVCCPP
+  ])dnl
+  NVCCPP=$ac_cv_prog_NVCCPP
+else
+  ac_cv_prog_NVCCPP=$NVCCPP
+fi
+AC_MSG_RESULT([$NVCCPP])
+_AC_PROG_PREPROC_WORKS_IFELSE([],
+          [AC_MSG_FAILURE([CUDA preprocessor "$NVCCPP" fails sanity check])])
+AC_SUBST(NVCCPP)dnl
+AC_LANG_POP(CUDA)dnl
+])# AC_PROG_NVCCPP
+dnl
+AC_DEFUN([AC_CHECK_NVCC_CU], [
+AC_REQUIRE([AC_PROG_NVCC])
+AC_CACHE_CHECK([whether nvcc works with CUDA code], [ac_cv_nvcc_works], [
+   AC_LANG_PUSH([CUDA])
+   AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
 __global__ void test_kernel(unsigned int * p, unsigned int size) {
     unsigned int id = (blockDim.x * blockDim.y * blockIdx.x) + (blockDim.x * threadIdx.y) + threadIdx.x;
     if(id >= size)
@@ -407,14 +459,10 @@ __global__ void test_kernel(unsigned int * p, unsigned int size) {
     *p = id;
     __syncthreads();    
 }
-EOF
-    if $NVCC $NVCCFLAGS -c conftest.cu -o conftest.o > cuda_nvcc_test.out 2>&1 && test -r conftest.o; then
-        working_nvcc=yes
-    fi
-    rm -f conftest.cu conftest.o
-    AC_MSG_RESULT([$working_nvcc])
-fi
-if test "x$working_nvcc" != "xyes"; then
+]])], [
+     ac_cv_nvcc_works=yes
+], [
+     ac_cv_nvcc_works=no
     AC_MSG_WARN([[
 No working CUDA compiler.  This might be because the configure script
 could not find the nvcc compiler, or because it did find the nvcc, but
@@ -422,32 +470,63 @@ it did use the appropriate compilation flags.  You may use the NVCC
 variable to specify which nvcc compiler to use.  You may also use the
 NVCCFLAGS variable to pass special compilation flags.  The default
 flags are "-arch sm_21".]])
-else
-    AC_MSG_CHECKING([gpu compute architecture])
-    cat>smv.cu<<EOF
-	#include <stdio.h>
-	int main() {
-	cudaDeviceProp prop;
-	int dn;
-	cudaGetDeviceCount(&dn);
-	int minor = 9999, major = 9999;
-	for (int device = 0; device < dn; device++) {
-		cudaGetDeviceProperties(&prop, device);
-		if (prop.major < major) {
-			major = prop.major;
-			minor = prop.minor;
-		}
-		else if (prop.major == major && prop.minor < minor)
-			minor = prop.minor;
+])
+   AC_LANG_POP([CUDA])
+])
+AM_CONDITIONAL([WORKING_NVCC], [test "x$ac_cv_nvcc_works" = "xyes"]) 
+])
+dnl
+AC_DEFUN([AC_CHECK_CUDA_SM_VERSION], [
+   AC_REQUIRE([AC_CHECK_NVCC_CU])
+   AC_CACHE_CHECK([CUDA SM computing capability], [ac_cv_cuda_sm_version], [
+   AC_LANG_PUSH([CUDA])
+   AC_RUN_IFELSE([AC_LANG_SOURCE([[
+#include <stdio.h>
+
+int main() {
+    cudaDeviceProp prop;
+    int dn;
+    cudaError_t err = cudaGetDeviceCount(&dn);
+    if (err != cudaSuccess) {
+       	fprintf(stderr, "Could not get CUDA device count: %s\n", cudaGetErrorString(err));
+	return 1;
+    }
+    int minor, major;
+    for (int device = 0; device < dn; device++) {
+	err = cudaGetDeviceProperties(&prop, device);
+	if (err != cudaSuccess) {
+            fprintf(stderr, "Could not get device properties: %s\n", cudaGetErrorString(err));
+            return 1;
+        }
+
+	if (device == 0 || prop.major < major || prop.major == major && prop.minor < minor) {
+	    major = prop.major;
+	    minor = prop.minor;
 	}
-	printf("%d%d\n", major, minor);
-	}
-EOF
-    if $NVCC $NVCCFLAGS smv.cu -o smv; then
-	   NVCCSMVER=$(./smv) 
-	   NVCCFLAGS="-arch sm_$NVCCSMVER"
-	   AC_MSG_RESULT([$NVCCSMVER])
-    fi
-	rm -f smv.cu smv
-fi
-AM_CONDITIONAL([WORKING_NVCC], [test "x$working_nvcc" = "xyes"]) ])
+    }
+    FILE * f = fopen("conftest.out", "w");
+    if (!f)  {
+       	fprintf(stderr, "Could not create conftest.out\n");
+	return 1;
+    }
+    fprintf(f, "%d%d\n", major, minor);
+    fclose(f);
+    return 0;
+}
+]])], [
+    ac_cv_cuda_sm_version=`cat conftest.out`
+], [
+    ac_cv_cuda_sm_version=unknown
+])])
+   AC_LANG_POP([CUDA])
+   if test "$ac_cv_cuda_sm_version" == unknown; then
+      AC_MSG_WARN([[
+Could not get the CUDA device information to determine the correct
+computing capability of the CUDA devices on this platform.  Reverting
+to the default capability "21".  See config.log for detail.]])
+      NVCCSMVER=21
+   else
+      NVCCSMVER="$ac_cv_cuda_sm_version"
+   fi
+   NVCCFLAGS="-arch sm_$NVCCSMVER"
+])

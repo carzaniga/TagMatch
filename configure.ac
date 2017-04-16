@@ -12,11 +12,9 @@ AC_LANG(C++)
 #
 LT_INIT
 #
-AX_CXX_COMPILE_STDCXX_0X
-if test "$ax_cv_cxx_compile_cxx0x_cxx" = yes; then
-  CXXFLAGS="-std=c++0x $CXXFLAGS"
-elif test "$ax_cv_cxx_compile_cxx0x_gxx" = yes; then
-  CXXFLAGS="-std=gnu++0x $CXXFLAGS"
+AX_CXX_COMPILE_STDCXX_11
+if test "$ax_cv_cxx_compile_cxx11_cxx" = yes; then
+  CXXFLAGS="-std=c++11 $CXXFLAGS"
 fi
 AX_CHECK_COMPILE_FLAG([-Wall], [[
   CFLAGS="-Wall $CFLAGS"
@@ -48,7 +46,9 @@ AC_C_BIGENDIAN
 #
 AC_WITH_THREAD_COUNT
 #
-AC_CHECK_NVCC
+AC_PROG_NVCC
+AC_CHECK_NVCC_CU
+AC_CHECK_CUDA_SM_VERSION
 #
 AC_CONFIG_FILES([Makefile 
 		 test/Makefile])
