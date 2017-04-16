@@ -6,29 +6,33 @@
 #include <sstream>
 #include <string>
 
+#include "tagmatch.hh"
 #include "io_util.hh"
 #include "fib.hh"
 
-std::ostream & tk_vector::write_binary(std::ostream & output) const {
-	uint32_t vector_size = size();
+std::ostream & fib_entry::write_binary(std::ostream & output) const {
+	filter.write_binary(output);
+	uint32_t vector_size = keys.size();
 	io_util_write_binary(output, vector_size);
-	for(const_iterator i = begin(); i != end(); ++i)
+	for(auto i = keys.begin(); i != keys.end(); ++i)
 		io_util_write_binary(output, *i);
 	return output;
 }
 
-std::istream & tk_vector::read_binary(std::istream & input) {
-	uint32_t vector_size;
-	if (!io_util_read_binary(input, vector_size))
-		return input;
-
-	resize(vector_size);
-	for(iterator i = begin(); i != end(); ++i)
-		if (!io_util_read_binary(input, *i))
+std::istream & fib_entry::read_binary(std::istream & input) {
+	if (filter.read_binary(input)) {
+		uint32_t vector_size;
+		if (!io_util_read_binary(input, vector_size))
 			return input;
 
+		keys.resize(vector_size);
+		for(auto i = keys.begin(); i != keys.end(); ++i)
+			if (!io_util_read_binary(input, *i))
+				return input;
+	}
 	return input;
 }
+
 
 std::ostream & fib_entry::write_ascii(std::ostream & output) const {
 	output << "+ ";

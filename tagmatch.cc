@@ -4,9 +4,15 @@
 #include <set>
 #include <fstream>
 
+#include "tagmatch.hh"
+#include "fib.hh"
+#include "partitioner.hh"
+#include "front_end.hh"
+#include "back_end.hh"
+
 static bool already_consolidated = false;
 
-//TODO: do we want the library to be thread safe? We need to
+// TODO: do we want the library to be thread safe? We need to
 // add some locks in that case
 //
 enum operation_type {
@@ -36,7 +42,7 @@ void tagmatch::delete_set(filter_t set, tagmatch_key_t key) {
 	updates.push_back(op);
 }
 
-void tagmatch::add_set(filter_t set, tk_vector keys) {
+void tagmatch::add_set(filter_t set, const std::vector<tagmatch_key_t> & keys) {
 	for (tagmatch_key_t k : keys)
 		add_set(set, k);
 }
@@ -98,7 +104,7 @@ void tagmatch::consolidate() {
 	std::ofstream cache_file_out("map.tmp");
 	// Flush the set-key map
 	for (std::pair<filter_t, std::set<tagmatch_key_t>> fk : fib_map) {
-		tk_vector keys;
+		std::vector<tagmatch_key_t> keys;
 		for (tagmatch_key_t k : fk.second) {
 			keys.push_back(k);
 		}
@@ -134,8 +140,8 @@ void tagmatch::consolidate() {
 }
 
 void tagmatch::add_partition(unsigned int id, const filter_t & mask) {
-		front_end::add_prefix(id, mask);
-		back_end::add_partition(id, mask);
+	front_end::add_prefix(id, mask);
+	back_end::add_partition(id, mask);
 }
 
 void tagmatch::add_filter(unsigned int partition_id, const filter_t & f, 
@@ -175,3 +181,14 @@ void tagmatch::clear() {
 	back_end::clear(gpu_count);
 }
 
+void tagmatch::match(packet * p, match_handler * h) noexcept {
+	p->configure_match(false, h);
+	front_end::match(p);
+	h->match_hold();
+}
+
+void tagmatch::match_unique(packet * p, match_handler * h) noexcept {
+	p->configure_match(true, h);
+	front_end::match(p);
+	h->match_hold();
+}

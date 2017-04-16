@@ -2,60 +2,46 @@
 #define MATCH_HANDLER_HH_INCLUDED
 
 #include <condition_variable>
-#include "packet.hh"
+#include <mutex>
 
-// handler for asynchronous match operations
+class packet;
+
+// Handler for asynchronous match operations
 //
-// this is an abstract class.  An application must define the callback method match_done()
+// This is an abstract class.  An application must define the callback
+// method match_done()
 //
 class match_handler {
-	public:
-		packet * p;
-		bool match_unique;
-		
-		match_handler() {};
-		
-		match_handler(packet * pkt) {
-			p = pkt;
-		};
-
-		match_handler(const match_handler & mh) {
-			p = mh.p;
-		};
-		virtual void match_hold() {};
-		virtual void match_done() = 0;
+public:
+	virtual void match_hold() {};
+	virtual void match_done(packet * p) = 0;
 };
 
-// handler for synchronous match operations
+// Handler for synchronous match operations
+//
 class synchronous_match_handler : public match_handler {
-	private:
-		std::mutex mtx;
-		std::condition_variable cv;
-		bool done;
+private:
+	std::mutex mtx;
+	std::condition_variable cv;
+	bool done;
 	
-	public:
-		synchronous_match_handler() : done(false) {};
+public:
+	synchronous_match_handler()
+		: done(false) {};
+	synchronous_match_handler(const synchronous_match_handler & other)
+		: done(other.done) {};
 		
-		synchronous_match_handler(packet * pkt) : done(false) {
-			p = pkt;
-		};
+	virtual void match_done(packet * p) {
+		std::unique_lock<std::mutex> lock(mtx);
+		done = true;
+		cv.notify_all(); 
+	};
 
-		synchronous_match_handler(const synchronous_match_handler & smh) {
-			done = smh.done;
-			p = smh.p;
-		};
-		
-		virtual void match_done() {
-			std::unique_lock<std::mutex> lock(mtx);
-			done = true;
-			cv.notify_all(); 
-		};
-
-		virtual void match_hold() {
-			std::unique_lock<std::mutex> lock(mtx);
-			while (! done)
-				cv.wait(lock);
-		};
+	virtual void match_hold() {
+		std::unique_lock<std::mutex> lock(mtx);
+		while (! done)
+			cv.wait(lock);
+	};
 };
 
 #endif

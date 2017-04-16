@@ -97,7 +97,7 @@ static void release_all_fib_entries() {
 	}
 }
 
-void partitioner::add_set(filter_t set, tk_vector keys) {
+void partitioner::add_set(filter_t set, const std::vector<tagmatch_key_t> & keys) {
 	fib_entry * f = new_fib_entry();
 	f->filter = set;
 	f->keys = keys;

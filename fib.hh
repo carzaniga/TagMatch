@@ -20,23 +20,14 @@ public:
 class fib_entry {
 public:
 	filter_t filter;
-	tk_vector keys;
+	std::vector<tagmatch_key_t> keys;
 
 	fib_entry() : filter(), keys() {}
 	
-	fib_entry(filter_t f, tk_vector k) : filter(f), keys(k) {}
+	fib_entry(filter_t f, const std::vector<tagmatch_key_t> & k) : filter(f), keys(k) {}
 
-	std::ostream & write_binary(std::ostream & output) const {
-		filter.write_binary(output);
-		keys.write_binary(output);
-		return output;
-	}
-
-	std::istream & read_binary(std::istream & input) {
-		if (filter.read_binary(input))
-			keys.read_binary(input);
-		return input;
-	}
+	std::ostream & write_binary(std::ostream & output) const;
+	std::istream & read_binary(std::istream & input);
 
 	std::ostream & write_ascii(std::ostream & output) const;
 	std::istream & read_ascii(std::istream & input);

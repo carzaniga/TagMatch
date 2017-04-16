@@ -9,14 +9,12 @@
 
 #include "packet.hh"
 #include "gpu.hh"
-#include "match_handler.hh"
-/// add a prefix f of length n to the front end FIB
-/// 
+
 class front_end {
 public:
 	static void add_prefix(unsigned int id, const filter_t & f);
 	static void start(unsigned int threads);
-	static void match(match_handler * h) noexcept;
+	static void match(packet * p) noexcept;
 	static void stop(unsigned int gpu_count);
 	static void clear();
 	static std::ostream & print_statistics(std::ostream &);

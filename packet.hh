@@ -13,24 +13,22 @@
 #include <atomic>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 
-#include "parameters.hh"
-#include "bitvector.hh"
+#include "tagmatch.hh"
+#include "match_handler.hh"
 #include "io_util.hh"
-#include <mutex> 
 
-typedef uint32_t tagmatch_key_t;
+// We process a stream of queries.  Each query comes into the system
+// in the form of a "packet".  The original idea of TagMatch derives
+// from TagNet and is to literally process network packets.  However,
+// what we call a packet here is more generally an incoming query that
+// at a minimum contains a tag set (filter) and possibly additional
+// information.
 
+
+// This class represents the raw data read from the network.
 //
-// A packet is whatever we get from the network.  At this point, the
-// only important components are the filter, which is a 192-bit Bloom
-// filter, the tree that the packet is routed on, and the origin (in
-// terms of key) it comes from.
-
-typedef bitvector<192> filter_t;
-
-// this class represents the raw data read from the network.
-// 
 class network_packet {
 public:
 	filter_t filter;
@@ -43,7 +41,7 @@ public:
 	network_packet(const std::string & f)
 		: filter(f) {};
 
-	network_packet(const network_packet & p) 
+	network_packet(const network_packet & p)
 		: filter(p.filter) {};
 
 	std::ostream & write_binary(std::ostream & output) const;
@@ -66,7 +64,7 @@ class packet : public network_packet {
 private:
     // the packet is in "frontend" state when we are still working with the prefix
     // matching within the frontend, then it goes into BackEnd state.
-	// 
+	//
     enum matching_state {
 		FrontEnd = 0,
 		BackEnd = 1
@@ -81,35 +79,42 @@ private:
 	//
 	std::atomic<unsigned int> pending_partitions;
 
-#ifdef WITH_ATOMIC_OUTPUT
-#else   
 	std::mutex mtx;
 	std::vector<uint32_t> output_keys;
-#ifdef WITH_MATCH_STATISTICS
-	std::atomic<uint32_t> pre,post;
-#endif
 	std::atomic<bool> finalized;
+	bool match_unique;
+	match_handler * handler;
+
+#ifdef WITH_MATCH_STATISTICS
+	std::atomic<uint32_t> pre;
+	std::atomic<uint32_t> post;
 #endif
+
 public:
 	packet(const filter_t f)
-		: network_packet(f), state(FrontEnd), pending_partitions(0) {
-			finalized = false;
-	};
+		: network_packet(f), state(FrontEnd), pending_partitions(0),
+		  finalized(false), match_unique(false), handler(nullptr)
+#ifdef WITH_MATCH_STATISTICS
+		, pre(0), post(0)
+#endif
+		{ };
 
 	packet(const std::string & f)
-		: network_packet(f), state(FrontEnd), pending_partitions(0) {
-			finalized = false;
-	};
-
-	packet(const packet & p) 
-		: network_packet(p), state(FrontEnd), pending_partitions(0) {
+		: network_packet(f), state(FrontEnd), pending_partitions(0),
+		  finalized(false), match_unique(false), handler(nullptr)
 #ifdef WITH_MATCH_STATISTICS
-		pre = 0;
-		post = 0;
+		, pre(0), post(0)
 #endif
-		output_keys = p.output_keys;
-		finalized = false;
-	};
+		{ };
+
+	packet(const packet & p)
+		: network_packet(p.filter), state(FrontEnd), pending_partitions(0),
+		  output_keys(p.output_keys),
+		  finalized(false), match_unique(false), handler(nullptr)
+#ifdef WITH_MATCH_STATISTICS
+		, pre(0), post(0)
+#endif
+		{ };
 
     void add_partition() {
 		++pending_partitions;
@@ -130,7 +135,7 @@ public:
     void reset() {
         state = FrontEnd;
 		pending_partitions = 0;
-		finalized = 0;
+		finalized = false;
     }
 
     void frontend_done() {
@@ -150,7 +155,7 @@ public:
 	}
 
 	void add_output_key(tagmatch_key_t key) {
-		// Warning: you should lock the mutex before calling this method! 
+		// Warning: you should lock the mutex before calling this method!
 		output_keys.push_back(key);
 	}
 
@@ -158,7 +163,12 @@ public:
 		return output_keys;
 	}
 
-	bool finalize_matching(bool match_unique) {
+    void configure_match(bool unique, match_handler * h) {
+		match_unique = unique;
+		handler = h;
+    }
+
+	bool finalize_matching() {
 		if (!atomic_exchange(&finalized, true)) {
 #ifdef WITH_MATCH_STATISTICS
 			pre = output_keys.size();
@@ -172,13 +182,8 @@ public:
 #ifdef WITH_MATCH_STATISTICS
 			post = output_keys.size();
 #endif
-#if 0
-			// Flush the output vector and release its memory... used as a workaround for
-			// test purposes when the memory available is not enough for specific workloads
-			//
-			output_keys.clear();
-			output_keys.shrink_to_fit();
-#endif
+			if (handler)
+				handler->match_done(this);
 			return true;
 		}
 		else {
