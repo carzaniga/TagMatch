@@ -38,26 +38,3 @@ std::istream & network_packet::read_ascii(std::istream & input) {
 	}
 	return input;
 }
-
-std::ostream & tip_write_binary(const tree_interface_pair & tip, std::ostream & output) {
-	return io_util_write_binary(output, tip_uint16_value(tip));
-}
-
-std::istream & tip_read_binary(tree_interface_pair & tip, std::istream & input) {
-	uint16_t v;
-	if (io_util_read_binary(input, v))
-		tip = v;
-	return input;
-}
-
-std::ostream & tip_write_ascii(const tree_interface_pair & tip, std::ostream & output) {
-	return output << tip_tree(tip) << ' ' << tip_interface(tip);
-}
-
-std::istream & tip_read_ascii(tree_interface_pair & tip, std::istream & input) {
-	uint16_t t;
-	uint16_t i;
-	if (input >> t >> i)
-		tip = tip_value(t, i);
-	return input;
-}

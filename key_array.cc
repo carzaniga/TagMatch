@@ -5,9 +5,8 @@
 #include <cstdint>
 #include <cstring>
 
-#include "routing.hh"
-#include "filter.hh"
-#include "tip_array.hh"
+#include "tagmatch.hh"
+#include "key_array.hh"
 
 // DESIGN: we do not store the allocated size, because we know it to
 // be the smallest power of two that is greater or equal to the
@@ -22,29 +21,29 @@ static bool is_power_of_two(uint16_t x) {
 	return ((x) & ((x) - 1)) == 0;
 }
 
-tip_array::tip_array(const tip_array & other) : size(other.size) {
+key_array::key_array(const key_array & other) : size(other.size) {
 	if (size > LOCAL_CAPACITY) {
-		external_tips = other.external_tips;
+		external_keys = other.external_keys;
 		unsigned int allocated_size = INITIAL_EXTERNAL_CAPACITY;
 		while (allocated_size < size)
 			allocated_size *= 2;
-		external_tips = new tree_interface_pair[allocated_size];
-		memcpy(external_tips, other.external_tips, size*sizeof(tree_interface_pair));
+		external_keys = new tagmatch_key_t[allocated_size];
+		memcpy(external_keys, other.external_keys, size*sizeof(tagmatch_key_t));
 	} else {
-		memcpy(local_tips, other.local_tips, size*sizeof(tree_interface_pair));
+		memcpy(local_keys, other.local_keys, size*sizeof(tagmatch_key_t));
 	}
 }
 
-void tip_array::add(tree_interface_pair tip) {
+void key_array::add(tagmatch_key_t key) {
     if (size < LOCAL_CAPACITY) {
-		local_tips[size++] = tip;
+		local_keys[size++] = key;
 		return;
 	}
 	if (size == LOCAL_CAPACITY) {
-		// allocate external tips for the first time
-		tree_interface_pair * new_tip_vector = new tree_interface_pair[INITIAL_EXTERNAL_CAPACITY];
-		memcpy(new_tip_vector, local_tips, sizeof(local_tips));
-		external_tips = new_tip_vector;
+		// allocate external keys for the first time
+		tagmatch_key_t * new_key_vector = new tagmatch_key_t[INITIAL_EXTERNAL_CAPACITY];
+		memcpy(new_key_vector, local_keys, sizeof(local_keys));
+		external_keys = new_key_vector;
     } else if (is_power_of_two(size)) {
 		// size is a power of two, which means that we reached the
 		// maximum capacity of the current allocated buffer, so we
@@ -54,10 +53,10 @@ void tip_array::add(tree_interface_pair tip) {
 		//
 		if (size > UINT32_MAX/2)
 			return;
-		tree_interface_pair * new_tip_vector = new tree_interface_pair[size*2];
-		memcpy(new_tip_vector, external_tips, size*sizeof(tree_interface_pair));
-		delete[](external_tips);
-		external_tips = new_tip_vector;
+		tagmatch_key_t * new_key_vector = new tagmatch_key_t[size*2];
+		memcpy(new_key_vector, external_keys, size*sizeof(tagmatch_key_t));
+		delete[](external_keys);
+		external_keys = new_key_vector;
     }
-    external_tips[size++] = tip;
+    external_keys[size++] = key;
 }

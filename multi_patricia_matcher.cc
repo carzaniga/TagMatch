@@ -14,7 +14,7 @@
 #include "filter.hh"
 #include "routing.hh"
 #include "multi_patricia_predicate.hh"
-#include "tip_array.hh"
+#include "key_array.hh"
 #include "fib.hh"
 #include "packet.hh"
 
@@ -34,7 +34,7 @@ using std::chrono::duration_cast;
 #define INTERFACES 256U
 #endif
 
-typedef multi_patricia_predicate<tip_array> predicate;
+typedef multi_patricia_predicate<key_array> predicate;
 predicate P;
 
 static int read_filters(string fname, bool binary_format) {
@@ -48,10 +48,10 @@ static int read_filters(string fname, bool binary_format) {
 	fib_entry f;
 
 	while((binary_format) ? f.read_binary(is) : f.read_ascii(is)) {
-		tip_array & tips = P.add(f.filter);
-		for(const tree_interface_pair * p = f.ti_pairs.data();
-			p != f.ti_pairs.data() + f.ti_pairs.size(); ++p)
-			tips.add(*p);
+		key_array & keys = P.add(f.filter);
+		for(const tagmatch_key_t * p = f.keys.data();
+			p != f.keys.data() + f.keys.size(); ++p)
+			keys.add(*p);
 		++res;
 	}
 
@@ -70,12 +70,12 @@ static unsigned int read_queries(vector<network_packet> & packets, string fname,
 	network_packet p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter, p.ti_pair);
+			packets.emplace_back(p.filter);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter, p.ti_pair);
+			packets.emplace_back(p.filter);
 			++res;
 		}
 	}
@@ -157,27 +157,22 @@ class match_vector : public predicate::match_handler {
 public:
 	match_vector(): output{0} {};
 
-	void set_tip(const tree_interface_pair & p) {
-		tip = p;
-	}
-
-	virtual bool match(tip_array & tips) {
-		for (const tree_interface_pair * p = tips.begin(); p != tips.end(); ++p)
-			if (tip_tree(*p) == tip_tree(tip) && tip_interface(*p) != tip_interface(tip))
-				output[tip_interface(*p)] = 1;
+	virtual bool match(key_array & keys) {
+		for (const tagmatch_key_t * k = keys.begin(); k != keys.end(); ++k)
+			output.push_back(*k);
 		return false;
 	}
 
-	void print_results() const {
-		for(unsigned int i = 0; i < INTERFACES; ++i)
-			if (output[i] != 0) 
-				cout << ' ' << i;
+	void print_results() {
+		std::sort(output.begin(), output.end());
+		output.erase(std::unique(output.begin(), output.end()), output.end());
+		for(tagmatch_key_t k : output)
+			cout << ' ' << k;
 		cout << endl;
     }
 
 private:
-	unsigned char output[INTERFACES];
-	tree_interface_pair tip;
+	vector<tagmatch_key_t> output;
 };
 
 int main(int argc, const char * argv[]) {
@@ -276,10 +271,6 @@ int main(int argc, const char * argv[]) {
 
 	vector<match_vector> match_results(packets.size());
 
-	unsigned int i = 0;
-	for(network_packet & p : packets) 
-		match_results[i++].set_tip(p.ti_pair);
-
 	if (print_progress_steps) {
 		cout << "Matching packets... " << std::flush;
 	}
@@ -309,7 +300,7 @@ int main(int argc, const char * argv[]) {
 	P.clear();
 
 	if (print_matching_results) 
-		for(const match_vector & m : match_results)
+		for(match_vector & m : match_results)
 			m.print_results();
 
 	return 0;

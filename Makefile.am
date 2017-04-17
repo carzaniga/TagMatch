@@ -43,8 +43,7 @@ libtagmatch_la_SOURCES = fib.cc packet.cc \
 libtagmatch_la_LDFLAGS = -lcudart
 
 bin_PROGRAMS = test_partitioning_client tagmatch \
-		test_matcher patricia_matcher multi_patricia_matcher \
-		compact_patricia_matcher compact_patricia_twitter_matcher \
+		test_matcher patricia_matcher multi_patricia_matcher compact_patricia_matcher \
 		analyze_workload convert_workload \
 		sample_workload split_workload \
 		gen gen2
@@ -70,28 +69,22 @@ split_workload_SOURCES = split_workload.cc
 split_workload_LDADD = libtagmatch.la
 
 test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh fib.hh \
-			filter.hh routing.hh \
-			packet.cc fib.cc
+			filter.hh routing.hh
+test_matcher_LDADD = libtagmatch.la
 
 patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
-			patricia_predicate.hh tip_array.hh \
-			tip_array.cc fib.cc packet.cc \
-			patricia_matcher.cc
+			patricia_predicate.hh patricia_matcher.cc key_array.hh key_array.cc
+patricia_matcher_LDADD = libtagmatch.la
 
 compact_patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
-			compact_patricia_predicate.hh tip_array.hh \
-			tip_array.cc fib.cc packet.cc \
-			compact_patricia_matcher.cc
-
-compact_patricia_twitter_matcher_SOURCES = filter.hh bitvector.hh fib.hh packet.hh io_util.hh \
-			compact_patricia_predicate.hh twitter_fib.hh \
-			twitter_fib.cc packet.cc \
-			compact_patricia_twitter_matcher.cc
+			compact_patricia_predicate.hh key_array.hh \
+			key_array.cc compact_patricia_matcher.cc
+compact_patricia_matcher_LDADD = libtagmatch.la
 
 multi_patricia_matcher_SOURCES = filter.hh bitvector.hh routing.hh fib.hh packet.hh io_util.hh \
-				multi_patricia_predicate.hh tip_array.hh \
-			tip_array.cc fib.cc packet.cc \
-			multi_patricia_matcher.cc
+			multi_patricia_predicate.hh key_array.hh \
+			key_array.cc multi_patricia_matcher.cc
+multi_patricia_matcher_LDADD = libtagmatch.la
 
 gen_SOURCES = gen.cc params.h
 

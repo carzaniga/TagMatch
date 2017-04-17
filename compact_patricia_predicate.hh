@@ -88,7 +88,7 @@ public:
 		// So, if this function returns TRUE, match() will terminate
 		// immediately.
 		//
-		virtual bool match(T &) = 0;
+		virtual bool match(const T &) = 0;
 	};
 
 	// Finds all subsets of x in the map, for each matching set S_i,

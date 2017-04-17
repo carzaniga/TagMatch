@@ -40,7 +40,7 @@ class general_matcher : public predicate::match_handler {
 public:
 	general_matcher(set<int> & s): result(s) {};
 
-	virtual bool match(int & i) {
+	virtual bool match(const int & i) {
 		result.insert(i);
 		return false;
 	}
@@ -53,7 +53,7 @@ class finder_matcher : public predicate::match_handler {
 public:
 	finder_matcher(int t): target(t), found(false) {};
 
-	virtual bool match(int & i) {
+	virtual bool match(const int & i) {
 		if (i == target)
 			found = true;
 		return found;

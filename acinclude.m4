@@ -346,6 +346,25 @@ AC_ARG_WITH(built-in-cas,
 ])
 
 dnl
+dnl AC_OPT_POPCOUNT_LIMITS
+dnl
+AC_DEFUN([AC_OPT_POPCOUNT_LIMITS], [
+AC_ARG_ENABLE(popcount-limits,
+   AC_HELP_STRING([--enable-popcount-limits],
+      [Enable heuristcs based on popcount limits in subset search in compact PATRICIA trie. Values are "yes" or "no" (default=no)]), [
+      case "$enableval" in
+         yes )
+	    AC_DEFINE([WITH_POPCOUNT_LIMITS], 1, [Use popcount limits in subset search in compact PATRICIA trie])
+	    ;;
+	 * )
+ 	    AC_MSG_RESULT([not using popcount limits in PATRICIA trie.])
+	    ;;
+      esac
+  ])
+])
+
+
+dnl
 dnl AC_WITH_THREAD_COUNT
 dnl
 AC_DEFUN([AC_WITH_THREAD_COUNT], [
