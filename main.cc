@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 
+#include "matcher.hh"
 #include "predicate.hh"
 #include "timing.hh"
 

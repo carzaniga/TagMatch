@@ -9,7 +9,6 @@
 #define NODE_USES_MALLOC
 #endif
 
-
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
@@ -18,7 +17,6 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
-
 
 #ifdef NODE_USES_MALLOC
 #include <new>
@@ -33,13 +31,15 @@ typedef bv192 filter_t;
 typedef bv<192> filter_t;
 #endif
 
+class filter_handler;
+class filter_const_handler;
+class match_handler;
 
 /** interface identifier */ 
 typedef uint16_t interface_t;
 
 /** tree identifier */ 
 typedef uint16_t tree_t;
-
 
 /** tree--interface pair */ 
 class tree_interface_pair {
@@ -80,13 +80,9 @@ public:
 // processing functions that operate on the marching or subset or
 // superset filters.  Those are instead delegated to some "handler"
 // functions defined in the three interface classes filter_handler,
-// filter_const_handler, and match_handler.
+// filter_const_handler, and match_handler (defined in matcher.hh).
 // 
-class filter_handler;
-class filter_const_handler;
-class match_handler;
 class p_params;
-
 class tree_matcher;
 class tree_ifx_matcher;
 
@@ -120,8 +116,6 @@ public:
         return (c==0);
     }
 };
-
-
 
 class predicate {      
 public:
@@ -323,7 +317,7 @@ public:
 		// ONLY for the root node of the PATRICIA trie.
 		//
 		node() 
-			: key(), left(this), right(this), pos(filter_t::NULL_POSITION), 
+			: key(), left(this), right(this), pos(filter_t::WIDTH), 
 			  pairs_count(0) {}
 
 		// creates a new node connected to another (child) node
@@ -492,6 +486,5 @@ public:
 	// 
 	virtual bool match(const filter_t & filter, tree_t tree, interface_t ifx) = 0;
 };
-
 
 #endif

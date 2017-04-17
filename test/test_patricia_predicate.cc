@@ -1,0 +1,325 @@
+// -*- C++ -*-
+//
+//  This file is part of Siena, a wide-area event notification system.
+//  See http://www.inf.usi.ch/carzaniga/siena/
+//
+//  Authors: Antonio Carzaniga
+//  See the file AUTHORS for full details. 
+//
+//  Copyright (C) 2013 Antonio Carzaniga
+//
+//  Siena is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//  
+//  Siena is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//  
+//  You should have received a copy of the GNU General Public License
+//  along with Siena.  If not, see <http://www.gnu.org/licenses/>.
+//
+#include <iostream>
+#include <set>
+
+#include "patricia_predicate.hh"
+
+#ifndef INTERFACES
+#define INTERFACES 256U
+#endif
+
+using std::set;
+using std::cout;
+using std::endl;
+
+typedef patricia_predicate<int> predicate;
+
+class general_matcher : public predicate::match_handler {
+public:
+	general_matcher(set<int> & s): result(s) {};
+
+	virtual bool match(int & i) {
+		result.insert(i);
+		return false;
+	}
+
+private:
+	set<int> & result;
+};
+
+class finder_matcher : public predicate::match_handler {
+public:
+	finder_matcher(int t): target(t), found(false) {};
+
+	virtual bool match(int & i) {
+		if (i == target)
+			found = true;
+		return found;
+	}
+
+	bool result() const {
+		return found;
+    }
+
+private:
+	int target;
+	bool found;
+};
+
+bool find_filter (predicate & P, const filter_t & f, int i) {
+	finder_matcher finder(i);
+	P.find_all_subsets(f, finder);
+	return finder.result();
+}
+
+const set<int> & matching_results(predicate & P, const filter_t & f) {
+	static set<int> result;
+	result.clear();
+	general_matcher matcher(result);
+	P.find_all_subsets(f, matcher);
+	return result;
+}
+
+static const filter_t ALL_ONES("111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111");
+static const filter_t ALL_ZEROS("000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+
+static const filter_t F[] = { 
+	filter_t("000000000000100000001000000000000001000000010001000000000000000000000000000000000000000000000000001000000000000000000000001000000000000000000010000000000001000000000000010000000000001010010001"),
+	filter_t("000000000000010000000100000000000000100000001000100000000000000000000000000000000000000000000000000100000000000000000000000100000000000000000001000000000000100000000000001000000000000101001000"),
+	filter_t("000000000000010000000000000000000000100000000000100000000010000000000010010000000000000100010000000000000000100000000000000000000000000000100000000100000010000101000000000110000010000100000010"),
+	filter_t("000000000001000000000001000100000000001000000010000000000000000001000000000000000100000000000000000000000000000010100000010000000011000000010000000010000000000000000010000000001000000000101000"),
+	filter_t("000010000100100000000000001000000100000000000000000000000000000000000000000101000000000000010000000000000000000000000000001000000100000000101000000000000010000000000000010000000000000000000000"),
+	filter_t("000110000010000100100000000000000000000000010000000000001001000000100000000000000000100010000000000000000000000000000000000000101000000000000011000000001000000000000100000000000001001000000010"),
+	filter_t("011000000010000000000000000000000001000000000000000000000000000000000001000010000000000000001000000000000010000000000010000000000000010000000100000000100000000000000000000000000000101000000000"),
+	filter_t("000010000000010000000000000010010000000000000001000100000000000000000000000000010000000000000000100000000000000000000000000000000000000000001000000000000000000000000000000000000000111000000000"),
+	filter_t("000000000000000000000000000000001100000000000000000100000000000000010000000010001000000000000000000000001000000000000000010000000001100000000000000000000000000000000000000000000100000100100001"),
+	filter_t("100000100000000000000010000000000000000000000000000000000010000010000000011010010000000101000000000000000000000000000000001001000000010100000000000000000000000000000000001010001100000000000000"),
+	filter_t("000000000000000100000000100000010000000010000000000010100000000000000000100000000000000000010011000101000000000100000000000001000000000001000000010100100000000100000000000000011000000000000000"),
+};
+
+static const filter_t Q[] = {
+	filter_t("000000000000010000000100000000000000100000001000100000000000000000000000000000000000000000000000000100000000000000000000000100000000000000000001000000000000100000000000000000000000000101001000"),
+	filter_t("100000100000010001000010000000000000100000000000100011000010000010000010011010010000000101010000000000000001100000000000001001000000010100100000000100000010000111000000000111000110000100000010"),
+	filter_t("000000000000010000000000000000000000100000000000100000000010000000000010010000000000000100010000000000000000100000000000000000000000000000100000000100000010000101000000000110000010000100000010"),
+	filter_t("000000000001000000000001000100000000001000000010000000000000000001000000000000000100000000000000000000000000000010100000010000000011000000010000000010000000000000000010000000001000000000101000"),
+	filter_t("100010100111110101100010000000000000100000011111010001111101000001100001001101001000100010101000000000000000110000000000001100100100001010111000000001000011100001110000111000001110000100000010"),
+	filter_t("000010000100100000000000001000000100000000000000000000000000000000000000000101000000000000010000000000000000000000000000001000000100000000101000000000000010000000000000010000000000000000000000"),
+	filter_t("000110000010000100100000000000000000000000010000000000001001000000100000000000000000100010000000000000000000000000000000000000101000000000000011000000001000000000000100000000000001001000000010"),
+	filter_t("011000000010000000000000000000000001000000000000000000000000000000000001000010000000000000001000000000000010000000000010000000000000010000000100000000100000000000000000000000000000101000000000"),
+	filter_t("000010000000010000000000000010010000000000000001000100000000000000000000000000010000000000000000100000000000000000000000000000000000000000001000000000000000000000000000000000000000111000000000"),
+	filter_t("000000000000000000000000000000001100000000000000000100000000000000010000000010001000000000000000000000001000000000000000010000000001100000000000000000000000000000000000000000000100000100100001"),
+	filter_t("000000100000000000000010001010011100000000000001000100000010000010010011001110011000000101000011100000001111000000000000011001000001110100001100000000000000000000000000001010001100111100110001"),
+	filter_t("000000000000000100000000100000010000000010000000000010100000000000000000100000000000000000010011000101000000000100000000000001000000000001000000010100100000000100000000000000011000000000000000"),
+	filter_t("111111111111111111111111111111111111111011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"),
+};
+
+#define BOOST_TEST_MODULE patricia_predicate
+#define BOOST_TEST_DYN_LINK 1
+
+#include <boost/test/unit_test.hpp>
+
+BOOST_AUTO_TEST_SUITE( basics )
+
+BOOST_AUTO_TEST_CASE( find_in_empty_predicate ) {
+	predicate P;
+	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 0));
+	BOOST_CHECK(!find_filter(P, ALL_ONES, 0));
+}
+
+BOOST_AUTO_TEST_CASE( find_one_filter ) {
+	predicate P;
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	P.add(F[1]) = 1;
+	BOOST_CHECK(find_filter(P, F[1], 1));
+	BOOST_CHECK(!find_filter(P, F[2], 1));
+	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 1));
+	BOOST_CHECK(find_filter(P, ALL_ONES, 1));
+}
+
+BOOST_AUTO_TEST_CASE( clear ) {
+	predicate P;
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	P.add(F[1]) = 1;
+	BOOST_CHECK(find_filter(P, F[1], 1));
+	P.clear();
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+}
+
+BOOST_AUTO_TEST_CASE( same_filter_same_value_object ) {
+	predicate P;
+	BOOST_CHECK(&P.add(F[1]) == &P.add(F[1]));
+	BOOST_CHECK(&P.add(F[2]) != &P.add(F[1]));
+}
+
+BOOST_AUTO_TEST_CASE( add_same_filter ) {
+	predicate P;
+	BOOST_CHECK(matching_results(P, F[1]).empty());
+	P.add(F[1]) = 2;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 2 }));
+	P.add(F[1]) = 3;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 3 }));
+	P.add(F[1]) = 4;
+	BOOST_CHECK(matching_results(P, F[1]) == set<int>({ 4 }));
+}
+
+BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
+	predicate P;
+	P.add(F[1]) = 1;
+	P.add(F[1]) = 2;
+	P.add(F[2]) = 3;
+	P.add(F[3]) = 4;
+
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+	BOOST_CHECK(find_filter(P, F[1], 2));
+	BOOST_CHECK(!find_filter(P, F[2], 1));
+	BOOST_CHECK(!find_filter(P, F[3], 1));
+	BOOST_CHECK(find_filter(P, F[2], 3));
+	BOOST_CHECK(find_filter(P, F[3], 4));
+}
+
+BOOST_AUTO_TEST_CASE( add_and_clear ) {
+	predicate P;
+
+	BOOST_CHECK(!find_filter(P, F[1], 1));
+
+	P.add(F[1]) = 3;
+
+	BOOST_CHECK(find_filter(P, F[1], 3));
+
+	P.clear();
+
+	BOOST_CHECK(!find_filter(P, F[1], 3));
+}
+
+BOOST_AUTO_TEST_CASE( add_many_and_find ) {
+	predicate P;
+
+	P.add(F[1]) = 1;
+	P.add(F[2]) = 2;
+	P.add(F[3]) = 3;
+	P.add(F[4]) = 4;
+	P.add(F[5]) = 5;
+	P.add(F[6]) = 6;
+	P.add(F[7]) = 7;
+	P.add(F[8]) = 8;
+	P.add(F[9]) = 9;
+	P.add(F[10]) = 10;
+
+	BOOST_CHECK(find_filter(P, F[1], 1));
+	BOOST_CHECK(find_filter(P, F[2], 2));
+	BOOST_CHECK(find_filter(P, F[3], 3));
+	BOOST_CHECK(find_filter(P, F[4], 4));
+	BOOST_CHECK(find_filter(P, F[5], 5));
+	BOOST_CHECK(find_filter(P, F[6], 6));
+	BOOST_CHECK(find_filter(P, F[7], 7));
+	BOOST_CHECK(find_filter(P, F[8], 8));
+	BOOST_CHECK(find_filter(P, F[9], 9));
+	BOOST_CHECK(find_filter(P, F[10], 10));
+}
+
+BOOST_AUTO_TEST_CASE( subsets ) {
+	predicate P;
+
+	static const int N = sizeof(F) / sizeof(const filter_t);
+
+	for(unsigned int i = 0; i < N; ++i)
+		P.add(F[i]) = i;
+
+	static const int M = sizeof(Q) / sizeof(const filter_t);
+
+	for(unsigned int i = 0; i < M; ++i) {
+		set<int> expected_results;
+		for (int j = 0; j < N; ++j)
+			if (F[j].subset_of(Q[i]))
+				expected_results.insert(j);
+
+		BOOST_CHECK(matching_results(P, Q[i]) == expected_results);
+	}
+}
+
+BOOST_AUTO_TEST_CASE( corner_case_filters ) {
+	predicate P;
+	filter_t f_first;
+	filter_t f_last;
+	f_first.clear();
+	f_first.set_bit(0);
+	f_last.clear();
+	f_last.set_bit(filter_t::WIDTH - 1);
+
+	P.add(f_first) = 1;
+	P.add(f_last) = 2;
+	BOOST_CHECK(matching_results(P, ALL_ONES) == set<int>({1, 2}));
+
+	filter_t has_first;
+	has_first.clear();
+	has_first.set_bit(0);
+	has_first.set_bit(10);
+	has_first.set_bit(100);
+	has_first.set_bit(filter_t::WIDTH - 2);
+
+	filter_t has_last;
+	has_last.clear();
+	has_last.set_bit(1);
+	has_last.set_bit(10);
+	has_last.set_bit(100);
+	has_last.set_bit(filter_t::WIDTH - 1);
+
+	filter_t has_none;
+	has_none.clear();
+	has_none.set_bit(1);
+	has_none.set_bit(10);
+	has_none.set_bit(100);
+	has_none.set_bit(filter_t::WIDTH - 2);
+
+	filter_t has_both;
+	has_both.clear();
+	has_both.set_bit(0);
+	has_both.set_bit(10);
+	has_both.set_bit(100);
+	has_both.set_bit(filter_t::WIDTH - 1);
+
+	BOOST_CHECK(matching_results(P, has_none) == set<int>({}));
+	BOOST_CHECK(matching_results(P, has_first) == set<int>({ 1 }));
+	BOOST_CHECK(matching_results(P, has_last) == set<int>({ 2 }));
+	BOOST_CHECK(matching_results(P, has_both) == set<int>({ 1, 2 }));
+}
+
+BOOST_AUTO_TEST_CASE( single_bit_filters ) {
+	predicate P;
+
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		filter_t f;
+		f.clear();
+		f.set_bit(i);
+		P.add(f) = i;
+	}
+
+	set<int> all_interfaces;
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		all_interfaces.insert(i);
+
+	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
+}
+
+BOOST_AUTO_TEST_CASE( deepest_trie ) {
+	predicate P;
+
+	filter_t f;			// all-zero
+	f.clear();
+
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		f.set_bit(i);
+		P.add(f) = i;
+	}
+
+	set<int> all_interfaces;
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		all_interfaces.insert(i);
+
+	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+

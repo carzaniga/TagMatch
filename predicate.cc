@@ -89,7 +89,7 @@ void predicate::node::remove_last_pair() {
 }
 
 void predicate::destroy() {
-    for(int i = 0; i < filter_t::WIDTH; ++i){
+    for(filter_t::pos_t i = 0; i < filter_t::WIDTH; ++i){
         for(int j = 0; i < roots[i].size; ++j){
             node r = roots[i].tries[j];
             if (r.pos <= r.left->pos)
@@ -308,9 +308,7 @@ void predicate::count_subsets_by_ifx(const filter_t & x, tree_t t, match_handler
 }
 
 void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
-
-    return;
- /*   tree_matcher matcher(t,h);
+    tree_matcher matcher(t,h);
     //first we look if the filter exist, because the filter is a subset of itself
     //than we look at the subsets
 
@@ -330,7 +328,7 @@ void predicate::match(const filter_t & x, tree_t t, match_handler & h) const {
 									 this, x, std::ref(roots[j].tries[i]), std::ref(matcher)));
     }
     for(auto& t : ts)
-        t.join();*/
+        t.join();
 }
 
 void predicate::add_set_of_filters(std::map<filter_t,std::vector<tree_interface_pair>> & x){
@@ -377,7 +375,7 @@ predicate::node * predicate::add(const filter_t & x, node & root) {
 
 	// now we insert the new node between prev and curr
 	++filter_count;
-	if (prev->pos < filter_t::NULL_POSITION && x[prev->pos]) {
+	if (prev->pos < filter_t::WIDTH && x[prev->pos]) {
 		return prev->right = new node(pos, x, curr);
 	} else {
 		return prev->left = new node(pos, x, curr);

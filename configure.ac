@@ -12,10 +12,8 @@ AC_LANG(C++)
 #
 LT_INIT
 #
-AX_CXX_COMPILE_STDCXX_11
-if test "$ax_cv_cxx_compile_cxx11_cxx" = yes; then
-  CXXFLAGS="-std=c++11 $CXXFLAGS"
-fi
+AX_CXX_COMPILE_STDCXX([11], , mandatory)
+
 AX_CHECK_COMPILE_FLAG([-Wall], [[
   CFLAGS="-Wall $CFLAGS"
   CXXFLAGS="-Wall $CXXFLAGS"
@@ -32,6 +30,7 @@ AC_OPT_PROFILING
 AC_OPT_TIMERS
 AC_OPT_FRONTEND_STATS
 AC_OPT_DISABLE_BACKEND
+AC_OPT_POPCOUNT_LIMITS
 #
 # Boost unit testing framework
 #

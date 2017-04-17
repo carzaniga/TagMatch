@@ -177,19 +177,19 @@ public:
 			b[i] = p.b[i];
     }
 
-    const block_t * begin() const {
+    const block_t * begin() const noexcept {
 		return b;
     }
 
-    const block_t * end() const {
+    const block_t * end() const noexcept {
 		return b + BLOCK_COUNT;
     }
 
-    const uint64_t * begin64() const {
+    const uint64_t * begin64() const noexcept {
 		return b;
     }
 
-    const uint64_t * end64() const {
+    const uint64_t * end64() const noexcept {
 		return b + BLOCK_COUNT;
     }
 
@@ -207,11 +207,6 @@ public:
 		return reinterpret_cast<const uint32_t *>(b) + (Size / 32);
 	}
 
-	uint32_t unsafe_uint32_value(unsigned int i) const {
-//		return reinterpret_cast<const uint32_t>(b + i);
-		return ((int32_t *)( b+i/2) )[i%2];
-	}
-
 	uint32_t uint32_value(unsigned int i) const {
 		return (i % 2 == 1) ? (b[i/2] >> 32) : (b[i/2] & 0xffffffffULL);
 	}
@@ -223,17 +218,17 @@ public:
 		}
 	}
 
-    void assign(const block_t * p) {
+    void assign(const block_t * p) noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = p[i];
     }
 
-    bitvector & operator = (const bitvector & p) {
+    bitvector & operator = (const bitvector & p) noexcept {
 		assign(p.b);
 		return *this;
     }
 
-	void clear() {
+	void clear() noexcept {
 		for(int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] = 0;
 	}
@@ -250,37 +245,41 @@ public:
 		return true;
 	}
 
-	void set_bit(unsigned int pos) {
+	void set_bit(unsigned int pos) noexcept {
 		b[pos/BLOCK_SIZE] |= (BLOCK_ONE << (pos % BLOCK_SIZE));
 	}
 
-	bool operator[](unsigned int pos) const {
+	bool operator [] (unsigned int pos) const noexcept {
 		return (b[pos/BLOCK_SIZE] & (BLOCK_ONE << (pos % BLOCK_SIZE)));
 	}
 
-	bitvector & operator |= (const bitvector & x) {
+	bitvector & operator |= (const bitvector & x) noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] |= x.b[i];
 		return *this;
 	}
 
-	bitvector & operator &= (const bitvector & x) {
+	bitvector & operator &= (const bitvector & x) noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] &= x.b[i];
 		return *this;
 	}
 
-	bitvector & operator ^= (const bitvector & x) {
+	bitvector & operator ^= (const bitvector & x) noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			b[i] ^= x.b[i];
 		return *this;
 	}
 
-    bool operator == (const bitvector & x) const {
+    bool operator == (const bitvector & x) const noexcept {
 		return memcmp(b, x.b, sizeof(b)) == 0;
 	}
 
-    bool subset_of(const block_t * p) const {
+    bool operator != (const bitvector & x) const noexcept {
+		return memcmp(b, x.b, sizeof(b)) != 0;
+	}
+
+    bool subset_of(const block_t * p) const noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			if ((b[i] & ~p[i]) != 0)
 				return false;
@@ -288,7 +287,7 @@ public:
 		return true;
     }
 
-    bool subset_of(const bitvector & x) const {
+    bool subset_of(const bitvector & x) const noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i)
 			if ((b[i] & ~x.b[i]) != 0)
 				return false;
@@ -296,7 +295,98 @@ public:
 		return true;
     }
 
-    bool operator < (const bitvector & x) const {
+	bool range_subset_of(const bitvector & x,
+						 const unsigned int left,
+						 const unsigned int right) const noexcept {
+		//
+		// Check that *this is a subset of x only in the range of
+		// positions from left up to right - 1, as illustrated below:
+		//
+		//      range checked     rest of the bits are ignored
+		// |######----------#####################################|
+		//  ^0    ^left     ^right                           191^
+		// 
+		assert(left < right);
+		unsigned int i = left / BLOCK_SIZE;
+		block_t mask = ~(0x0);
+		mask <<= (left % BLOCK_SIZE);
+		if (i == right / BLOCK_SIZE) {
+			return !((b[i] & ~x.b[i] & mask) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+		} else if (b[i] & ~x.b[i] & mask)
+			return false;
+
+		for (++i; i < right/BLOCK_SIZE; ++i)
+			if ((b[i] & ~x.b[i]) != 0)
+				return false;
+
+		if (right % BLOCK_SIZE)
+			return !((b[i] & ~x.b[i]) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+		return true;
+	}
+
+	bool prefix_subset_of(const bitvector & x, const unsigned int right) const noexcept {
+		//
+		// Check that *this is a subset of x only in the prefix up to
+		// position right - 1 as illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0              ^right                           191^
+		// 
+		assert(right <= WIDTH);
+
+		unsigned int i;
+		for (i = 0; i < right/BLOCK_SIZE; ++i)
+			if ((b[i] & ~x.b[i]) != 0)
+				return false;
+
+		if (right % BLOCK_SIZE)
+			return !((b[i] & ~x.b[i]) << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+		return true;
+	}
+
+	bool suffix_subset_of(const bitvector & x, const unsigned int left) const noexcept {
+		//
+		// Check that *this is a subset of x only in the suffix starting at
+		// position left, as illustrated below:
+		//
+		//   ignored prefix           checked suffix
+		// |################-------------------------------------|
+		//  ^0              ^left                            191^
+		//
+		assert(left < WIDTH);
+		unsigned int i = left/BLOCK_SIZE;
+
+		if (((b[i] & ~x.b[i]) >> (left % BLOCK_SIZE)) != 0)
+			return false;
+
+		while (++i < BLOCK_COUNT)
+			if ((b[i] & ~x.b[i]) != 0)
+				return false;
+
+		return true;
+	}
+	
+	bool prefix_equal(const bitvector & x, const unsigned int right) const noexcept {
+		//
+		// Check that *this and x share the same prefix up to position
+		// right - 1, as illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0              ^right                           191^
+		// 
+		assert(right <= WIDTH);
+		for(unsigned int i = 0; i*BLOCK_SIZE < right; ++i) {
+			if (right <= i*BLOCK_SIZE + BLOCK_SIZE) {
+				return (((b[i] ^ x.b[i]) << (i*BLOCK_SIZE + BLOCK_SIZE - right)) == 0);
+			} else if (b[i] != x.b[i])
+				return false;
+		}
+		return true;
+	}
+	
+    bool operator < (const bitvector & x) const noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i) {
 			if (b[i] != x.b[i]) {
 				unsigned int pos = leftmost_bit(b[i] ^ x.b[i]);
@@ -306,16 +396,30 @@ public:
 		return false;
     }
 
+    bool operator > (const bitvector & x) const noexcept {
+		for (int i = 0; i < BLOCK_COUNT; ++i) {
+			if (b[i] != x.b[i]) {
+				unsigned int pos = leftmost_bit(b[i] ^ x.b[i]);
+				return ((BLOCK_ONE << pos) & b[i]);
+			}
+		}
+		return false;
+    }
+
 	/** returns the position of the leftmost bit that differs between
-	 * this bitvector and x.
+	 *  this bitvector and x, or WIDTH if *this == x.
 	 */
-    unsigned int leftmost_diff (const bitvector & x) const {
+    unsigned int leftmost_diff (const bitvector & x) const noexcept {
 		for (int i = 0; i < BLOCK_COUNT; ++i) {
 			if (b[i] != x.b[i]) 
 				return i*BLOCK_SIZE + leftmost_bit(b[i] ^ x.b[i]);
 		}
 		return WIDTH;
     }
+
+    static unsigned int leftmost_diff (const bitvector & x, const bitvector & y) noexcept {
+		return x.leftmost_bit(y);
+	}
 
 	/** iterate through the bits
 	 * 
@@ -333,7 +437,7 @@ public:
 	 *      std::cout << ' ' << i;
 	 *  std::cout << std::endl;
 	 */
-	unsigned int next_bit(unsigned int pos) const {
+	unsigned int next_bit(unsigned int pos) const noexcept {
 		unsigned int i = pos / BLOCK_SIZE; 
 		if (i < BLOCK_COUNT) {
 			block_t B = b[i];
@@ -351,11 +455,52 @@ public:
 		return Size;
 	}
 
-	unsigned int popcount() const {
+	unsigned int popcount() const noexcept {
 		unsigned int result = 0;
 		for (int i = 0; i < BLOCK_COUNT; ++i) 
 			result += block_popcount(b[i]);
 		return result;
+	}
+
+	unsigned int prefix_popcount(const unsigned int right) const noexcept {
+		//
+		// Computes the popcount up to position right - 1, as
+		// illustrated below:
+		//
+		//   prefix checked      rest of the bits are ignored
+		// |----------------#####################################|
+		//  ^0              ^right                           191^
+		//
+		unsigned int result = 0;
+		unsigned int i;
+		for(i = 0; i < right/BLOCK_SIZE; ++i)
+			result += block_popcount(b[i]);
+
+		if (right % BLOCK_SIZE)
+			result += block_popcount(b[i] << (BLOCK_SIZE - (right % BLOCK_SIZE)));
+
+		return result;
+	}
+
+	unsigned int suffix_popcount(const unsigned int left) const noexcept {
+		//
+		// Compute the popcunt starting at position left, as
+		// illustrated below:
+		//
+		//   ignored prefix           checked suffix
+		// |################-------------------------------------|
+		//  ^0              ^left                            191^
+		//
+		if (left < WIDTH) {
+			unsigned int i = left/BLOCK_SIZE;
+			unsigned int result = block_popcount(b[i] >> (left % BLOCK_SIZE));
+
+			while (++i < BLOCK_COUNT)
+				result += block_popcount(b[i]);
+
+			return result;
+		} else
+			return 0;
 	}
 
 	std::ostream & write_binary(std::ostream & output) const {
