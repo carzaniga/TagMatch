@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "parameters.hh"
-#include "match_handler.hh"
 
 #define GPU_MSG_BLOCKS 6
 #define GPU_STREAMS 10

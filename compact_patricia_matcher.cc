@@ -12,7 +12,6 @@
 #include <cstdlib>
 
 #include "filter.hh"
-#include "routing.hh"
 #include "key_array.hh"
 #include "compact_patricia_predicate.hh"
 #include "fib.hh"
@@ -29,10 +28,6 @@ using std::endl;
 using std::chrono::high_resolution_clock;
 using std::chrono::nanoseconds;
 using std::chrono::duration_cast;
-
-#ifndef INTERFACES
-#define INTERFACES 256U
-#endif
 
 typedef compact_patricia_predicate<key_array> predicate;
 

@@ -17,7 +17,6 @@
 #include "tagmatch.hh"
 #include "packet.hh"
 #include "fib.hh"
-#include "match_handler.hh"
 
 using std::vector;
 using std::ifstream;

@@ -9,7 +9,7 @@
 #include <fstream>
 #include <set>
 
-#include "predicate.hh"
+#include "filter.hh"
 
 const unsigned int M = filter_t::WIDTH;
 

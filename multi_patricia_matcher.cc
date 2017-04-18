@@ -12,7 +12,6 @@
 #include <cstdlib>
 
 #include "filter.hh"
-#include "routing.hh"
 #include "multi_patricia_predicate.hh"
 #include "key_array.hh"
 #include "fib.hh"

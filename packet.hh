@@ -16,7 +16,6 @@
 #include <mutex>
 
 #include "tagmatch.hh"
-#include "match_handler.hh"
 #include "io_util.hh"
 
 // We process a stream of queries.  Each query comes into the system

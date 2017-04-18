@@ -5,17 +5,21 @@
 #include <mutex>
 #include <condition_variable>
 
-#include "bitvector.hh"
-
-typedef bitvector<192> filter_t;
+#include "filter.hh"
 
 typedef uint32_t tagmatch_key_t;
 
 class packet;
-class match_handler;
-class synchronous_match_handler;;
 
-#include "match_handler.hh"
+// Handler for asynchronous match operations
+//
+// This is an abstract class.  An application must define the callback
+// method match_done()
+//
+class match_handler {
+public:
+	virtual void match_done(packet * p) = 0;
+};
 
 class tagmatch {
 public:

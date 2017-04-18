@@ -184,11 +184,9 @@ void tagmatch::clear() {
 void tagmatch::match(packet * p, match_handler * h) noexcept {
 	p->configure_match(false, h);
 	front_end::match(p);
-	h->match_hold();
 }
 
 void tagmatch::match_unique(packet * p, match_handler * h) noexcept {
 	p->configure_match(true, h);
 	front_end::match(p);
-	h->match_hold();
 }
