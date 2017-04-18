@@ -11,20 +11,19 @@
 #include "tagmatch.hh"
 
 //
-// key_array implements a compact, dynamic array of
-// tagmatch_key_t values.  At this point it only support growing
-// arrays, so only addition, but it could be easily extended to
-// support removal.
+// key_array implements a compact, dynamic array of tagmatch_key_t values.  At
+// this point it only support growing arrays, so only addition, but it
+// could be easily extended to support removal.
 //
-// DESIGN: store up to LOCAL_CAPACITY tagmatch_key_t objects
-// locally, and when more are needed, move them to an external,
-// dynamically allocated array.
+// DESIGN: store up to LOCAL_CAPACITY tagmatch_key_t objects locally, and when
+// more are needed, move them to an external, dynamically allocated
+// array.
 //
 class key_array {
 private:
 	// LOCAL_CAPACITY should be at least the maximal value that yields
 	// the minimal sizeof(key_array).  On a 64-bit system, that is
-	// typically 4, assuming tagmatch_key_t are 16-bit values.
+	// typically 2, assuming tagmatch_key_t are 32-bit values.
 	//
 	static const unsigned int LOCAL_CAPACITY = 4;
 

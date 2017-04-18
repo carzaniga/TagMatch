@@ -15,7 +15,7 @@
 #include "key_array.hh"
 #include "compact_patricia_predicate.hh"
 #include "fib.hh"
-#include "packet.hh"
+#include "query.hh"
 
 using std::vector;
 using std::ifstream;
@@ -60,7 +60,7 @@ static int read_filters(string fname, bool binary_format, unsigned int pre_sorte
 	return res;
 }
 
-static unsigned int read_queries(vector<network_packet> & packets, string fname, bool binary_format) {
+static unsigned int read_queries(vector<basic_query> & queries, string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -68,15 +68,15 @@ static unsigned int read_queries(vector<network_packet> & packets, string fname,
 		return -1;
 
 	int res = 0;
-	network_packet p;
+	basic_query p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter);
+			queries.emplace_back(p.filter);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter);
+			queries.emplace_back(p.filter);
 			++res;
 		}
 	}
@@ -263,18 +263,18 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 	
-	vector<network_packet> packets;
+	vector<basic_query> queries;
 	
 	if (print_progress_steps)
-		cout << "Reading packets..." << std::flush;
-	if ((res = read_queries(packets, queries_fname, queries_binary_format)) < 0) {
+		cout << "Reading queries..." << std::flush;
+	if ((res = read_queries(queries, queries_fname, queries_binary_format)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
 	if (print_progress_steps) 
-		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
+		cout << "\t\t\t" << std::setw(12) << res << " queries." << endl;
 	if (res == 0) {
-		cerr << "No packets to process.  Bailing out." << endl;
+		cerr << "No queries to process.  Bailing out." << endl;
 
 		P.clear();
 		return 0;
@@ -289,29 +289,29 @@ int main(int argc, const char * argv[]) {
 		cout << endl;
 
 	if (print_progress_steps) 
-		cout << "Matching packets... " << std::flush;
+		cout << "Matching queries... " << std::flush;
 	
 	high_resolution_clock::time_point start;
 
 	high_resolution_clock::time_point stop;
 
 	if (print_matching_results) {
-		vector<match_vector> match_results(packets.size(), 0);
+		vector<match_vector> match_results(queries.size(), 0);
 
 		start = high_resolution_clock::now();
 
 		if (use_identity_permutation) {
 			unsigned int i = 0;
-			for(network_packet & p : packets) 
+			for(basic_query & p : queries)
 				P.find_all_subsets(p.filter, match_results[i++]);
 		} else {
 			unsigned int i = 0;
-			for(network_packet & p : packets)
+			for(basic_query & p : queries)
 				P.find_all_subsets(apply_permutation(p.filter), match_results[i++]);
 		}
 		stop = high_resolution_clock::now();
 
-		if (print_matching_results) 
+		if (print_matching_results)
 			for(const match_vector & m : match_results)
 				m.print_results();
 	} else {
@@ -319,20 +319,20 @@ int main(int argc, const char * argv[]) {
 		start = high_resolution_clock::now();
 
 		if (use_identity_permutation) {
-			for(network_packet & p : packets) 
+			for(basic_query & p : queries)
 				P.find_all_subsets(p.filter, handler);
 		} else {
-			for(network_packet & p : packets)
+			for(basic_query & p : queries)
 				P.find_all_subsets(apply_permutation(p.filter), handler);
 		}
 		stop = high_resolution_clock::now();
 	}
 	if (print_progress_steps) {
 		cout << "\t\t\t" << std::setw(10)
-			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
+			 << duration_cast<nanoseconds>(stop - start).count()/queries.size()
 			 << "ns average matching time." << endl;
 	} else if (print_matching_time_only) {
-		cout << duration_cast<nanoseconds>(stop - start).count()/packets.size() << endl;
+		cout << duration_cast<nanoseconds>(stop - start).count()/queries.size() << endl;
 	}
 
 	P.clear();

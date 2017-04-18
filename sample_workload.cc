@@ -8,6 +8,7 @@
 #include <random>
 
 #include "fib.hh"
+#include "query.hh"
 
 //
 // DOCUMENTATION for the sample_worload program:
@@ -19,7 +20,7 @@
 // More specifically, sample K filters from the first N input filters.
 // So, this program can also be use simply to extract the first m
 // filters by setting both N=m and K=m.
-// 
+//
 class sampler {
 private:
     std::default_random_engine generator;
@@ -32,7 +33,7 @@ public:
 		: generator(seed), n(n_), k(k_) {};
 
 	bool sample() {
-		if (k == 0) 
+		if (k == 0)
 			return false;
 
 		if (k < n) {
@@ -73,22 +74,22 @@ static int sample_filters(std::istream & input, std::ostream & output, const boo
 
 static int sample_packets(std::istream & input, std::ostream & output, const bool binary_format,
 						  sampler & s) {
-	network_packet p;
+	basic_query q;
 
 	if (binary_format) {
-		while(p.read_binary(input)) 
+		while(q.read_binary(input))
 			if (s.sample())
-				p.write_binary(output);
+				q.write_binary(output);
 	} else {
-		while(p.read_ascii(input)) 
+		while(q.read_ascii(input))
 			if (s.sample())
-				p.write_ascii(output);
+				q.write_ascii(output);
 	}
 	return 0;
 }
 
 static void print_usage(const char * progname) {
-	std::cout << "usage: " << progname 
+	std::cout << "usage: " << progname
 			  << " [in=<filename>] [out=<filename>] [-a] N=<total-read> K=<choices>"
 			  << std::endl
 			  << "options:" << std::endl
@@ -114,16 +115,16 @@ int main(int argc, const char * argv[]) {
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"in=",3)==0) {
 			input_fname = argv[i] + 3;
-		} else 
+		} else
 		if (strncmp(argv[i],"out=",4)==0) {
 			output_fname = argv[i] + 4;
 		} else
 		if (strcmp(argv[i],"-a")==0) {
 			binary_format = false;
-		} else 
+		} else
 		if (strcmp(argv[i],"-p")==0) {
 			sample_workload = sample_packets;
-		} else 
+		} else
 		if (sscanf(argv[i],"N=%lu", &N) > 0) {
 			continue;
 		} else

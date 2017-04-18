@@ -18,9 +18,10 @@
 #include <iostream>
 
 #include "parameters.hh"
-#include "packet.hh"
+#include "tagmatch_query.hh"
 #include "front_end.hh"
 #include "back_end.hh"
+#include "gpu.hh"
 
 using std::vector;
 using std::thread;
@@ -43,7 +44,7 @@ using std::ostream;
 // 
 // FIB: prefix -> queue
 // 
-// The queues are used to batch packets that match the corresponding
+// The queues are used to batch queries that match the corresponding
 // prefix.  When the queue is full, we ship the whole batch to
 // back-end.
 //
@@ -79,8 +80,8 @@ using std::ostream;
 //
 
 // We implement the partition queues using a floating batch of
-// packets.  The queues remain associated with their partition, but
-// the packet batches (buffers) are independent object that we
+// queries.  The queues remain associated with their partition, but
+// the query batches (buffers) are independent object that we
 // allocate and then recycle using a pool based on a free list that we
 // access using a lock-free algorithm.
 // 
@@ -95,11 +96,11 @@ private:
 public:
 	struct {
 		unsigned int bsize;
-		packet * packets[PACKETS_BATCH_SIZE];
+		tagmatch_query * queries[QUERIES_BATCH_SIZE];
 	};
 };
 
-// A free-list allocator of packet batches.
+// A free-list allocator of query batches.
 // 
 class batch_pool {
 private:
@@ -162,7 +163,7 @@ atomic<batch *> batch_pool::head(nullptr);
 
 // This class implements a central component of the front end, namely
 // the queue of messages associated with each partition and used to
-// buffer packets between the front end and the back end.
+// buffer queries between the front end and the back end.
 // 
 class partition_queue {
 	// primary information:
@@ -170,7 +171,7 @@ class partition_queue {
 	unsigned int partition_id;
 	atomic<unsigned int> tail; // one-past the last element
 	atomic<unsigned int> written; // number of elements actually written in the queue
-	batch * b;				   // packet buffer
+	batch * b;				   // query buffer
 
 	// statistics and timing information
 	// 
@@ -184,7 +185,7 @@ class partition_queue {
 	// We also maintain a (global) list of pending queues.  These are
 	// queues with at least one element, that therefore need to be
 	// flushed to the back-end.  We add each queue to the back of the
-	// list when we enqueue the first packet, and we remove the queue
+	// list when we enqueue the first query, and we remove the queue
 	// from the list whenever we flush the queue.  We use these two
 	// pointers, plus a static (global) "sentinel" to implement the
 	// list in the most efficient and simple way.
@@ -219,7 +220,7 @@ public:
 #endif
 	}
 
-	void enqueue(packet * p) noexcept;
+	void enqueue(tagmatch_query * p) noexcept;
 	void flush() noexcept;
 
 	// Flush the first pending queue.  Returns false when no pending
@@ -326,24 +327,24 @@ partition_queue * partition_queue::first_pending() {
 	return q;
 }
 
-void partition_queue::enqueue(packet * p) noexcept {
-	assert(tail <= PACKETS_BATCH_SIZE);
+void partition_queue::enqueue(tagmatch_query * p) noexcept {
+	assert(tail <= QUERIES_BATCH_SIZE);
 	p->add_partition(partition_id);
 	unsigned int t = tail.load(std::memory_order_acquire);
 	
 	do {
-		while (t == PACKETS_BATCH_SIZE)
+		while (t == QUERIES_BATCH_SIZE)
 			t = tail.load(std::memory_order_acquire);
 	} while(!tail.compare_exchange_weak(t, t + 1));
 
 #ifdef WITH_FRONTEND_STATISTICS
 	enqueue_count += 1;
 #endif
-	b->packets[t] = p;
+	b->queries[t] = p;
 	++written;
-	if (t + 1 == PACKETS_BATCH_SIZE) {
+	if (t + 1 == QUERIES_BATCH_SIZE) {
 		batch * bx = b;
-		while(written.load(std::memory_order_acquire) < PACKETS_BATCH_SIZE)
+		while(written.load(std::memory_order_acquire) < QUERIES_BATCH_SIZE)
 			; // we loop waiting until every thread that acquired some
 			  // (good) position in the queue, even earlier position
 			  // than this one, actually completes the writing in the
@@ -356,19 +357,19 @@ void partition_queue::enqueue(packet * p) noexcept {
 		remove_from_pending_pq_list();
 		written.store(0, std::memory_order_release);
 		tail.store(0, std::memory_order_release);
-		bx->bsize = PACKETS_BATCH_SIZE;
-		bx = (batch *)back_end::process_batch(partition_id, bx->packets, PACKETS_BATCH_SIZE, (void *)bx);
+		bx->bsize = QUERIES_BATCH_SIZE;
+		bx = (batch *)back_end::process_batch(partition_id, bx->queries, QUERIES_BATCH_SIZE, (void *)bx);
 		if (bx != NULL) {
 			for (unsigned int r = 0; r < bx->bsize; r++) {
-				packet * pkt = bx->packets[r];
-		  		pkt->partition_done();
-				if (pkt->is_matching_complete()) {
-					if (pkt->finalize_matching()) {
+				tagmatch_query * q = bx->queries[r];
+		  		q->partition_done();
+				if (q->is_matching_complete()) {
+					if (q->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-						macthes_pre_merge += pkt->getpre();
-						matches_post_merge += pkt->getpost();
+						macthes_pre_merge += q->getpre();
+						matches_post_merge += q->getpost();
 						mtx.lock();
-						matches.push_back(pkt->getpost());
+						matches.push_back(q->getpost());
 						mtx.unlock();
 #endif
 					}
@@ -387,12 +388,12 @@ void partition_queue::enqueue(packet * p) noexcept {
 void partition_queue::flush() noexcept {
 	unsigned int bx_size = tail.load(std::memory_order_acquire);
 	do {
-		while (bx_size == PACKETS_BATCH_SIZE)
+		while (bx_size == QUERIES_BATCH_SIZE)
 			bx_size = tail.load(std::memory_order_acquire);
 
 		if (bx_size == 0)
 			return;
-	} while(!tail.compare_exchange_weak(bx_size, PACKETS_BATCH_SIZE));
+	} while(!tail.compare_exchange_weak(bx_size, QUERIES_BATCH_SIZE));
 
 	batch * bx = b;
 	while(written.load(std::memory_order_acquire) < bx_size)
@@ -408,18 +409,18 @@ void partition_queue::flush() noexcept {
 	written.store(0, std::memory_order_release);
 	tail.store(0, std::memory_order_release);
 	bx->bsize = bx_size;
-	bx = (batch *)back_end::process_batch(partition_id, bx->packets, bx_size, (void *)bx);
+	bx = (batch *)back_end::process_batch(partition_id, bx->queries, bx_size, (void *)bx);
 	if (bx != NULL) {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
-		  	pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+			tagmatch_query * q = bx->queries[r];
+		  	q->partition_done();
+			if (q->is_matching_complete()) {
+				if (q->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += pkt->getpre();
-					matches_post_merge += pkt->getpost();
+					macthes_pre_merge += q->getpre();
+					matches_post_merge += q->getpost();
 					mtx.lock();
-					matches.push_back(pkt->getpost());
+					matches.push_back(q->getpost());
 					mtx.unlock();
 #endif
 				}
@@ -570,8 +571,8 @@ void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new
 
 // This is the main matching function
 // 
-static void match(packet * pkt) {
-	const block_t * b = pkt->filter.begin();
+static void match(tagmatch_query * qry) {
+	const block_t * b = qry->filter.begin();
 
 	if (*b) {
 		block_t curr_block = *b;
@@ -579,9 +580,9 @@ static void match(packet * pkt) {
 			int m = leftmost_bit(curr_block);
 			p1_container & c = pp1[m];
 
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
-				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q)
+				if (q->common_bits.subset_of(qry->filter))
+					q->enqueue(qry);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
@@ -592,9 +593,9 @@ static void match(packet * pkt) {
 			int m = leftmost_bit(curr_block);
 			p1_container & c = pp2[m];
 
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){ 
-				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){
+				if (q->common_bits.subset_of(qry->filter))
+					q->enqueue(qry);
 			}
 
 			curr_block ^= (BLOCK_ONE << m);
@@ -606,47 +607,45 @@ static void match(packet * pkt) {
 			int m = leftmost_bit(curr_block);
 			p1_container & c = pp3[m];
 
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q) 
-				if (q->common_bits.subset_of(pkt->filter)) 
-					q->enqueue(pkt);
+			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q)
+				if (q->common_bits.subset_of(qry->filter))
+					q->enqueue(qry);
 
 			curr_block ^= (BLOCK_ONE << m);
 		} while (curr_block != 0);
 	}
 
-	pkt->frontend_done();
-	// Now we need to check whether any packet has already been processed
+	qry->frontend_done();
+	// Now we need to check whether any query has already been processed
 	// and has already finished the match in the back_end
 	//
-	if (pkt->is_matching_complete()) {
-		if (pkt->finalize_matching()) {
+	if (qry->is_matching_complete()) {
+		if (qry->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-				macthes_pre_merge += pkt->getpre();
-				matches_post_merge += pkt->getpost();
-				mtx.lock();
-				matches.push_back(pkt->getpost());
-				mtx.unlock();
+				macthes_pre_merge += qry->getpre();
+				matches_post_merge += qry->getpost();
+				matches.push_back(qry->getpost());
 #endif
 		}
 	}
 }
 
 // FRONT-END EXECUTION THREADS
-// 
+//
 // The front-end matcher runs with a pool of threads.
 //
 // We maintain a queue of jobs for the front-end threads.  There are
 // two kinds of jobs.  When the front-end is in the MATCHING state,
 // then the threads execute matching jobs, suspending (spinning) if
-// the job queue is empty.  
-// 
+// the job queue is empty. 
+//
 // When the front end is in the FLUSHING state, then the threads
 // execute FLUSHING jobs, and then they terminate when the job queue is empty.
-// 
+//
 // In the transition state (FINALIZE_MATCHING), the threads execute
 // matching jobs until the matching job queue is empty.  When it is,
 // then they transition to the flushing loop.
-// 
+//
 enum front_end_state {
 	FE_INITIAL = 0,
 	FE_MATCHING = 1,
@@ -663,9 +662,9 @@ static condition_variable processing_cv;
 // We actually maintain a single queue, where we insert both matching
 // and flushing jobs.  We can do that because the two phases are
 // mutually exclusive.
-// 
+//
 union job {
-	packet * volatile p;
+	tagmatch_query * volatile p;
 	partition_queue * volatile q;
 };
 
@@ -677,24 +676,24 @@ static job job_queue[JOB_QUEUE_SIZE];
 // the flushing loop.
 
 // matching job queue indexes
-// 
-static atomic<unsigned int> matching_job_queue_head(0);	// position of the first element 
+//
+static atomic<unsigned int> matching_job_queue_head(0);	// position of the first element
 static atomic<unsigned int> matching_job_queue_tail(0);		// one-past position of the last element
 
 // flushing job queue indexes
-// 
-static atomic<unsigned int> flushing_job_queue_head(0);	// position of the first element 
+//
+static atomic<unsigned int> flushing_job_queue_head(0);	// position of the first element
 static unsigned int flushing_job_queue_tail = 0;		// one-past position of the last element
 
 static unsigned int matching_threads;
 
-// 
+//
 // This is used to enqueue a matching job.  It suspends in a spin loop
-// as long as the queue is full.  
-// 
-// ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. ** 
-// 
-void front_end::match(packet * p) noexcept {
+// as long as the queue is full. 
+//
+// ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. **
+//
+void front_end::match(tagmatch_query * p) noexcept {
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
@@ -717,7 +716,7 @@ void front_end::set_latency_limit_ms(unsigned int l) {
 
 static void match_loop() {
 	unsigned int head, head_plus_one;
-	packet * p;
+	tagmatch_query * p;
 
 	for(;;) {
 check_latency:
@@ -728,7 +727,7 @@ check_latency:
 		}
 		do {
 			head = matching_job_queue_head.load(std::memory_order_acquire);
-			while (head == matching_job_queue_tail) {  
+			while (head == matching_job_queue_tail) { 
 				// empty queue
 				if (processing_state == FE_MATCHING) {
 					// if we are still matching, then we spin
@@ -764,7 +763,7 @@ static void flush_loop() {
 				if (processing_state == FE_FLUSHING) {
 					// if we are still flushing, then we spin
 					head = flushing_job_queue_head.load(std::memory_order_acquire);
-					continue;		  
+					continue;		 
 				} else {
 					// otherwise, if we are done, then we terminate
 					unique_lock<mutex> lock(processing_mtx);
@@ -782,14 +781,14 @@ static void flush_loop() {
 	}
 }
 
-// this simply enqueues a packet in the queue of matching jobs.
+// this simply enqueues a query in the queue of matching jobs.
 //
 // WARNING: THIS IS TO BE USED BY A SINGLE THREAD.
-// 
+//
 static void enqueue_flush_job(partition_queue * q) {
 	unsigned int tail_plus_one = (flushing_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
-	while (tail_plus_one == flushing_job_queue_head.load(std::memory_order_acquire)) 
+	while (tail_plus_one == flushing_job_queue_head.load(std::memory_order_acquire))
 		; // full queue => spin
 
 	job_queue[flushing_job_queue_tail].q = q;
@@ -832,10 +831,10 @@ void front_end::stop(unsigned int gpu_count) {
 		for(queue64 * i = pp1[j].p64_begin; i != pp1[j].p64_end; ++i)
 			enqueue_flush_job(&(*i));
 
-		for(queue64 * i = pp2[j].p64_begin; i != pp2[j].p64_end; ++i) 
+		for(queue64 * i = pp2[j].p64_begin; i != pp2[j].p64_end; ++i)
 			enqueue_flush_job(&(*i));
 
-		for(queue64 * i = pp3[j].p64_begin; i != pp3[j].p64_end; ++i) 
+		for(queue64 * i = pp3[j].p64_begin; i != pp3[j].p64_end; ++i)
 			enqueue_flush_job(&(*i));
 	}
 	do {
@@ -853,20 +852,20 @@ void front_end::stop(unsigned int gpu_count) {
 
 	thread_pool.clear();
 
-	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){ 
+	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){
 		batch * bx = (batch *)back_end::flush_stream();
 		if(!bx)
 			continue;
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
-			pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+			tagmatch_query * q = bx->queries[r];
+			q->partition_done();
+			if (q->is_matching_complete()) {
+				if (q->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += pkt->getpre();
-					matches_post_merge += pkt->getpost();
+					macthes_pre_merge += q->getpre();
+					matches_post_merge += q->getpost();
 					mtx.lock();
-					matches.push_back(pkt->getpost());
+					matches.push_back(q->getpost());
 					mtx.unlock();
 #endif
 				}
@@ -877,20 +876,20 @@ void front_end::stop(unsigned int gpu_count) {
 	
 	back_end::release_stream_handles(gpu_count);	
 		
-	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){ 
+	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){
 		batch * bx = (batch *)back_end::second_flush_stream();
 		if(!bx)
 			continue;
 		for (unsigned int r = 0; r < bx->bsize; r++) {
-			packet * pkt = bx->packets[r];
-			pkt->partition_done();
-			if (pkt->is_matching_complete()) {
-				if (pkt->finalize_matching()) {
+			tagmatch_query * q = bx->queries[r];
+			q->partition_done();
+			if (q->is_matching_complete()) {
+				if (q->finalize_matching()) {
 #ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += pkt->getpre();
-					matches_post_merge += pkt->getpost();
+					macthes_pre_merge += q->getpre();
+					matches_post_merge += q->getpost();
 					mtx.lock();
-					matches.push_back(pkt->getpost());
+					matches.push_back(q->getpost());
 					mtx.unlock();
 #endif
 				}

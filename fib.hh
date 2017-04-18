@@ -8,14 +8,9 @@
 #include <iostream>
 #include <vector>
 
+#include "key.hh"
+#include "filter.hh"
 #include "io_util.hh"
-#include "packet.hh"
-
-class tk_vector : public std::vector<tagmatch_key_t> {
-public:
-	std::ostream & write_binary(std::ostream & output) const;
-	std::istream & read_binary(std::istream & input);
-};
 
 class fib_entry {
 public:

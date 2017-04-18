@@ -24,12 +24,6 @@ struct result_t {
 	uint32_t keys[MAX_MATCHES+MAX_MATCHES/4];
 };
 
-//struct packet_t {
-//	uint32_t packets[PACKETS_BATCH_SIZE*GPU_FILTER_WORDS];
-//	uint16_t pairs[PACKETS_BATCH_SIZE]; 
-//};
-
-
 struct gpu_mem_info {
 	size_t free;
 	size_t total;
@@ -62,7 +56,7 @@ public:
 	static void release_memory(void * p);
 	static void release_pinned_memory(void * p);
 
-	static void async_copy_packets(uint32_t * pkts, unsigned int size , unsigned int stream, unsigned int gpu);
+	static void async_copy_queries(uint32_t * queries, unsigned int size , unsigned int stream, unsigned int gpu);
 	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream, unsigned int gpu);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id, unsigned int gpu);
 	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int size, unsigned int stream, unsigned int gpu);

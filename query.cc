@@ -6,19 +6,19 @@
 #include <sstream>
 #include <string>
 
-#include "packet.hh"
+#include "query.hh"
 
-std::ostream & network_packet::write_binary(std::ostream & output) const {
+std::ostream & basic_query::write_binary(std::ostream & output) const {
 	filter.write_binary(output);
 	return output;
 }
 
-std::istream & network_packet::read_binary(std::istream & input) {
+std::istream & basic_query::read_binary(std::istream & input) {
 	filter.read_binary(input);
 	return input;
 }
 
-std::ostream & network_packet::write_ascii(std::ostream & output) const {
+std::ostream & basic_query::write_ascii(std::ostream & output) const {
 	output.put('!');
 	output.put(' ');
 	filter.write_ascii(output);
@@ -26,7 +26,7 @@ std::ostream & network_packet::write_ascii(std::ostream & output) const {
 	return output;
 }
 
-std::istream & network_packet::read_ascii(std::istream & input) {
+std::istream & basic_query::read_ascii(std::istream & input) {
 	std::string line;
 	if(std::getline(input, line)) {
 		std::istringstream line_s(line);

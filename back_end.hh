@@ -7,8 +7,9 @@
 
 #include <vector>
 
-#include "tagmatch.hh"
-#include "packet.hh"
+#include "filter.hh"
+#include "key.hh"
+#include "tagmatch_query.hh"
 
 /// add a prefix f of length n to the front end FIB
 /// 
@@ -19,7 +20,9 @@ public:
 						   std::vector<tagmatch_key_t>::const_iterator begin,
 						   std::vector<tagmatch_key_t>::const_iterator end);
 	static void start(unsigned int gpu_count);
-	static void * process_batch(unsigned int part, packet ** batch, unsigned int batch_size, void *batch_ptr);
+	static void * process_batch(unsigned int part,
+								tagmatch_query ** batch, unsigned int batch_size,
+								void * batch_ptr);
 	static void * second_flush_stream();
 	static void * flush_stream();
 	static void release_stream_handles(unsigned int gpu_count);

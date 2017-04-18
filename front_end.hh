@@ -7,14 +7,13 @@
 
 #include <iostream>
 
-#include "packet.hh"
-#include "gpu.hh"
+#include "tagmatch_query.hh"
 
 class front_end {
 public:
 	static void add_prefix(unsigned int id, const filter_t & f);
 	static void start(unsigned int threads);
-	static void match(packet * p) noexcept;
+	static void match(tagmatch_query * p) noexcept;
 	static void stop(unsigned int gpu_count);
 	static void clear();
 	static std::ostream & print_statistics(std::ostream &);

@@ -13,7 +13,6 @@
 #include <map>
 #include <algorithm>
 
-#include "packet.hh"
 #include "fib.hh"
 
 using std::vector;

@@ -15,7 +15,7 @@
 #include "multi_patricia_predicate.hh"
 #include "key_array.hh"
 #include "fib.hh"
-#include "packet.hh"
+#include "query.hh"
 
 using std::vector;
 using std::ifstream;
@@ -28,10 +28,6 @@ using std::endl;
 using std::chrono::high_resolution_clock;
 using std::chrono::nanoseconds;
 using std::chrono::duration_cast;
-
-#ifndef INTERFACES
-#define INTERFACES 256U
-#endif
 
 typedef multi_patricia_predicate<key_array> predicate;
 predicate P;
@@ -58,7 +54,7 @@ static int read_filters(string fname, bool binary_format) {
 	return res;
 }
 
-static unsigned int read_queries(vector<network_packet> & packets, string fname, bool binary_format) {
+static unsigned int read_queries(vector<basic_query> & queries, string fname, bool binary_format) {
 	ifstream is (fname) ;
 	string line;
 
@@ -66,15 +62,15 @@ static unsigned int read_queries(vector<network_packet> & packets, string fname,
 		return -1;
 
 	int res = 0;
-	network_packet p;
+	basic_query p;
 	if (binary_format) {
 		while(p.read_binary(is)) {
-			packets.emplace_back(p.filter);
+			queries.emplace_back(p.filter);
 			++res;
 		}
 	} else {
 		while(p.read_ascii(is)) {
-			packets.emplace_back(p.filter);
+			queries.emplace_back(p.filter);
 			++res;
 		}
 	}
@@ -140,8 +136,8 @@ static int read_bit_permutation(const char * fname) {
 }
 
 static void print_usage(const char * progname) {
-	cout << "usage: " << progname 
-		 << " [options] " 
+	cout << "usage: " << progname
+		 << " [options] "
 		"(f|F)=<filters-file-name> (q|Q)=<queries-file-name>"
 		 << endl
 		 << "(lower case means ASCII input; upper case means binary input)"
@@ -180,9 +176,9 @@ int main(int argc, const char * argv[]) {
 	bool print_matching_time_only = false;
 	const char * filters_fname = nullptr;
 	bool filters_binary_format = false;
-	const char * queries_fname = nullptr; 
+	const char * queries_fname = nullptr;
 	bool queries_binary_format = false;
-	const char * permutation_fname = nullptr; 
+	const char * permutation_fname = nullptr;
 
 	for(int i = 1; i < argc; ++i) {
 		if (strncmp(argv[i],"f=",2)==0) {
@@ -251,38 +247,38 @@ int main(int argc, const char * argv[]) {
 	if (print_progress_steps)
 		cout << "\t\t\t" << std::setw(12) << res << " filters." << endl;
 	
-	vector<network_packet> packets;
+	vector<basic_query> queries;
 	
 	if (print_progress_steps)
-		cout << "Reading packets..." << std::flush;
-	if ((res = read_queries(packets, queries_fname, queries_binary_format)) < 0) {
+		cout << "Reading queries..." << std::flush;
+	if ((res = read_queries(queries, queries_fname, queries_binary_format)) < 0) {
 		cerr << endl << "couldn't read queries file: " << queries_fname << endl;
 		return 1;
 	};
-	if (print_progress_steps) 
-		cout << "\t\t\t" << std::setw(12) << res << " packets." << endl;
+	if (print_progress_steps)
+		cout << "\t\t\t" << std::setw(12) << res << " queries." << endl;
 	if (res == 0) {
-		cerr << "No packets to process.  Bailing out." << endl;
+		cerr << "No queries to process.  Bailing out." << endl;
 
 		P.clear();
 		return 0;
 	};
 
-	vector<match_vector> match_results(packets.size());
+	vector<match_vector> match_results(queries.size());
 
 	if (print_progress_steps) {
-		cout << "Matching packets... " << std::flush;
+		cout << "Matching queries... " << std::flush;
 	}
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
 	if (use_identity_permutation) {
 		unsigned int i = 0;
-		for(network_packet & p : packets) 
+		for(basic_query & p : queries)
 			P.find_all_subsets(p.filter, match_results[i++]);
 	} else {
 		unsigned int i = 0;
-		for(network_packet & p : packets)
+		for(basic_query & p : queries)
 			P.find_all_subsets(apply_permutation(p.filter), match_results[i++]);
 	}
 
@@ -290,15 +286,15 @@ int main(int argc, const char * argv[]) {
 
 	if (print_progress_steps) {
 		cout << "\t\t\t" << std::setw(10)
-			 << duration_cast<nanoseconds>(stop - start).count()/packets.size() 
+			 << duration_cast<nanoseconds>(stop - start).count()/queries.size()
 			 << "ns average matching time." << endl;
 	} else if (print_matching_time_only) {
-		cout << duration_cast<nanoseconds>(stop - start).count()/packets.size() << endl;
+		cout << duration_cast<nanoseconds>(stop - start).count()/queries.size() << endl;
 	}
 
 	P.clear();
 
-	if (print_matching_results) 
+	if (print_matching_results)
 		for(match_vector & m : match_results)
 			m.print_results();
 

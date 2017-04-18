@@ -181,12 +181,14 @@ void tagmatch::clear() {
 	back_end::clear(gpu_count);
 }
 
-void tagmatch::match(packet * p, match_handler * h) noexcept {
-	p->configure_match(false, h);
-	front_end::match(p);
+void tagmatch::match(tagmatch_query * q, match_handler * h) noexcept {
+	q->match_unique = false;
+	q->set_match_handler(h);
+	front_end::match(q);
 }
 
-void tagmatch::match_unique(packet * p, match_handler * h) noexcept {
-	p->configure_match(true, h);
-	front_end::match(p);
+void tagmatch::match_unique(tagmatch_query * q, match_handler * h) noexcept {
+	q->match_unique = true;
+	q->set_match_handler(h);
+	front_end::match(q);
 }

@@ -2,24 +2,11 @@
 #define TAGMATCH_HH_INCLUDED
 
 #include <vector>
-#include <mutex>
-#include <condition_variable>
 
 #include "filter.hh"
-
-typedef uint32_t tagmatch_key_t;
-
-class packet;
-
-// Handler for asynchronous match operations
-//
-// This is an abstract class.  An application must define the callback
-// method match_done()
-//
-class match_handler {
-public:
-	virtual void match_done(packet * p) = 0;
-};
+#include "key.hh"
+#include "query.hh"
+#include "tagmatch_query.hh"
 
 class tagmatch {
 public:
@@ -49,8 +36,8 @@ public:
 
 	// Match operations
 	//
-	static void match(packet * query, match_handler * h) noexcept;
-	static void match_unique(packet * query, match_handler * h) noexcept;
+	static void match(tagmatch_query * q, match_handler * h) noexcept;
+	static void match_unique(tagmatch_query * q, match_handler * h) noexcept;
 };
 
 #endif

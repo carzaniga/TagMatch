@@ -8,7 +8,7 @@
 #include <vector>
 #include <string>
 
-#include "packet.hh"
+#include "query.hh"
 #include "fib.hh"
 
 using std::vector;
@@ -71,12 +71,10 @@ static int read_filters(string fname, bool binary_format) {
 	return res;
 }
 
-static void match(const network_packet & p) {
-	for(const fib_entry & entry : fib) 
-		if (entry.filter.subset_of(p.filter)){ 
-			//entry.write_ascii(std::cout);
-			//std::cout<<std::endl;
-			for(auto k : entry.keys) 
+static void match(const basic_query & p) {
+	for(const fib_entry & entry : fib)
+		if (entry.filter.subset_of(p.filter)){
+			for(auto k : entry.keys)
 				cout << ' ' << k;
 		}
 	cout << endl;
@@ -90,17 +88,17 @@ static unsigned int read_and_match_queries(string fname, bool binary_format) {
 		return -1;
 
 	int res = 0;
-	network_packet p;
+	basic_query q;
 	if (binary_format) {
-		while(p.read_binary(is)) {
-			cout << "packet=" << res; 
-			match(p);
+		while(q.read_binary(is)) {
+			cout << "query=" << res;
+			match(q);
 			++res;
 		}
 	} else {
-		while(p.read_ascii(is)) {
-			cout << "packet=" << res; 
-			match(p);
+		while(q.read_ascii(is)) {
+			cout << "query=" << res;
+			match(q);
 			++res;
 		}
 	}
@@ -109,7 +107,7 @@ static unsigned int read_and_match_queries(string fname, bool binary_format) {
 }
 
 void print_usage(const char * progname) {
-	cout << "usage: " << progname 
+	cout << "usage: " << progname
 		 << " (f|F)=<filters_file_name> (q|Q)=<queries_file_name>" << endl
 		 << "(lower case means ASCII input; upper case means binary input)"
 		 << endl;
@@ -122,7 +120,7 @@ int main(int argc, const char * argv[]) {
 #endif
 	const char * filters_fname = nullptr;
 	bool filters_binary_format = false;
-	const char * queries_fname = nullptr; 
+	const char * queries_fname = nullptr;
 	bool queries_binary_format = false;
 
 	for(int i = 1; i < argc; ++i) {
@@ -131,11 +129,11 @@ int main(int argc, const char * argv[]) {
 			prefixes_binary_format = true;
 			prefixes_fname = argv[i] + 2;
 			continue;
-		} else 
+		} else
 		if (strncmp(argv[i],"p=",2)==0) {
 			prefixes_fname = argv[i] + 2;
 			continue;
-		} else 
+		} else
 #endif
 		if (strncmp(argv[i],"f=",2)==0) {
 			filters_fname = argv[i] + 2;

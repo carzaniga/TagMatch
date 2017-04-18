@@ -33,8 +33,8 @@ NVCC_PIC_COMPILE = $(NVCC_NONPIC_COMPILE) -Xcompiler -fPIC -DPIC
 endif
 
 lib_LTLIBRARIES = libtagmatch.la
-libtagmatch_la_SOURCES = fib.cc packet.cc \
-		packet.hh io_util.hh fib.hh bitvector.hh gpu.hh parameters.hh \
+libtagmatch_la_SOURCES = fib.cc query.cc \
+		query.hh io_util.hh fib.hh bitvector.hh gpu.hh parameters.hh \
 		front_end.cc front_end.hh back_end.cc back_end.hh \
 		gpu.cu partitioner_gpu.cu partitioner.cc \
 		tagmatch.cc tagmatch.hh
@@ -66,19 +66,19 @@ sample_workload_LDADD = libtagmatch.la
 split_workload_SOURCES = split_workload.cc
 split_workload_LDADD = libtagmatch.la
 
-test_matcher_SOURCES = test_matcher.cc parameters.hh packet.hh io_util.hh fib.hh filter.hh
+test_matcher_SOURCES = test_matcher.cc parameters.hh query.hh io_util.hh fib.hh filter.hh
 test_matcher_LDADD = libtagmatch.la
 
-patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh packet.hh io_util.hh \
+patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh query.hh io_util.hh \
 			patricia_predicate.hh patricia_matcher.cc key_array.hh key_array.cc
 patricia_matcher_LDADD = libtagmatch.la
 
-compact_patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh packet.hh io_util.hh \
+compact_patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh query.hh io_util.hh \
 			compact_patricia_predicate.hh key_array.hh \
 			key_array.cc compact_patricia_matcher.cc
 compact_patricia_matcher_LDADD = libtagmatch.la
 
-multi_patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh packet.hh io_util.hh \
+multi_patricia_matcher_SOURCES = filter.hh bitvector.hh fib.hh query.hh io_util.hh \
 			multi_patricia_predicate.hh key_array.hh \
 			key_array.cc multi_patricia_matcher.cc
 multi_patricia_matcher_LDADD = libtagmatch.la

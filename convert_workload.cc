@@ -7,7 +7,7 @@
 #include <sstream>
 
 #include "fib.hh"
-#include "packet.hh"
+#include "query.hh"
 
 static int convert_filters(std::istream & input, std::ostream & output, bool binary_input) {
 	fib_entry e;
@@ -22,14 +22,14 @@ static int convert_filters(std::istream & input, std::ostream & output, bool bin
 }
 
 static int convert_queries(std::istream & input, std::ostream & output, bool binary_input) {
-	network_packet packet;
+	basic_query qry;
 
 	if (binary_input) {
-		while(packet.read_binary(input))
-			packet.write_ascii(output);
+		while(qry.read_binary(input))
+			qry.write_ascii(output);
 	} else {
-		while(packet.read_ascii(input))
-			packet.write_binary(output);
+		while(qry.read_ascii(input))
+			qry.write_binary(output);
 	}
 	return 0;
 }

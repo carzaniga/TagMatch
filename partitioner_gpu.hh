@@ -1,9 +1,9 @@
 #ifndef PARTITIONER_GPU_HH_INCLUDED
 #define PARTITIONER_GPU_HH_INCLUDED
 
-#include "fib.hh"
-#include "packet.hh"
 #include <vector>
+
+#include "fib.hh"
 
 #define GPU_THREADS 256
 #define MAXTHREADS 24
