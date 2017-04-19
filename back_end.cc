@@ -100,7 +100,7 @@ struct part_descr {
 	//
 	uint32_t * fib;
 
-	filter_t common_bits ;     // it holds common bits of all filters in this partition
+	filter_t common_bits ;     // common bits among all filters in this partition
 	part_descr(): size(0), fib(0) {};
 
 	void clear() {
@@ -155,7 +155,8 @@ struct stream_handle {
 	uint32_t second_last_partition;
 
 	void initialize(unsigned int s, unsigned int n, unsigned int gpu_count) {
-		// Stream handlers are initialized so that they are assigned evenly to all the gpus available, going round robin
+		// Stream handlers are initialized so that they are assigned
+		// evenly to all the gpus available, going round robin
 		//
 		stream = s / gpu_count;
 		gpu = s % gpu_count;
@@ -163,7 +164,9 @@ struct stream_handle {
 
 		gpu::set_device(gpu);
 
-		// Here we initialize two buffers for each stream for each gpu for the staged computation that is taking place in process_batch
+		// Here we initialize two buffers for each stream for each gpu
+		// for the staged computation that is taking place in
+		// process_batch
 		//
 		for (unsigned int f = 0; f < 2; f++) {
 			host_queries[f] = gpu::allocate_host_pinned<uint32_t>(QUERIES_BATCH_SIZE*GPU_FILTER_WORDS);
@@ -288,71 +291,71 @@ static void compile_fibs(unsigned int gpu_count) {
 #if SORT_FILTERS
 	for (auto & pf : tmp_fib) 
 #else
-		for (auto const & pf : tmp_fib)
+	for (auto const & pf : tmp_fib)
 #endif
-		{
-			cbits.fill();
+	{
+		cbits.fill();
 
-			unsigned int part = pf.first;
+		unsigned int part = pf.first;
 #if SORT_FILTERS
-			f_descr_vector & filters = pf.second;
+		f_descr_vector & filters = pf.second;
 #else
-			const f_descr_vector & filters = pf.second;
+		const f_descr_vector & filters = pf.second;
 #endif
-			for (unsigned int g = 0; g < gpu_count; g++)
-				dev_partitions[g][part].size = filters.size();
+		for (unsigned int g = 0; g < gpu_count; g++)
+			dev_partitions[g][part].size = filters.size();
 
-			unsigned int * host_rep_f = host_rep;
-			unsigned int full_blocks = prefix_block_lengths[part];
-			int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
+		unsigned int * host_rep_f = host_rep;
+		unsigned int full_blocks = prefix_block_lengths[part];
+		int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
 
-			if (dev_partitions[0][part].size % GPU_BLOCK_SIZE != 0)
-				blocks_in_partition++ ;
-			int counter=0;
+		if (dev_partitions[0][part].size % GPU_BLOCK_SIZE != 0)
+			blocks_in_partition++ ;
+		int counter=0;
 
 #if SORT_FILTERS
-			for (filter_descr & fd : filters) {
-				fd.filter ^= cbits ;
-			}
-			std::sort(filters.begin(), filters.end(), compare_filters_decreasing) ;
-#else
-			for (const filter_descr & fd : filters) {
-				cbits &= fd.filter ;
-			}
-#endif
-			for (const filter_descr & fd : filters) {
-				// we now store the index in the global tiff table for this fib entry
-				//
-				// we then store the *size* of the tiff table for this fib
-				// entry in that position in the global table.
-				//
-				// then we copy the filter in the host table, using the
-				// appropriate layout.
-				//
-				for (unsigned int i = full_blocks; i < GPU_FILTER_WORDS; ++i) {
-#ifdef COALESCED_READS
-					host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (fd.filter.uint32_value(i));
-#else
-					*host_rep_f++ = (fd.filter.uint32_value(i));
-#endif
-				}
-				counter++ ;
-			}
-			for (unsigned int g = 0; g< gpu_count; g++) {
-				gpu::set_device(g);
-				dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * (GPU_FILTER_WORDS - full_blocks) );
-
-			}
-			// this thing doesn't really need to be in the partition_descriptors!
-			//
-			dev_partitions[0][part].common_bits = cbits;
+		for (filter_descr & fd : filters) {
+			fd.filter ^= cbits ;
 		}
+		std::sort(filters.begin(), filters.end(), compare_filters_decreasing) ;
+#else
+		for (const filter_descr & fd : filters) {
+			cbits &= fd.filter ;
+		}
+#endif
+		for (const filter_descr & fd : filters) {
+			// we now store the index in the global tiff table for this fib entry
+			//
+			// we then store the *size* of the tiff table for this fib
+			// entry in that position in the global table.
+			//
+			// then we copy the filter in the host table, using the
+			// appropriate layout.
+			//
+			for (unsigned int i = full_blocks; i < GPU_FILTER_WORDS; ++i) {
+#ifdef COALESCED_READS
+				host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (fd.filter.uint32_value(i));
+#else
+				*host_rep_f++ = (fd.filter.uint32_value(i));
+#endif
+			}
+			counter++ ;
+		}
+		for (unsigned int g = 0; g< gpu_count; g++) {
+			gpu::set_device(g);
+			dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * (GPU_FILTER_WORDS - full_blocks) );
+
+		}
+		// this thing doesn't really need to be in the partition_descriptors!
+		//
+		dev_partitions[0][part].common_bits = cbits;
+	}
 	delete[](host_rep);
 #if !COMBO
 	tmp_fib.clear();
 #endif
 }
-#endif
+#endif // BACK_END_IS_VOID
 
 
 // this is called at the end of the computation, to extract results
@@ -393,7 +396,7 @@ void back_end::release_stream_handles(unsigned int gpu_count)
 	}
 }
 
-// This is called at the end of the computation, to extract results
+// This is called at the end of the computation to extract results
 // from the last iterations of the process_batch loop.  It does NOT
 // release the stream handler, because it forces the front_end to loop
 // on all the streams available
@@ -517,7 +520,8 @@ void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsig
 	sh->last_partition = part;
 
 	release_stream_handle(sh);
-#else //back_end_is_void
+
+#else // BACK_END_IS_VOID
 
 #ifndef NO_FRONTEND_OUTPUT_LOOP
 	// if the backend is disabled we still loop through the output
@@ -535,10 +539,9 @@ void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsig
 		if (batch[i]->is_matching_complete())
 			deallocate_query(batch[i]);
 #endif
-
 	}
 #endif
-#endif
+#endif // BACK_END_IS_VOID
 	return res;
 }
 
