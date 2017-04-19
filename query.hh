@@ -57,15 +57,4 @@ public:
 	query(query && q) : basic_query(q), output_keys(std::move(q.output_keys)) {};
 };
 
-// Handler for asynchronous match operations
-//
-// This is an abstract class.  An application must define the callback
-// method match_done()
-//
-class match_handler {
-public:
-	virtual void match_done(query * p) = 0;
-};
-
-
 #endif // QUERY_HH_INCLUDED

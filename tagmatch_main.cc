@@ -18,6 +18,7 @@
 #include "key.hh"
 #include "tagmatch.hh"
 #include "tagmatch_query.hh"
+#include "match_handler.hh"
 #include "fib.hh"
 
 using std::vector;
@@ -48,7 +49,7 @@ private:
 public:
 	match_counter() : tot_matches(0), tot_keys(0) { };
 
-	virtual void match_done(query * q) {
+	virtual void process_results(query * q) {
 		tot_matches++;
 		tot_keys += q->output_keys.size();
 	}

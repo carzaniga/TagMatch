@@ -12,6 +12,7 @@
 #include "filter.hh"
 #include "key.hh"
 #include "query.hh"
+#include "match_handler.hh"
 
 // this is the class that defines and stores a query and the related
 // meta-data used during the whole matching and forwarding process by

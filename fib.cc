@@ -7,6 +7,7 @@
 #include <string>
 
 #include "tagmatch.hh"
+#include "match_handler.hh"
 #include "io_util.hh"
 #include "fib.hh"
 
