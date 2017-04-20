@@ -141,22 +141,26 @@ void tagmatch::consolidate() {
 		cache_file_out.close();
 	}
 
-	// Compute the partitioning and passes the results to the matcher!
-	//
-	vector<partition_prefix> masks;
-	partitioning::set_maxp(partition_size);
-	partitioning::set_cpu_threads(partitioning_threads);
-	partitioning::balanced_partitioning(fib, masks);
+	if (fib.size() > 0) {
+		// Compute the partitioning and passes the results to the matcher!
+		//
+		vector<partition_prefix> masks;
+		partitioning::set_maxp(partition_size);
+		partitioning::set_cpu_threads(partitioning_threads);
+		partitioning::balanced_partitioning(fib, masks);
 
-	for (partition_prefix pp : masks) {
-		front_end::add_partition(pp.partition, pp.filter);
-		back_end::add_partition(pp.partition, pp.filter);
-	}
+		for (partition_prefix pp : masks) {
+			front_end::add_partition(pp.partition, pp.filter);
+			back_end::add_partition(pp.partition, pp.filter);
+		}
 
-	for (partition_fib_entry * pfe : fib) {
-		back_end::add_filter(pfe->partition, pfe->filter, pfe->keys.begin(), pfe->keys.end());
-		delete(pfe);
+		for (partition_fib_entry * pfe : fib) {
+			back_end::add_filter(pfe->partition, pfe->filter, pfe->keys.begin(), pfe->keys.end());
+			delete(pfe);
+		}
 	}
+	front_end::consolidate();
+
 	already_consolidated = true;
 }
 
@@ -164,8 +168,8 @@ void tagmatch::set_latency_limit_ms(unsigned int latency_limit) {
 	front_end::set_latency_limit_ms(latency_limit);
 }
 
-static int gpu_count;
-static int thread_count;
+static int gpu_count = 1;
+static int thread_count = 4;
 
 void tagmatch::start() {
 	back_end::start(gpu_count);
@@ -188,6 +192,7 @@ void tagmatch::stop() {
 
 void tagmatch::clear() {
 	already_consolidated = false;
+	updates.clear();
 	front_end::clear();
 	back_end::clear();
 }

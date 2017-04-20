@@ -362,6 +362,8 @@ unsigned int partitioning::get_cpu_threads() {
 
 void partitioning::balanced_partitioning(std::vector<partition_fib_entry *> & fib,
 										 std::vector<partition_prefix> & masks) {
+	if (fib.size() == 0)
+		return;
 	PT = nullptr;
 #if USE_GPU
 	fib_begin = fib.begin();
