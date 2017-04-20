@@ -559,18 +559,6 @@ void front_end::consolidate() {
 	}
 }
 
-static bool use_identity_permutation = true;
-static unsigned char bit_permutation[filter_t::WIDTH] = { 0 };
-
-void front_end::set_identity_permutation() noexcept {
-	use_identity_permutation = true;
-}
-
-void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new_pos) {
-	use_identity_permutation = false;
-	bit_permutation[old_pos] = new_pos;
-}
-
 // This is the main matching function
 //
 static void match(tagmatch_query * qry) {
@@ -921,7 +909,6 @@ void front_end::clear() {
 		p64_table = nullptr;
 	}
 	batch_pool::clear();
-	use_identity_permutation = true;
 }
 
 ostream & front_end::print_statistics(ostream & os) {
