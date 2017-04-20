@@ -519,13 +519,15 @@ void front_end::add_partition(unsigned int id, const filter_t & mask) {
 
 // This is how we compile the real FIB from the temporary FIB
 //
-static void compile_fib() {
+void front_end::consolidate() {
 	unsigned int p64_size = 0;
-
-	for(unsigned int i = 0; i < 192; ++i) {
+	for(unsigned int i = 0; i < 192; ++i)
 		p64_size += tmp_pp[i].p64.size();
-	}
 
+	if (p64_table) {
+		delete[](p64_table);
+		p64_table = nullptr;
+	}
 	p64_table = new queue64[p64_size];
 
 	unsigned int p64_i = 0;

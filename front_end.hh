@@ -12,6 +12,7 @@
 class front_end {
 public:
 	static void add_partition(unsigned int id, const filter_t & mask);
+	static void consolidate();
 	static void start(unsigned int threads);
 	static void match(tagmatch_query * p) noexcept;
 	static void stop();
