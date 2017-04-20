@@ -21,6 +21,7 @@
 #include "tagmatch_query.hh"
 #include "front_end.hh"
 #include "back_end.hh"
+#include "fib.hh"
 #include "gpu.hh"
 
 using std::vector;
@@ -61,10 +62,10 @@ using std::ostream;
 // 0<=X<64; the second vector pp2 holds all the prefixes whose
 // leftmost 1-bit is in position 64<=X<128; and the third vector pp3
 // holds all the prefixes whose leftmost 1-bit is in position X>=128.
-// We then further split each vector as follows: pp1.p64 contains
+// We then further split each vector as follows: pp1 contains
 // prefixes of total lenght <= 64; pp1.p128 contains prefixes of total
 // lenght between 64 and 128; pp1.p192 contains prefixes of total
-// lenght > 128; similarly, pp2.p64 and pp3.p64 contains prefixes of
+// lenght > 128; similarly, pp2 and pp3 contains prefixes of
 // total lenght <= 64; and pp2.p128 contains prefixes of total length
 // between 128 and 192.
 //
@@ -152,11 +153,6 @@ public:
 	}
 };
 
-#ifdef WITH_MATCH_STATISTICS
-static std::mutex mtx;
-std::vector<uint32_t> matches;
-std::atomic<uint64_t> macthes_pre_merge, matches_post_merge;
-#endif
 mutex batch_pool::pool_mtx;
 vector<batch *> batch_pool::pool;
 atomic<batch *> batch_pool::head(nullptr);
@@ -365,13 +361,6 @@ void partition_queue::enqueue(tagmatch_query * p) noexcept {
 		  		q->partition_done();
 				if (q->is_matching_complete()) {
 					if (q->finalize_matching()) {
-#ifdef WITH_MATCH_STATISTICS
-						macthes_pre_merge += q->getpre();
-						matches_post_merge += q->getpost();
-						mtx.lock();
-						matches.push_back(q->getpost());
-						mtx.unlock();
-#endif
 					}
 				}
 			}
@@ -414,210 +403,101 @@ void partition_queue::flush() noexcept {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
 			tagmatch_query * q = bx->queries[r];
 		  	q->partition_done();
-			if (q->is_matching_complete()) {
-				if (q->finalize_matching()) {
-#ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += q->getpre();
-					matches_post_merge += q->getpost();
-					mtx.lock();
-					matches.push_back(q->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
+			if (q->is_matching_complete())
+				q->finalize_matching();
 		}
 		batch_pool::put(bx);
 	}
 }
 
-template<unsigned int Size>
-class prefix_queue_pair : public partition_queue {
+class mask_queue_pair : public partition_queue {
 public:
-
-	filter_t common_bits ;     // it holds common bits of all filters in this partition
+	filter_t mask;     // it holds common bits of all filters in this partition
 public:
-	void initialize(unsigned int id, const block_t * pb) {
-		partition_queue::initialize(id);
-		common_bits = back_end::get_cbits(id) ;
+	void initialize(partition_id_t p, const filter_t & m) {
+		partition_queue::initialize(p);
+		mask = m;
 	}
 };
 
-typedef prefix_queue_pair<64> queue64;
-//
-// container of prefixes whose leftmost 1-bit is in the 3rd 64-bit
-// block.
-//
-class p1_container {
-public:
-    // Since this is the third of three blocks, it may only contain
-    // prefixes of up to 64 bits.
-    //
-	// We store the prefixes in a contiguous section of the global
-	// p64_table.
-    //
-	queue64 * p64_begin;
-	queue64 * p64_end;
-
-	ostream & print_statistics(ostream & os) {
-		for(queue64 * i = p64_begin; i != p64_end; ++i)
-			i->print_statistics(os);
-		return os;
-	}
-};
 //
 // We store all the queue_prefix pairs in three compact tables.  This
 // should improve memory-access times.
 //
-static queue64 * p64_table = nullptr;
-
-static p1_container pp1[64];
-static p1_container pp2[64];
-static p1_container pp3[64];
+static mask_queue_pair * ptable[filter_t::WIDTH + 1];
 
 //
 // this is the temporary front-end FIB
 //
-class tmp_prefix_descr {
+class tmp_part_descr {
 public:
-	unsigned int id;
-	const filter_t filter;
+	partition_id_t id;
+	const filter_t mask;
 
-	tmp_prefix_descr(unsigned int i, const filter_t f)
-		: id(i), filter(f) {};
+	tmp_part_descr(partition_id_t i, const filter_t & f) : id(i), mask(f) {};
 };
 
-class tmp_prefix_pos_descr {
-public:
-	vector<tmp_prefix_descr> p64;
-
-	tmp_prefix_pos_descr() : p64() {};
-
-	void clear() {
-		p64.clear();
-	}
-};
-
-static tmp_prefix_pos_descr tmp_pp[192];
+static vector<tmp_part_descr> tmp_ptable[filter_t::WIDTH];
 
 // This is how we compile the temporary FIB
 //
 void front_end::add_partition(unsigned int id, const filter_t & mask) {
-	int index = -1;
-	unsigned int min = UINT_MAX;
-	for (int i = 0; i < 192; ++i) {
-		if (mask[i] == 1) {
-			// Here I find the least crowded array to store the new one partition.
-			//
-			if (tmp_pp[i].p64.size() < min) {
-				min = tmp_pp[i].p64.size();
-				index = i;
-			}
+	// Find the least crowded array in which to store the new
+	// partition.
+	//
+	// ASSUME mask != all_zero
+	//
+	filter_pos_t min_i = mask.next_bit(0);
+	unsigned int min = tmp_ptable[min_i].size();
+	for (filter_pos_t i = mask.next_bit(min_i); i < filter_t::WIDTH; i = mask.next_bit(i + 1)) {
+		if (tmp_ptable[i].size() < min) {
+			min = tmp_ptable[i].size();
+			min_i = i;
 		}
 	}
-	tmp_pp[index].p64.emplace_back(id, mask) ;
+	tmp_ptable[min_i].emplace_back(id, mask);
 }
 
 // This is how we compile the real FIB from the temporary FIB
 //
 void front_end::consolidate() {
-	unsigned int p64_size = 0;
-	for(unsigned int i = 0; i < 192; ++i)
-		p64_size += tmp_pp[i].p64.size();
+	unsigned int size = 0;
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		size += tmp_ptable[i].size();
 
-	if (p64_table) {
-		delete[](p64_table);
-		p64_table = nullptr;
+	if (ptable[0]) {
+		delete[](ptable[0]);
+		ptable[0] = nullptr;
 	}
-	p64_table = new queue64[p64_size];
+	ptable[0] = new mask_queue_pair[size];
 
-	unsigned int p64_i = 0;
+	mask_queue_pair * mqp = ptable[0];
 
-	for(unsigned int i = 0; i < 64; ++i) {
-		pp1[i].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
-			p64_table[p64_i++].initialize(d.id, d.filter.begin());
-		pp1[i].p64_end = p64_table + p64_i;
-
-		tmp_pp[i].clear();
-	}
-
-	for(unsigned int i = 64; i < 128; ++i) {
-		pp2[i - 64].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
-			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 1);
-		pp2[i - 64].p64_end = p64_table + p64_i;
-
-		tmp_pp[i].clear();
-	}
-
-	for(unsigned int i = 128; i < 192; ++i) {
-		pp3[i - 128].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
-			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
-		pp3[i - 128].p64_end = p64_table + p64_i;
-		tmp_pp[i].clear();
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
+		for(const tmp_part_descr & p : tmp_ptable[i]) {
+			mqp->initialize(p.id, p.mask);
+			++mqp;
+		}
+		tmp_ptable[i].clear();
+		ptable[i + 1] = mqp;
 	}
 }
 
 // This is the main matching function
 //
-static void match(tagmatch_query * qry) {
-	const block_t * b = qry->filter.begin();
+static void match(tagmatch_query * q) {
+	const filter_t & f = q->filter;
+	for (filter_pos_t i = f.next_bit(0); i < filter_t::WIDTH; i = f.next_bit(i + 1))
+		for(mask_queue_pair * mqp = ptable[i]; mqp != ptable[i + 1]; ++mqp)
+			if (mqp->mask.subset_of(f))
+				mqp->enqueue(q);
 
-	if (*b) {
-		block_t curr_block = *b;
-		do {
-			int m = leftmost_bit(curr_block);
-			p1_container & c = pp1[m];
-
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q)
-				if (q->common_bits.subset_of(qry->filter))
-					q->enqueue(qry);
-
-			curr_block ^= (BLOCK_ONE << m);
-		} while (curr_block != 0);
-
-	} if (*(++b)) {
-		block_t curr_block = *b;
-		do {
-			int m = leftmost_bit(curr_block);
-			p1_container & c = pp2[m];
-
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q){
-				if (q->common_bits.subset_of(qry->filter))
-					q->enqueue(qry);
-			}
-
-			curr_block ^= (BLOCK_ONE << m);
-		} while (curr_block != 0);
-
-	} if (*(++b)) {
-		block_t curr_block = *b;
-		do {
-			int m = leftmost_bit(curr_block);
-			p1_container & c = pp3[m];
-
-			for(queue64 * q = c.p64_begin; q != c.p64_end; ++q)
-				if (q->common_bits.subset_of(qry->filter))
-					q->enqueue(qry);
-
-			curr_block ^= (BLOCK_ONE << m);
-		} while (curr_block != 0);
-	}
-
-	qry->frontend_done();
+	q->frontend_done();
 	// Now we need to check whether any query has already been processed
 	// and has already finished the match in the back_end
 	//
-	if (qry->is_matching_complete()) {
-		if (qry->finalize_matching()) {
-#ifdef WITH_MATCH_STATISTICS
-				macthes_pre_merge += qry->getpre();
-				matches_post_merge += qry->getpost();
-				matches.push_back(qry->getpost());
-#endif
-		}
-	}
+	if (q->is_matching_complete())
+		if (q->finalize_matching());
 }
 
 // FRONT-END EXECUTION THREADS
@@ -793,14 +673,8 @@ static void processing_thread() {
 static vector<thread *> thread_pool;
 
 void front_end::start(unsigned int threads) {
-#ifdef WITH_MATCH_STATISTICS
-	macthes_pre_merge = 0;
-	matches_post_merge = 0;
-	matches.clear();
-#endif
+	unique_lock<mutex> lock(processing_mtx);
 	if (processing_state == FE_INITIAL && threads > 0) {
-		compile_fib();
-
 		processing_state = FE_MATCHING;
 		matching_threads = threads;
 		do {
@@ -817,16 +691,10 @@ void front_end::stop() {
 			processing_cv.wait(lock);
 	} while(0);
 
-	for(unsigned int j = 0; j < 64; ++j) {
-		for(queue64 * i = pp1[j].p64_begin; i != pp1[j].p64_end; ++i)
-			enqueue_flush_job(&(*i));
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
+			enqueue_flush_job(q);
 
-		for(queue64 * i = pp2[j].p64_begin; i != pp2[j].p64_end; ++i)
-			enqueue_flush_job(&(*i));
-
-		for(queue64 * i = pp3[j].p64_begin; i != pp3[j].p64_end; ++i)
-			enqueue_flush_job(&(*i));
-	}
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		processing_state = FE_FINALIZE_FLUSHING;
@@ -849,17 +717,8 @@ void front_end::stop() {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
 			tagmatch_query * q = bx->queries[r];
 			q->partition_done();
-			if (q->is_matching_complete()) {
-				if (q->finalize_matching()) {
-#ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += q->getpre();
-					matches_post_merge += q->getpost();
-					mtx.lock();
-					matches.push_back(q->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
+			if (q->is_matching_complete())
+				if (q->finalize_matching());
 		}
 		batch_pool::put(bx) ;
 	}
@@ -873,51 +732,29 @@ void front_end::stop() {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
 			tagmatch_query * q = bx->queries[r];
 			q->partition_done();
-			if (q->is_matching_complete()) {
-				if (q->finalize_matching()) {
-#ifdef WITH_MATCH_STATISTICS
-					macthes_pre_merge += q->getpre();
-					matches_post_merge += q->getpost();
-					mtx.lock();
-					matches.push_back(q->getpost());
-					mtx.unlock();
-#endif
-				}
-			}
+			if (q->is_matching_complete())
+				if (q->finalize_matching());
 		}
 		batch_pool::put(bx) ;
 	}
 	back_end::release_stream_handles();
 
 	processing_state = FE_INITIAL;
-#ifdef WITH_MATCH_STATISTICS
-	std::cout << "Total matches before merge: " << macthes_pre_merge << std::endl;
-	std::cout << "Total matches after merge: " << matches_post_merge << std::endl;
-#if 0
-	for (uint32_t i=0; i < matches.size(); i++)
-	{
-		assert(matches[i]>0);
-		std::cout << matches[i] << std::endl;
-	}
-#endif
-#endif
 }
 
 void front_end::clear() {
-	if (p64_table) {
-		delete[](p64_table);
-		p64_table = nullptr;
+	if (ptable[0]) {
+		delete[](ptable[0]);
+		ptable[0] = nullptr;
 	}
 	batch_pool::clear();
 }
 
 ostream & front_end::print_statistics(ostream & os) {
 	os << "partition  max latency (ms) enqueue count  flush count" << std::endl;
+	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+		for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
+			q->print_statistics(os);
 
-	for(int i = 0; i < 64; ++i) {
-		pp1[i].print_statistics(os);
-		pp2[i].print_statistics(os);
-		pp3[i].print_statistics(os);
-	}
 	return os;
 }

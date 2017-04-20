@@ -23,8 +23,9 @@
 //
 class tagmatch_query : public query {
 private:
-    // the query is in "frontend" state when we are still working with the prefix
-    // matching within the frontend, then it goes into BackEnd state.
+    // the query is in FrontEnd state when we are still working with
+    // the prefix matching within the frontend, then it goes into
+    // BackEnd state.
 	//
     enum matching_state {
 		FrontEnd = 0,
@@ -42,55 +43,27 @@ private:
 	match_handler * handler;
 	std::mutex output_mtx;
 
-#ifdef WITH_MATCH_STATISTICS
-	std::atomic<unsigned int> pre;
-	std::atomic<unsigned int> post;
-#endif
-
 public:
 	tagmatch_query()
-		: query(),
-		  state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr)
-#ifdef WITH_MATCH_STATISTICS
-		, pre(0), post(0)
-#endif
-		{ };
+		: query(), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
 
 	tagmatch_query(const filter_t & f)
-		: query(f),
-		  state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr)
-#ifdef WITH_MATCH_STATISTICS
-		, pre(0), post(0)
-#endif
-		{ };
+		: query(f), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
 
 	tagmatch_query(const std::string & f)
-		: query(f),
-		  state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr)
-#ifdef WITH_MATCH_STATISTICS
-		, pre(0), post(0)
-#endif
-		{ };
+		: query(f), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
 
 	tagmatch_query(tagmatch_query && q)
 		: query(std::move(q)),
 		  state(q.state), pending_partitions(q.pending_partitions.load()),
 		  finalized(q.finalized.load()), handler(nullptr),
-		  output_mtx()
-#ifdef WITH_MATCH_STATISTICS
-		, pre(q.pre.load()), post(q.post.load())
-#endif
-		{ };
+		  output_mtx() { };
 
 	tagmatch_query(const tagmatch_query & q)
 		: query(q),
 		  state(q.state), pending_partitions(q.pending_partitions.load()),
 		  finalized(q.finalized.load()), handler(nullptr),
-		  output_mtx()
-#ifdef WITH_MATCH_STATISTICS
-		, pre(q.pre.load()), post(q.post.load())
-#endif
-		{ };
+		  output_mtx() { };
 
     void add_partition() {
 		++pending_partitions;
@@ -143,18 +116,12 @@ public:
 
 	bool finalize_matching() {
 		if (!atomic_exchange(&finalized, true)) {
-#ifdef WITH_MATCH_STATISTICS
-			pre = output_keys.size();
-			assert(pre > 0);
-#endif
 			if (match_unique) {
 				// Delete duplicates from the list of output keys
-				std::sort( output_keys.begin(), output_keys.end() );
-				output_keys.erase( unique(output_keys.begin(), output_keys.end() ), output_keys.end());
+				std::sort(output_keys.begin(), output_keys.end());
+				output_keys.erase(std::unique(output_keys.begin(), output_keys.end()),
+								  output_keys.end());
 			}
-#ifdef WITH_MATCH_STATISTICS
-			post = output_keys.size();
-#endif
 			if (handler)
 				handler->match_done(this);
 			return true;
@@ -164,16 +131,6 @@ public:
 			return false;
 		}
 	}
-
-#ifdef WITH_MATCH_STATISTICS
-	unsigned int getpre() {
-		return pre;
-	}
-
-	unsigned int getpost() {
-		return post;
-	}
-#endif
 };
 
 #endif // QUERY_HH_INCLUDED

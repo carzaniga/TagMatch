@@ -250,10 +250,6 @@ static void destroy_stream_handlers() {
 	}
 }
 
-filter_t back_end::get_cbits(unsigned int id) {
-	return dev_partitions[0][id].common_bits;
-}
-
 #if SORT_FILTERS
 static bool compare_filters_decreasing(const filter_descr & d1, const filter_descr & d2) {
 	return d2.filter < d1.filter;
@@ -567,10 +563,6 @@ void back_end::start(unsigned int gpus) {
 #ifndef BACK_END_IS_VOID
 	assert(gpus > 0);
 	gpu_mem_info mi;
-	if (gpus_in_use > 0) {
-		back_end::stop();
-		back_end::clear();
-	}
 	gpus_in_use = gpus;
 	gpu::initialize(gpus_in_use);
 	gpu::mem_info(&mi,gpus_in_use);

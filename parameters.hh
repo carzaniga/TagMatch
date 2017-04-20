@@ -33,13 +33,6 @@
 #define DEFAULT_THREAD_COUNT	5U
 #define DEFAULT_GPU_COUNT		1U
 
-// WITH_MATCH_STATISTICS makes cpu_gpu_matcher print statistics about the matches generated
-// on the stdout
-//
-#if 0
-#define WITH_MATCH_STATISTICS
-#endif
-
 // Defines whether the match or match-unique algorithm is performed. Refer to the paper
 // for more info
 //

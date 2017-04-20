@@ -28,7 +28,6 @@ public:
 	static void release_stream_handles();
 	static void stop();
 	static void clear();
-	static filter_t get_cbits(unsigned int id);
 
 	static unsigned int gpu_count();
 	static size_t bytesize();
