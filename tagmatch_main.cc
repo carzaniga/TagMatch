@@ -109,11 +109,11 @@ static uint32_t read_filters(std::istream & input, bool binary_format, uint32_t 
 	if (binary_format) {
 		while(f.read_binary(input) && ++cnt < howmany) {
 			for (tagmatch_key_t k : f.keys)
-				tagmatch::add_set(f.filter, k);
+				tagmatch::add(f.filter, k);
 		}
 	} else {
 		while(f.read_ascii(input)) {
-			tagmatch::add_set(f.filter, f.keys);
+			tagmatch::add(f.filter, f.keys);
 		}
 	}
 	return cnt;

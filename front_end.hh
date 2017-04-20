@@ -11,10 +11,10 @@
 
 class front_end {
 public:
-	static void add_prefix(unsigned int id, const filter_t & f);
+	static void add_partition(unsigned int id, const filter_t & mask);
 	static void start(unsigned int threads);
 	static void match(tagmatch_query * p) noexcept;
-	static void stop(unsigned int gpu_count);
+	static void stop();
 	static void clear();
 	static std::ostream & print_statistics(std::ostream &);
 	static unsigned int get_latency_limit_ms();

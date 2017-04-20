@@ -5,6 +5,7 @@
 #ifndef SAFE_FILTER_COPY
 #include <cstring>
 #endif
+#include <cassert>
 #include <climits>
 #include <vector>
 #include <map>
@@ -40,6 +41,15 @@ using std::atomic;
 // adding filters, we can compile the actual FIB and then get rid of
 // the temporaty FIB.
 //
+
+// We use a fixed numbed of GPUs.  This is the number of GPUs in use
+// by the back-end.  The back-end is active when this number is
+// greater than 0, and otherwise it is inactive.
+//
+static unsigned int gpus_in_use = 0;
+unsigned int back_end::gpu_count() {
+	return gpus_in_use;
+}
 
 // we store filters on the gpu using 32-bit blocks.
 //
@@ -154,13 +164,10 @@ struct stream_handle {
 	uint32_t last_partition;
 	uint32_t second_last_partition;
 
-	void initialize(unsigned int s, unsigned int n, unsigned int gpu_count) {
-		// Stream handlers are initialized so that they are assigned
-		// evenly to all the gpus available, going round robin
-		//
-		stream = s / gpu_count;
-		gpu = s % gpu_count;
-		next = n;
+	void initialize(unsigned int stream_, unsigned int gpu_, unsigned int next_) {
+		stream = stream_;
+		gpu = gpu_;
+		next = next_;
 
 		gpu::set_device(gpu);
 
@@ -180,10 +187,12 @@ struct stream_handle {
 		last_batch_size = second_last_batch_size = 0;
 	}
 
-	void destroy(unsigned int gpu_count) {
-		for (unsigned int g = 0; g < gpu_count; g++) {
-			gpu::release_pinned_memory(host_queries[g]);
-			gpu::release_pinned_memory(host_results[g]);
+	void destroy() {
+		gpu::set_device(gpu);
+		for (unsigned int f = 0; f < 2; f++) {
+			gpu::release_pinned_memory(host_queries[f]);
+			gpu::release_pinned_memory(host_results[f]);
+			gpu::release_memory(dev_results[f]);
 		}
 	}
 };
@@ -221,20 +230,23 @@ static void release_stream_handle(stream_handle * h) {
 	} while(!free_stream_handles.compare_exchange_weak(h->next, sp));
 }
 
-static void initialize_stream_handlers(unsigned int gpu_count) {
+static void initialize_stream_handlers() {
 	// this is supposed to execute atomically
 	//
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for (unsigned int i = 0; i < gpu_count * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
-		stream_handles[i].initialize(i,free_stream_handles, gpu_count);
+	for (unsigned int i = 0; i < gpus_in_use * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
+		// Stream handlers are initialized so that they are assigned
+		// evenly to all the gpus available, going round robin
+		//
+		stream_handles[i].initialize(i / gpus_in_use, i % gpus_in_use, free_stream_handles);
 		free_stream_handles = i;
 	}
 }
 
-static void destroy_stream_handlers(unsigned int gpu_count) {
+static void destroy_stream_handlers() {
 	free_stream_handles = STREAM_HANDLES_NULL;
-	for (unsigned int i = 0; i < gpu_count * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
-		stream_handles[i].destroy(gpu_count);
+	for (unsigned int i = 0; i < gpus_in_use * GPU_STREAMS * STREAM_HANDLES_MULTIPLIER; ++i) {
+		stream_handles[i].destroy();
 	}
 }
 
@@ -248,7 +260,7 @@ static bool compare_filters_decreasing(const filter_descr & d1, const filter_des
 }
 #endif
 
-static void compile_fibs(unsigned int gpu_count) {
+static void compile_fibs() {
 	// we first compute the total number of partitions
 	// (dev_partitions_size), the size of the global ti_table
 	// (total_filters), and the necessary number of entries in the
@@ -279,7 +291,7 @@ static void compile_fibs(unsigned int gpu_count) {
 	// dev_partitions_size we could have a simple counter in the
 	// previous for loop.
 	//
-	for (unsigned int g = 0; g < gpu_count; g++)
+	for (unsigned int g = 0; g < gpus_in_use; g++)
 		dev_partitions[g] = new part_descr[dev_partitions_size];
 
 	// local buffers to hold the temporary host-side of the fibs
@@ -302,7 +314,7 @@ static void compile_fibs(unsigned int gpu_count) {
 #else
 		const f_descr_vector & filters = pf.second;
 #endif
-		for (unsigned int g = 0; g < gpu_count; g++)
+		for (unsigned int g = 0; g < gpus_in_use; g++)
 			dev_partitions[g][part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
@@ -341,7 +353,7 @@ static void compile_fibs(unsigned int gpu_count) {
 			}
 			counter++ ;
 		}
-		for (unsigned int g = 0; g< gpu_count; g++) {
+		for (unsigned int g = 0; g < gpus_in_use; g++) {
 			gpu::set_device(g);
 			dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * (GPU_FILTER_WORDS - full_blocks) );
 
@@ -388,9 +400,9 @@ void* back_end::flush_stream() {
 // This is used by the front_end to release stream handlers when
 // moving from the first stage of the final flushing to the second
 //
-void back_end::release_stream_handles(unsigned int gpu_count)
+void back_end::release_stream_handles()
 {
-	for (unsigned char i=0; i < gpu_count * GPU_STREAMS; i++) {
+	for (unsigned char i=0; i < gpus_in_use * GPU_STREAMS; i++) {
 		stream_handle * sh = stream_handles + i;
 		release_stream_handle(sh);
 	}
@@ -551,35 +563,42 @@ size_t back_end::bytesize() {
 	return back_end_memory;
 }
 
-void back_end::start(unsigned int gpu_count) {
+void back_end::start(unsigned int gpus) {
 #ifndef BACK_END_IS_VOID
+	assert(gpus > 0);
 	gpu_mem_info mi;
-	gpu::initialize(gpu_count);
-	gpu::mem_info(&mi, gpu_count);
+	if (gpus_in_use > 0) {
+		back_end::stop();
+		back_end::clear();
+	}
+	gpus_in_use = gpus;
+	gpu::initialize(gpus_in_use);
+	gpu::mem_info(&mi,gpus_in_use);
 	back_end_memory = mi.free;
-	initialize_stream_handlers(gpu_count);
-	compile_fibs(gpu_count);
-	for (unsigned int g = 0; g < gpu_count; g++) {
+	initialize_stream_handlers();
+	compile_fibs();
+	for (unsigned int g = 0; g < gpus_in_use; g++) {
 		gpu::set_device(g);
 		gpu::synchronize_device();
 	}
-	gpu::mem_info(&mi, gpu_count);
+	gpu::mem_info(&mi, gpus_in_use);
 	back_end_memory -= mi.free;
 #endif
 }
 
-void back_end::stop(unsigned int gpu_count) {
+void back_end::stop() {
 #ifndef BACK_END_IS_VOID
-	for (unsigned int g = 0; g < gpu_count; g++) {
+	for (unsigned int g = 0; g < gpus_in_use; g++) {
 		gpu::set_device(g);
 		gpu::synchronize_device();
 	}
 #endif
 }
 
-void back_end::clear(unsigned int gpu_count) {
+void back_end::clear() {
 #ifndef BACK_END_IS_VOID
-	for (unsigned int g = 0; g < gpu_count; g++) {
+	back_end::stop();
+	for (unsigned int g = 0; g < gpus_in_use; g++) {
 		if (dev_partitions[g]) {
 			for (unsigned int j = 0; j < dev_partitions_size; ++j)
 				dev_partitions[g][j].clear();
@@ -588,7 +607,8 @@ void back_end::clear(unsigned int gpu_count) {
 			dev_partitions_size = 0;
 		}
 	}
-	destroy_stream_handlers(gpu_count);
-	gpu::shutdown(gpu_count);
+	destroy_stream_handlers();
+	gpu::shutdown(gpus_in_use);
+	gpus_in_use = 0;
 #endif
 }

@@ -16,10 +16,10 @@
 
 class partitioner_gpu {
 	private:
-		static void fibToArray(std::vector<fib_entry *> * fib, uint32_t size);
+		static void fibToArray(const std::vector<partition_fib_entry *> & fib, uint32_t size);
 
 	public:
-		static void init(unsigned int part_thread_count, std::vector<fib_entry *> * fib);
+		static void init(unsigned int part_thread_count, const std::vector<partition_fib_entry *> & fib);
 		static void get_frequencies(unsigned int tid, unsigned int size, unsigned int first, unsigned int * freq, size_t buffer_size);
 		static void reset_buffers(unsigned int tid);
 		static void clear(unsigned int part_thread_count);

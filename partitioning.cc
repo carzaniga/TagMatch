@@ -35,12 +35,7 @@
 //    partition-id_2, mask_2, size_2
 //    ...
 //
-#include <iostream>
-#include <iomanip>
-#include <fstream>
-#include <sstream>
 #include <vector>
-#include <string>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
@@ -49,61 +44,24 @@
 #include <mutex>
 #include <condition_variable>
 
-#define USE_GPU 1
+#define USE_GPU 0
 
-#include "partitioner.hh"
+#include "partitioning.hh"
 
 #if USE_GPU
 #include "partitioner_gpu.hh"
 #endif
 
 using std::vector;
-using std::endl;
-using std::cout;
-using std::chrono::high_resolution_clock;
-using std::chrono::milliseconds;
-using std::chrono::duration_cast;
 
-
-// We read and store fib_entry objects (see fib.hh).  We allocate each
-// individual object, and then store the pointers to the objects in a
-// vector that serves as an index.
+// We read and reshuffle partition_fib_entry objects (see fib.hh).  We
+// do that within a vector passed by the caller.  See 
 //
-typedef vector<fib_entry *> fib_t;
-static fib_t fib;
+typedef vector<partition_fib_entry *> fib_t;
 
-struct fib_entry_block {
-	static const size_t FE_BLOCK_SIZE = 10000;
-	fib_entry_block * next_block;
-	size_t used_entries;
-	fib_entry entries[FE_BLOCK_SIZE];
-	fib_entry_block(fib_entry_block * n) : next_block(n), used_entries(0) {};
-};
-
-static fib_entry_block * fib_block_list = nullptr;
-
-static fib_entry * new_fib_entry() {
-	if (fib_block_list == nullptr || fib_block_list->used_entries == fib_entry_block::FE_BLOCK_SIZE) {
-		fib_block_list = new fib_entry_block(fib_block_list);
-	}
-	return fib_block_list->entries + (fib_block_list->used_entries)++;
-}
-
-static void release_all_fib_entries() {
-	while(fib_block_list) {
-		fib_entry_block * tmp = fib_block_list;
-		fib_block_list = fib_block_list->next_block;
-		delete(tmp);
-	}
-}
-
-void partitioner::add_set(filter_t set, const std::vector<tagmatch_key_t> & keys) {
-	fib_entry * f = new_fib_entry();
-	f->filter = set;
-	f->keys = keys;
-	fib.push_back(f);
-}
-
+#if USE_GPU
+static fib_t::iterator fib_begin;
+#endif
 
 // Predicate object used in stable partitioning.
 //
@@ -144,7 +102,7 @@ struct partition_candidate {
 				for(unsigned int b = (*i)->filter.next_bit(0); b < filter_t::WIDTH; b = (*i)->filter.next_bit(b + 1))
 					freq[b] += 1;
 		} else {
-			unsigned int first = begin - fib.begin();
+			unsigned int first = begin - fib_begin;
 			partitioner_gpu::get_frequencies(tid, P_size, first, freq, sizeof(freq));
 			partitioner_gpu::reset_buffers(tid);
 		}
@@ -178,14 +136,14 @@ struct partition_candidate {
 #if USE_GPU
 		// Update the gpu fib, asynchronously
 		//
-		uint32_t first = begin - fib.begin();
+		uint32_t first = begin - fib_begin;
 		partitioner_gpu::reset_buffers(tid);
 		partitioner_gpu::unstable_partition(tid, size(), first, pivot);
 #endif
 
 		// Update the cpu fib
 		//
-		vector<fib_entry *>::iterator m = std::stable_partition(begin, end, has_zero_bit(pivot));
+		fib_t::iterator m = std::stable_partition(begin, end, has_zero_bit(pivot));
 		partition_candidate * p0 = new partition_candidate(begin, m);
 		begin = m;
 		return p0;
@@ -321,7 +279,7 @@ static unsigned int balancing_pivot(const partition_candidate * p) {
 	return pivot;
 }
 
-static void balanced_partitioning(size_t max_p, int tid) {
+static void do_balanced_partitioning(size_t max_p, int tid) {
 	partition_candidate * p;
 	while ((p = dequeue_partition_candidate()) != nullptr) {
 		if (! p->clean_freq)
@@ -383,24 +341,32 @@ static void balanced_partitioning(size_t max_p, int tid) {
 	}
 }
 
-unsigned int max_size = 200000;
-unsigned int part_thread_count = 4;
+static unsigned int max_size = 200000;
+static unsigned int part_thread_count = 4;
 
-void partitioner::initialize() {
+void partitioning::set_maxp(unsigned int size) {
+	max_size = size;
+}
+
+unsigned int partitioning::get_maxp() {
+	return max_size;
+}
+
+void partitioning::set_cpu_threads(unsigned int t) {
+	part_thread_count = t;
+}
+
+unsigned int partitioning::get_cpu_threads() {
+	return part_thread_count;
+}
+
+void partitioning::balanced_partitioning(std::vector<partition_fib_entry *> & fib,
+										 std::vector<partition_prefix> & masks) {
 	PT = nullptr;
 #if USE_GPU
-	partitioner_gpu::init(part_thread_count, &fib);
+	fib_begin = fib.begin();
+	partitioner_gpu::init(part_thread_count, fib);
 #endif
-}
-
-void partitioner::consolidate(unsigned int size, unsigned int thread_count) {
-	max_size = size;
-	part_thread_count = thread_count;
-	consolidate();
-}
-
-void partitioner::consolidate() {
-	initialize();
 	partition_candidate * p = new partition_candidate(fib.begin(), fib.end());
 	p->used_bits.clear();
 	p->mask.clear();
@@ -409,7 +375,7 @@ void partitioner::consolidate() {
 		std::vector<std::thread *> T(part_thread_count);
 		enqueue_partition_candidate(p);
 		for(unsigned int i = 0; i < part_thread_count; ++i)
-			T[i] = new std::thread(balanced_partitioning, max_size, i);
+			T[i] = new std::thread(do_balanced_partitioning, max_size, i);
 
 		for(unsigned int i = 0; i < part_thread_count; ++i) {
 			T[i]->join();
@@ -419,14 +385,6 @@ void partitioner::consolidate() {
 		p->next = nullptr;
 		PT = nonzero_mask_partitioning(p, 0);
 	}
-}
-
-void partitioner::get_consolidated_prefixes_and_filters(
-			std::vector<partition_prefix> ** prefixes,
-			std::vector<partition_fib_entry> ** filters
-			) {
-	*prefixes = new std::vector<partition_prefix>();
-	*filters = new std::vector<partition_fib_entry>();
 
 	partition_id_t pid = 0;
 	while(PT) {
@@ -438,53 +396,16 @@ void partitioner::get_consolidated_prefixes_and_filters(
 		partition.size = PT->end - PT->begin;
 		
 		for(fib_t::iterator i = PT->begin; i != PT->end; ++i) {
-			partition_fib_entry f;
-			f.filter = (*i)->filter;
-			partition.filter &= f.filter;
-			f.keys = std::move((*i)->keys);
-			f.partition = partition.partition;
-			(*filters)->emplace_back(f);
-			//std::cout << "PP Adding filter to p " << f.partition << "; size=" <<  f.keys.end()-f.keys.begin() << " --- " << std::endl;
+			partition_fib_entry * pfe = *i;
+			partition.filter &= pfe->filter;
+			pfe->partition = partition.partition;
 		}
-
-		(*prefixes)->emplace_back(partition);
+		masks.emplace_back(partition);
+		partition_candidate * tmp = PT;
 		PT = PT->next;
+		delete(tmp);
 	}
-}
-
-/*
- std::vector<partition_fib_entry> * partitioner::get_consolidated_filters() {
-	partition_id_t pid = 0;
-	
-	partition_candidate * tmp_PT = PT;
-
-	while(tmp_PT) {
-		partition_prefix partition;
-
-		partition.filter.fill();
-		partition.length = filter_t::WIDTH;
-		partition.partition = pid++;
-		partition.size = tmp_PT->end - tmp_PT->begin;
-
-		for(fib_t::iterator i = tmp_PT->begin; i != tmp_PT->end; ++i) {
-			partition_fib_entry f;
-			f.filter = (*i)->filter;
-			partition.filter &= f.filter;
-			f.keys = std::move((*i)->keys);
-			f.partition = partition.partition;
-			res->emplace_back(f);
-		}
-		tmp_PT = tmp_PT->next;
-	}
-	return res;
-}
-*/
-
-void partitioner::clear() {
-	release_all_fib_entries();
-	fib.clear();
 #if USE_GPU
 	partitioner_gpu::clear(part_thread_count);
 #endif
 }
-

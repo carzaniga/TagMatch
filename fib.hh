@@ -18,8 +18,8 @@ public:
 	std::vector<tagmatch_key_t> keys;
 
 	fib_entry() : filter(), keys() {}
-	
-	fib_entry(filter_t f, const std::vector<tagmatch_key_t> & k) : filter(f), keys(k) {}
+	fib_entry(const filter_t & f, const std::vector<tagmatch_key_t> & k) : filter(f), keys(k) {}
+	fib_entry(const fib_entry & fe) : filter(fe.filter), keys(fe.keys) {}
 
 	std::ostream & write_binary(std::ostream & output) const;
 	std::istream & read_binary(std::istream & input);
@@ -29,12 +29,14 @@ public:
 };
 
 typedef uint32_t partition_id_t;
+const partition_id_t NULL_PARTITION_ID = 0xffffffff;
 
 class partition_fib_entry : public fib_entry {
 public:
 	partition_id_t partition;
 
 	partition_fib_entry() : fib_entry(), partition(0) {}
+	partition_fib_entry(const fib_entry & fe) : fib_entry(fe), partition(0) {}
 
 	std::ostream & write_binary(std::ostream & output) const {
 		io_util_write_binary(output, partition);

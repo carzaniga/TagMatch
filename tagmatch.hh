@@ -12,18 +12,16 @@ class tagmatch {
 public:
 	// These methods are used by the partitioner
 	//
-	static void add_set(filter_t set, const std::vector<tagmatch_key_t> & keys);
-	static void add_set(filter_t set, tagmatch_key_t key);
-	static void delete_set(filter_t set, tagmatch_key_t key);
-	static void consolidate();
-	static void consolidate(uint32_t psize, uint32_t threads);
+	static void add(const filter_t & set, const std::vector<tagmatch_key_t> & keys);
+	static void add(const filter_t & set, tagmatch_key_t key);
+	static void remove(const filter_t & set, tagmatch_key_t key);
 
-	// These methods are used by the matcher
-	//
-	static void add_partition(unsigned int id, const filter_t & mask);
-	static void add_filter(unsigned int partition_id, const filter_t & f,
-						   std::vector<tagmatch_key_t>::const_iterator begin,
-						   std::vector<tagmatch_key_t>::const_iterator end);
+	static void consolidate();
+	static void consolidate(unsigned int partition_size, unsigned int threads);
+
+	static const char * get_database_filename();
+	static void set_database_filename(const char *);
+
 	static void start();
 	static void start(unsigned int threads, unsigned int gpu_count);
 	static void stop();
@@ -31,8 +29,6 @@ public:
 
 	static unsigned int get_latency_limit_ms();
 	static void set_latency_limit_ms(unsigned int latency_limit);
-	static void set_cpu_count(int count);
-	static void set_gpu_count(int count);
 
 	// Match operations
 	//

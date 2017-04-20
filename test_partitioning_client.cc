@@ -45,7 +45,7 @@
 #include <cstring>
 #include <chrono>
 
-#include "partitioner.hh"
+#include "partitioning.hh"
 
 using std::vector;
 using std::endl;
@@ -69,19 +69,17 @@ static void print_usage(const char* progname) {
 }
 
 
-static void read_filters(std::istream & input, bool binary_format) {
+static void read_filters(std::vector<partition_fib_entry *> & fib,
+						 std::istream & input, bool binary_format) {
 	fib_entry f;
 	if (binary_format) {
-		while(f.read_binary(input)) {
-			partitioner::add_set(f.filter, f.keys);
-		}
+		while(f.read_binary(input)) 
+			fib.push_back(new partition_fib_entry(f));
 	} else {
-		while(f.read_ascii(input)) {
-			partitioner::add_set(f.filter, f.keys);
-		}
+		while(f.read_ascii(input)) 
+			fib.push_back(new partition_fib_entry(f));
 	}
 }
-
 
 int main(int argc, const char* argv[]) {
 	const char* partitions_fname = nullptr;
@@ -91,7 +89,6 @@ int main(int argc, const char* argv[]) {
 	unsigned int max_size = 200000;
 	unsigned int thread_count = 4;
 	bool binary_format = false;
-
 	
 	for (int i = 1; i < argc; ++i) {
 		if (sscanf(argv[i], "m=%u", &max_size) || sscanf(argv[i], "N=%u", &max_size))
@@ -136,6 +133,8 @@ int main(int argc, const char* argv[]) {
 	std::ostream* partitions_output = nullptr;
 	std::ostream* filters_output = nullptr;
 	
+	std::vector<partition_fib_entry *> fib;
+
 	if (input_fname != nullptr) {
 		std::ifstream input_file(input_fname);
 		if (!input_file) {
@@ -143,11 +142,11 @@ int main(int argc, const char* argv[]) {
 			return 1;
 		}
 		std::cerr << "Reading filters..." << std::flush;
-		read_filters(input_file, binary_format);
+		read_filters(fib, input_file, binary_format);
 		input_file.close();
 	} else {
 		std::cerr << "Reading filters..." << std::flush;
-		read_filters(std::cin, binary_format);
+		read_filters(fib, std::cin, binary_format);
 	}
 	std::cerr << "\t\t\t" << std::setw(12) << "fib.size()" << " filters." << endl;
 	
@@ -179,45 +178,44 @@ int main(int argc, const char* argv[]) {
 		}
 	}
 	
+	partitioning::set_maxp(max_size);
+	partitioning::set_cpu_threads(thread_count);
+	std::vector<partition_prefix> masks;
+
 	std::cerr << "Balanced partitioning..." << std::flush;
 
 	high_resolution_clock::time_point start = high_resolution_clock::now();
 
-	partitioner::consolidate(max_size, thread_count);
+	partitioning::balanced_partitioning(fib, masks);
 
 	high_resolution_clock::time_point stop = high_resolution_clock::now();
 
 	std::cerr << "\t\t" << std::setw(12)
 			  << duration_cast<milliseconds>(stop - start).count() << " ms." << std::endl;
 
-	std::vector<partition_prefix> * partitions;	
-	std::vector<partition_fib_entry> * filters;	
-	partitioner::get_consolidated_prefixes_and_filters(&partitions, &filters);
-
 	// get partitions
-	std::cerr << "Number of partitions:\t\t\t" << std::setw(12) << partitions->size() << " partitions." << endl;
-	std::cerr << "Number of filters:\t\t\t" << std::setw(12) << filters->size() << " partitions." << endl;
+	std::cerr << "Number of partitions:\t\t\t" << std::setw(12) << masks.size() << " partitions." << endl;
+	std::cerr << "Number of filters:\t\t\t" << std::setw(12) << fib.size() << " filters." << endl;
 
-	for (partition_prefix pp : *partitions) {
-		if (partitions_output) {
+	if (partitions_output) {
+		for (partition_prefix pp : masks) {
 			if (binary_format)
 				pp.write_binary(*partitions_output);
 			else
 				pp.write_ascii(*partitions_output);
 		}
 	}
-			
-	for (partition_fib_entry pfe : *filters) {	
+
+	for (partition_fib_entry * pfe : fib) {
 		if (filters_output) {
 			if (binary_format)
-				pfe.write_binary(*filters_output);
+				pfe->write_binary(*filters_output);
 			else
-				pfe.write_ascii(*filters_output);
+				pfe->write_ascii(*filters_output);
 		}
+		delete(pfe);
 	}
-	partitioner::clear();
+
 	if (partitions_output == &partitions_file) partitions_file.close();
 	if (filters_output == &filters_file) filters_file.close();
-	delete filters;
-	delete partitions;
 }

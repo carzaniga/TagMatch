@@ -86,20 +86,20 @@ static cudaStream_t gstream[MAXTHREADS];
 
 // Compiles the fib on the host memory, so that it can be copied to the device
 // global memory
-void partitioner_gpu::fibToArray(std::vector<fib_entry *> * fib, uint32_t size) {
+void partitioner_gpu::fibToArray(const std::vector<partition_fib_entry *> & fib, uint32_t size) {
 	for (uint64_t f = 0; f < size; f++) {
-		const uint64_t * ptr = fib->at(f)->filter.begin64();
+		const uint64_t * ptr = fib.at(f)->filter.begin64();
 		for (uint64_t j = 0; j < CPU_WORDS_PER_FILTER; j++)
 			h_fib[f*CPU_WORDS_PER_FILTER + j] = *ptr++; 
 	}
 }
 
-void partitioner_gpu::init(unsigned int part_thread_count, std::vector<fib_entry *> * fib) {
+void partitioner_gpu::init(unsigned int part_thread_count, const std::vector<partition_fib_entry *> & fib) {
 	cudaSetDevice(0);
-	cudaMallocHost(&h_fib, sizeof(uint64_t) * fib->size() * CPU_WORDS_PER_FILTER);
-	fibToArray(fib, fib->size());
-	cudaMalloc(&g_fib, sizeof(uint32_t) * fib->size() * GPU_WORDS_PER_FILTER);
-	cudaMemcpy(g_fib, h_fib, sizeof(uint32_t) * fib->size() * GPU_WORDS_PER_FILTER, cudaMemcpyHostToDevice);
+	cudaMallocHost(&h_fib, sizeof(uint64_t) * fib.size() * CPU_WORDS_PER_FILTER);
+	fibToArray(fib, fib.size());
+	cudaMalloc(&g_fib, sizeof(uint32_t) * fib.size() * GPU_WORDS_PER_FILTER);
+	cudaMemcpy(g_fib, h_fib, sizeof(uint32_t) * fib.size() * GPU_WORDS_PER_FILTER, cudaMemcpyHostToDevice);
 	
 	for (int t=0; t<part_thread_count; t++) {
 		cudaMalloc(&(g_rcounter[t]), sizeof(uint32_t));
@@ -108,7 +108,7 @@ void partitioner_gpu::init(unsigned int part_thread_count, std::vector<fib_entry
 		gzero<<<1, FILTER_WIDTH>>>(g_freqs[t], g_lcounter[t], g_rcounter[t]);
 		cudaStreamCreate(&(gstream[t]));
 	}
-	cudaMalloc(&g_buffer, sizeof(uint32_t) * fib->size() * GPU_WORDS_PER_FILTER);
+	cudaMalloc(&g_buffer, sizeof(uint32_t) * fib.size() * GPU_WORDS_PER_FILTER);
 	cudaDeviceSynchronize();
 	cudaFreeHost(h_fib);
 	cudaError_t err;

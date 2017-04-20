@@ -3,56 +3,87 @@
 #include <map>
 #include <set>
 #include <fstream>
+#include <string>
 
 #include "tagmatch.hh"
 #include "fib.hh"
-#include "partitioner.hh"
+#include "partitioning.hh"
 #include "front_end.hh"
 #include "back_end.hh"
+
+using std::vector;
+using std::set;
 
 static bool already_consolidated = false;
 
 // TODO: do we want the library to be thread safe? We need to
 // add some locks in that case
 //
-enum operation_type {
-	ADD = 0,
-	DELETE = 1,
+class keyset_change {
+public:
+	keyset_change(): to_add(), to_remove() {};
+
+	void add(tagmatch_key_t k) { to_add.insert(k); }
+	void remove(tagmatch_key_t k) { to_remove.insert(k); }
+
+	void apply(vector<tagmatch_key_t> & keys);
+
+private:
+	set<tagmatch_key_t> to_add;
+	set<tagmatch_key_t> to_remove;
 };
 
-struct fib_update_operation {
-	fib_update_operation(operation_type t, filter_t f, tagmatch_key_t k) {
-		type = t;
-		filter = f;
-		key = k;
-	};
-	operation_type type;
-	filter_t filter;
-	tagmatch_key_t key;
-};
+void keyset_change::apply(vector<tagmatch_key_t> & keys) {
 
-std::map<filter_t, std::set<tagmatch_key_t>> fib_map;
-std::vector<fib_update_operation> updates;
+	vector<tagmatch_key_t>::iterator j = keys.begin();
+	vector<tagmatch_key_t>::iterator i = keys.begin();
 
-void tagmatch::delete_set(filter_t set, tagmatch_key_t key) {
-	// I should already have a map in the disk, that will
-	// be loaded on the next consolidate() call... For
-	// now, just enqueue the request for later
-	struct fib_update_operation op(DELETE, set, key);
-	updates.push_back(op);
+	for(i = keys.begin(); i != keys.end(); ++i) {
+		set<tagmatch_key_t>::iterator to_remove_itr;
+		if ((to_remove_itr = to_remove.find(*i)) == to_remove.end()) {
+			if (i != j)
+				*j = *i;
+			++j;
+		} else {
+			to_remove.erase(to_remove_itr);
+		}
+		to_add.erase(*i);
+		if (to_add.empty() && to_remove.empty())
+			break;
+	}
+	set<tagmatch_key_t>::iterator to_add_itr = to_add.begin();
+	while (j != i && to_add_itr != to_add.end()) 
+		*j++ = *to_add_itr++;
+
+	while (to_add_itr != to_add.end()) 
+		keys.emplace_back(*to_add_itr++);
 }
 
-void tagmatch::add_set(filter_t set, const std::vector<tagmatch_key_t> & keys) {
+typedef std::map<filter_t, keyset_change> changes_map;
+static changes_map updates;
+
+void tagmatch::remove(const filter_t & s, tagmatch_key_t k) {
+	updates[s].remove(k);
+}
+
+void tagmatch::add(const filter_t & s, const vector<tagmatch_key_t> & keys) {
+	keyset_change & c = updates[s];
 	for (tagmatch_key_t k : keys)
-		add_set(set, k);
+		c.add(k);
 }
 
-void tagmatch::add_set(filter_t set, tagmatch_key_t key) {
-	// I should already have a map in the disk, that will
-	// be loaded on the next consolidate() call... For
-	// now, just enqueue the request for later
-	struct fib_update_operation op(ADD, set, key);
-	updates.push_back(op);
+void tagmatch::add(const filter_t & s, tagmatch_key_t key) {
+	updates[s].add(key);
+}
+
+static std::string db_filename("tagmatch.db");
+
+const char * tagmatch::get_database_filename() {
+	return db_filename.c_str();
+}
+
+void set_database_filename(const char * name) {
+	db_filename = name;
 }
 
 static uint32_t partition_size = 1000;
@@ -65,97 +96,76 @@ void tagmatch::consolidate(uint32_t psize, uint32_t threads) {
 }
 
 void tagmatch::consolidate() {
+	vector<partition_fib_entry *> fib;
+
 	if (already_consolidated) {
-		std::cerr << std::endl << "\tReading previous fib from disk...";
-		// Here I should read the map from a file
-		std::ifstream cache_file_in(".map.tmp");
-		fib_entry f;
-		while(f.read_binary(cache_file_in)) {
-			for (tagmatch_key_t k : f.keys) {
-				fib_map[f.filter].insert(k);
+		std::ifstream cache_file_in(db_filename);
+		if (!cache_file_in) {
+			std::cerr << "could not open database file: " << db_filename << std::endl;
+		} else {
+			fib_entry f;
+			while(f.read_binary(cache_file_in)) {
+				changes_map::iterator ci = updates.find(f.filter);
+				if (ci != updates.end()) {
+					ci->second.apply(f.keys);
+					updates.erase(ci);
+				}
+
+				if (!f.keys.empty()) 
+					fib.push_back(new partition_fib_entry(f));
 			}
 		}
 		cache_file_in.close();
-		std::cerr << " done";
 	}
 
-	// Apply changes!
-	//
-	std::cerr << std::endl << "\tApplying changes...";
-	for (struct fib_update_operation fuo : updates) {
-		if (fuo.type == ADD) {
-			fib_map[fuo.filter].insert(fuo.key);
-		}
-		else if (fuo.type == DELETE) {
-			std::set<tagmatch_key_t> keys = fib_map.at(fuo.filter);
-			if (keys.size() == 1) {
-				fib_map.erase(fuo.filter);
-			}
-			else {
-				fib_map.at(fuo.filter).erase(fuo.key);
-			}
-		}
+	for (changes_map::iterator ci = updates.begin(); ci != updates.end(); ++ci) {
+		fib_entry f;
+		f.filter = ci->first;
+		ci->second.apply(f.keys);
+
+		if (!f.keys.empty()) 
+			fib.push_back(new partition_fib_entry(f));
 	}
 
 	updates.clear();
-	std::cerr << " done" << std::endl;
 	
-	std::cerr << "\tUpdating on disk cache...";
-	std::ofstream cache_file_out("map.tmp");
-	// Flush the set-key map
-	for (std::pair<filter_t, std::set<tagmatch_key_t>> fk : fib_map) {
-		std::vector<tagmatch_key_t> keys;
-		for (tagmatch_key_t k : fk.second) {
-			keys.push_back(k);
+	std::ofstream cache_file_out(db_filename);
+	if (!cache_file_out) {
+		std::cerr << "could not open database file: " << db_filename << std::endl;
+	} else {
+		// Flush the set-key map
+		for (partition_fib_entry * fe : fib) {
+			// Write this fib_entry to a file (I'm filling the on disk map)
+			fe->write_binary(cache_file_out);
 		}
-		fib_entry fe(fk.first, keys);
-		// Write this fib_entry to a file (I'm filling the on disk map)
-		fe.write_binary(cache_file_out);
-		partitioner::add_set(fk.first, keys);
+		cache_file_out.close();
 	}
-	cache_file_out.close();
-	// clear the map and destroy its elements
-	fib_map.clear();
-	std::cerr << " done" << std::endl;
 
-	std::cerr << "\tConsolidating...";
-	partitioner::consolidate(partition_size, partitioning_threads);
-	std::cerr << " done";
-
-	// Pass these things to the matcher!
+	// Compute the partitioning and passes the results to the matcher!
 	//
-	std::vector<partition_prefix> * prefixes;
-	std::vector<partition_fib_entry> * filters;
-	partitioner::get_consolidated_prefixes_and_filters(&prefixes, &filters);	
-	for (partition_prefix pp : *prefixes)
-		add_partition(pp.partition, pp.filter);
+	vector<partition_prefix> masks;
+	partitioning::set_maxp(partition_size);
+	partitioning::set_cpu_threads(partitioning_threads);
+	partitioning::balanced_partitioning(fib, masks);
 
-	for (partition_fib_entry pfe : *filters) {
-		add_filter(pfe.partition, pfe.filter, pfe.keys.begin(), pfe.keys.end());
+	for (partition_prefix pp : masks) {
+		front_end::add_partition(pp.partition, pp.filter);
+		back_end::add_partition(pp.partition, pp.filter);
+	}
+
+	for (partition_fib_entry * pfe : fib) {
+		back_end::add_filter(pfe->partition, pfe->filter, pfe->keys.begin(), pfe->keys.end());
+		delete(pfe);
 	}
 	already_consolidated = true;
-	delete prefixes;
-	delete filters;
-	partitioner::clear();
-}
-
-void tagmatch::add_partition(unsigned int id, const filter_t & mask) {
-	front_end::add_prefix(id, mask);
-	back_end::add_partition(id, mask);
-}
-
-void tagmatch::add_filter(unsigned int partition_id, const filter_t & f, 
-				   std::vector<tagmatch_key_t>::const_iterator begin,
-				   std::vector<tagmatch_key_t>::const_iterator end) {
-	back_end::add_filter(partition_id, f, begin, end);
 }
 
 void tagmatch::set_latency_limit_ms(unsigned int latency_limit) {
 	front_end::set_latency_limit_ms(latency_limit);
 }
 
-int thread_count;
-int gpu_count;
+static int gpu_count;
+static int thread_count;
 
 void tagmatch::start() {
 	back_end::start(gpu_count);
@@ -172,13 +182,14 @@ void tagmatch::start(unsigned int ccount, unsigned int gcount) {
 }
 
 void tagmatch::stop() {
-	front_end::stop(gpu_count);
-	back_end::stop(gpu_count);
+	front_end::stop();
+	back_end::stop();
 }
 
 void tagmatch::clear() {
+	already_consolidated = false;
 	front_end::clear();
-	back_end::clear(gpu_count);
+	back_end::clear();
 }
 
 void tagmatch::match(tagmatch_query * q, match_handler * h) noexcept {

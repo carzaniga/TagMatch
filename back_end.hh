@@ -25,11 +25,12 @@ public:
 								void * batch_ptr);
 	static void * second_flush_stream();
 	static void * flush_stream();
-	static void release_stream_handles(unsigned int gpu_count);
-	static void stop(unsigned int gpu_count);
-	static void clear(unsigned int gpu_count);
+	static void release_stream_handles();
+	static void stop();
+	static void clear();
 	static filter_t get_cbits(unsigned int id);
 
+	static unsigned int gpu_count();
 	static size_t bytesize();
 
 	static void analyze_fibs();

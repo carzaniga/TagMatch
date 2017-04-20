@@ -35,10 +35,12 @@ UNIT_TESTS =
 if USE_BOOST_UNIT_TEST_FRAMEWORK
 check_PROGRAMS += test_io test_bitvector \
 	test_patricia_predicate test_multi_patricia_predicate \
-	test_compact_patricia_predicate
+	test_compact_patricia_predicate \
+	test_partitioning test_tagmatch
 UNIT_TESTS += test_io test_bitvector \
 	test_patricia_predicate test_multi_patricia_predicate \
-	test_compact_patricia_predicate
+	test_compact_patricia_predicate \
+	test_partitioning test_tagmatch
 endif
 
 test_io_SOURCES = test_io.cc
@@ -55,6 +57,12 @@ test_multi_patricia_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
 
 test_compact_patricia_predicate_SOURCES = test_compact_patricia_predicate.cc
 test_compact_patricia_predicate_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB)
+
+test_partitioning_SOURCES = test_partitioning.cc
+test_partitioning_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libtagmatch.la
+
+test_tagmatch_SOURCES = test_tagmatch.cc
+test_tagmatch_LDADD = $(BOOST_UNIT_TEST_FRAMEWORK_LIB) ../libtagmatch.la
 
 TESTS = $(UNIT_TESTS)
 

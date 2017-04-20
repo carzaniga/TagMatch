@@ -35,8 +35,8 @@ endif
 lib_LTLIBRARIES = libtagmatch.la
 libtagmatch_la_SOURCES = fib.cc query.cc \
 		query.hh io_util.hh fib.hh bitvector.hh gpu.hh parameters.hh \
-		front_end.cc front_end.hh back_end.cc back_end.hh \
-		gpu.cu partitioner_gpu.cu partitioner.cc \
+		front_end.cc front_end.hh back_end.cc back_end.hh partitioning.hh \
+		gpu.cu partitioner_gpu.cu partitioning.cc \
 		tagmatch.cc tagmatch.hh
 
 libtagmatch_la_LDFLAGS = -lcudart

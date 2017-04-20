@@ -41,9 +41,9 @@ using std::ostream;
 // ***DESIGN OF THE FORWARDING TABLE***
 //
 // The FIB maps a filter prefix to a queue.
-// 
+//
 // FIB: prefix -> queue
-// 
+//
 // The queues are used to batch queries that match the corresponding
 // prefix.  When the queue is full, we ship the whole batch to
 // back-end.
@@ -54,7 +54,7 @@ using std::ostream;
 // MAIN IDEA: we partition the set of prefixes by the position X of
 // their leftmost 1-bit.  This is the leftmost bit equal to 1.  Thus
 // we have a map Prefixes: {0...191} -> (prefix -> queue).
-// 
+//
 // Since we represent filters using 64-bit blocks, we further split
 // the map into three vectors of 64 positions each.  The first vector
 // pp1 holds all the prefixes whose leftmost 1-bit is in position
@@ -84,7 +84,7 @@ using std::ostream;
 // the query batches (buffers) are independent object that we
 // allocate and then recycle using a pool based on a free list that we
 // access using a lock-free algorithm.
-// 
+//
 class batch_pool;
 
 union batch {
@@ -101,7 +101,7 @@ public:
 };
 
 // A free-list allocator of query batches.
-// 
+//
 class batch_pool {
 private:
 	// we keep track of all the batch objects we allocate by storing
@@ -120,7 +120,7 @@ public:
 	// Deallocate all allocated batches, regardless of whether they
 	// are in the free-list or not.  This means that clear() must be
 	// called when none of the batches is in use.
-	// 
+	//
 	static void clear() {
 		std::lock_guard<std::mutex> lock(pool_mtx);
 		head = nullptr;
@@ -164,17 +164,17 @@ atomic<batch *> batch_pool::head(nullptr);
 // This class implements a central component of the front end, namely
 // the queue of messages associated with each partition and used to
 // buffer queries between the front end and the back end.
-// 
+//
 class partition_queue {
 	// primary information:
-	// 
+	//
 	unsigned int partition_id;
 	atomic<unsigned int> tail; // one-past the last element
 	atomic<unsigned int> written; // number of elements actually written in the queue
 	batch * b;				   // query buffer
 
 	// statistics and timing information
-	// 
+	//
 	high_resolution_clock::time_point first_enqueue_time;
 #ifdef WITH_FRONTEND_STATISTICS
     milliseconds max_latency;
@@ -189,7 +189,7 @@ class partition_queue {
 	// from the list whenever we flush the queue.  We use these two
 	// pointers, plus a static (global) "sentinel" to implement the
 	// list in the most efficient and simple way.
-	// 
+	//
 	partition_queue * prev_pending;
 	partition_queue * next_pending;
 
@@ -225,13 +225,13 @@ public:
 
 	// Flush the first pending queue.  Returns false when no pending
 	// queue is found.
-	// 
+	//
 	static partition_queue * first_pending();
 
 	// Flush the first pending queue whose current latency is greater
 	// than the given limit.  Returns false if no such pending queue
 	// is found.
-	// 
+	//
 	static partition_queue * first_pending(milliseconds latency_limit) noexcept;
 
 #ifdef WITH_FRONTEND_STATISTICS
@@ -252,9 +252,9 @@ public:
 	}
 
 	ostream & print_statistics(ostream & os) const {
-		os << std::setw(9) << partition_id 
+		os << std::setw(9) << partition_id
 #ifdef WITH_FRONTEND_STATISTICS
-		<< " " << std::setw(11) << max_latency.count() 
+		<< " " << std::setw(11) << max_latency.count()
 		<< " " << std::setw(13) << enqueue_count
 		<< " " << std::setw(11) << flush_count
 #endif
@@ -270,7 +270,7 @@ public:
 	void update_flush_statistics() {
 		flush_count += 1;
 
-		milliseconds latency 
+		milliseconds latency
 			= duration_cast<milliseconds>(high_resolution_clock::now() - first_enqueue_time);
 		if (latency > max_latency)
 			max_latency = latency;
@@ -279,7 +279,7 @@ public:
 };
 
 // This is the sentinel of the list of pending partition queues.
-// 
+//
 static partition_queue pending_pq_list;
 static mutex pending_pq_list_mtx;
 
@@ -301,16 +301,16 @@ partition_queue * partition_queue::first_pending(milliseconds latency_limit) noe
 	// we don't care about synchronizing this operation, since it is
 	// the flush operation on q that really matters, and that removes
 	// q from the pending list.
-	// 
+	//
 	// So, two threads might grab the same pending queue, but then
 	// only one will succeed, and the other one will simply waste some
 	// cycles.
-	// 
+	//
 	partition_queue * q = pending_pq_list.next_pending;
 	if (q == &pending_pq_list)
 		return nullptr;
 
-	milliseconds current_latency 
+	milliseconds current_latency
 		= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
 	if (current_latency < latency_limit)
 		return nullptr;
@@ -319,7 +319,7 @@ partition_queue * partition_queue::first_pending(milliseconds latency_limit) noe
 
 partition_queue * partition_queue::first_pending() {
 	// We don't care to synchronize this operation; see comment above.
-	// 
+	//
 	partition_queue * q = pending_pq_list.next_pending;
 	if (q == &pending_pq_list)
 		return nullptr;
@@ -331,7 +331,7 @@ void partition_queue::enqueue(tagmatch_query * p) noexcept {
 	assert(tail <= QUERIES_BATCH_SIZE);
 	p->add_partition(partition_id);
 	unsigned int t = tail.load(std::memory_order_acquire);
-	
+
 	do {
 		while (t == QUERIES_BATCH_SIZE)
 			t = tail.load(std::memory_order_acquire);
@@ -443,14 +443,14 @@ public:
 };
 
 typedef prefix_queue_pair<64> queue64;
-// 
+//
 // container of prefixes whose leftmost 1-bit is in the 3rd 64-bit
 // block.
-// 
+//
 class p1_container {
 public:
     // Since this is the third of three blocks, it may only contain
-    // prefixes of up to 64 bits.  
+    // prefixes of up to 64 bits.
     //
 	// We store the prefixes in a contiguous section of the global
 	// p64_table.
@@ -467,7 +467,7 @@ public:
 //
 // We store all the queue_prefix pairs in three compact tables.  This
 // should improve memory-access times.
-// 
+//
 static queue64 * p64_table = nullptr;
 
 static p1_container pp1[64];
@@ -475,8 +475,8 @@ static p1_container pp2[64];
 static p1_container pp3[64];
 
 //
-// this is the temporary front-end FIB 
-// 
+// this is the temporary front-end FIB
+//
 class tmp_prefix_descr {
 public:
 	unsigned int id;
@@ -491,7 +491,7 @@ public:
 	vector<tmp_prefix_descr> p64;
 
 	tmp_prefix_pos_descr() : p64() {};
-	
+
 	void clear() {
 		p64.clear();
 	}
@@ -500,12 +500,12 @@ public:
 static tmp_prefix_pos_descr tmp_pp[192];
 
 // This is how we compile the temporary FIB
-// 
-void front_end::add_prefix(unsigned int id, const filter_t & f) {
+//
+void front_end::add_partition(unsigned int id, const filter_t & mask) {
 	int index = -1;
-	unsigned int min = UINT_MAX; 
-	for (int i=0; i< 192; i++) {
-		if (f[i]==1) {
+	unsigned int min = UINT_MAX;
+	for (int i = 0; i < 192; ++i) {
+		if (mask[i] == 1) {
 			// Here I find the least crowded array to store the new one partition.
 			//
 			if (tmp_pp[i].p64.size() < min) {
@@ -514,11 +514,11 @@ void front_end::add_prefix(unsigned int id, const filter_t & f) {
 			}
 		}
 	}
-	tmp_pp[index].p64.emplace_back(id,f) ;
+	tmp_pp[index].p64.emplace_back(id, mask) ;
 }
 
 // This is how we compile the real FIB from the temporary FIB
-// 
+//
 static void compile_fib() {
 	unsigned int p64_size = 0;
 
@@ -532,7 +532,7 @@ static void compile_fib() {
 
 	for(unsigned int i = 0; i < 64; ++i) {
 		pp1[i].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
 			p64_table[p64_i++].initialize(d.id, d.filter.begin());
 		pp1[i].p64_end = p64_table + p64_i;
 
@@ -541,7 +541,7 @@ static void compile_fib() {
 
 	for(unsigned int i = 64; i < 128; ++i) {
 		pp2[i - 64].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 1);
 		pp2[i - 64].p64_end = p64_table + p64_i;
 
@@ -550,7 +550,7 @@ static void compile_fib() {
 
 	for(unsigned int i = 128; i < 192; ++i) {
 		pp3[i - 128].p64_begin = p64_table + p64_i;
-		for(const tmp_prefix_descr & d : tmp_pp[i].p64) 
+		for(const tmp_prefix_descr & d : tmp_pp[i].p64)
 			p64_table[p64_i++].initialize(d.id, d.filter.begin() + 2);
 		pp3[i - 128].p64_end = p64_table + p64_i;
 		tmp_pp[i].clear();
@@ -570,7 +570,7 @@ void front_end::set_bit_permutation_pos(unsigned char old_pos, unsigned char new
 }
 
 // This is the main matching function
-// 
+//
 static void match(tagmatch_query * qry) {
 	const block_t * b = qry->filter.begin();
 
@@ -637,7 +637,7 @@ static void match(tagmatch_query * qry) {
 // We maintain a queue of jobs for the front-end threads.  There are
 // two kinds of jobs.  When the front-end is in the MATCHING state,
 // then the threads execute matching jobs, suspending (spinning) if
-// the job queue is empty. 
+// the job queue is empty.
 //
 // When the front end is in the FLUSHING state, then the threads
 // execute FLUSHING jobs, and then they terminate when the job queue is empty.
@@ -689,7 +689,7 @@ static unsigned int matching_threads;
 
 //
 // This is used to enqueue a matching job.  It suspends in a spin loop
-// as long as the queue is full. 
+// as long as the queue is full.
 //
 // ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. **
 //
@@ -727,7 +727,7 @@ check_latency:
 		}
 		do {
 			head = matching_job_queue_head.load(std::memory_order_acquire);
-			while (head == matching_job_queue_tail) { 
+			while (head == matching_job_queue_tail) {
 				// empty queue
 				if (processing_state == FE_MATCHING) {
 					// if we are still matching, then we spin
@@ -763,7 +763,7 @@ static void flush_loop() {
 				if (processing_state == FE_FLUSHING) {
 					// if we are still flushing, then we spin
 					head = flushing_job_queue_head.load(std::memory_order_acquire);
-					continue;		 
+					continue;
 				} else {
 					// otherwise, if we are done, then we terminate
 					unique_lock<mutex> lock(processing_mtx);
@@ -819,7 +819,7 @@ void front_end::start(unsigned int threads) {
 	}
 }
 
-void front_end::stop(unsigned int gpu_count) {
+void front_end::stop() {
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		processing_state = FE_FINALIZE_MATCHING;
@@ -852,7 +852,7 @@ void front_end::stop(unsigned int gpu_count) {
 
 	thread_pool.clear();
 
-	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){
+	for (unsigned int s = 0; s < back_end::gpu_count() * GPU_STREAMS; s++){
 		batch * bx = (batch *)back_end::flush_stream();
 		if(!bx)
 			continue;
@@ -873,10 +873,10 @@ void front_end::stop(unsigned int gpu_count) {
 		}
 		batch_pool::put(bx) ;
 	}
-	
-	back_end::release_stream_handles(gpu_count);	
-		
-	for (unsigned int s = 0; s < gpu_count * GPU_STREAMS; s++){
+
+	back_end::release_stream_handles();
+
+	for (unsigned int s = 0; s < back_end::gpu_count() * GPU_STREAMS; s++){
 		batch * bx = (batch *)back_end::second_flush_stream();
 		if(!bx)
 			continue;
@@ -897,7 +897,7 @@ void front_end::stop(unsigned int gpu_count) {
 		}
 		batch_pool::put(bx) ;
 	}
-	back_end::release_stream_handles(gpu_count);	
+	back_end::release_stream_handles();
 
 	processing_state = FE_INITIAL;
 #ifdef WITH_MATCH_STATISTICS
