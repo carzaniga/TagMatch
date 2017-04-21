@@ -354,7 +354,7 @@ void partition_queue::enqueue(tagmatch_query * p) noexcept {
 		written.store(0, std::memory_order_release);
 		tail.store(0, std::memory_order_release);
 		bx->bsize = QUERIES_BATCH_SIZE;
-		bx = (batch *)back_end::process_batch(partition_id, bx->queries, QUERIES_BATCH_SIZE, (void *)bx);
+		bx = back_end::process_batch(partition_id, bx->queries, QUERIES_BATCH_SIZE, bx);
 		if (bx != NULL) {
 			for (unsigned int r = 0; r < bx->bsize; r++) {
 				tagmatch_query * q = bx->queries[r];
@@ -398,7 +398,7 @@ void partition_queue::flush() noexcept {
 	written.store(0, std::memory_order_release);
 	tail.store(0, std::memory_order_release);
 	bx->bsize = bx_size;
-	bx = (batch *)back_end::process_batch(partition_id, bx->queries, bx_size, (void *)bx);
+	bx = back_end::process_batch(partition_id, bx->queries, bx_size, bx);
 	if (bx != NULL) {
 		for (unsigned int r = 0; r < bx->bsize; r++) {
 			tagmatch_query * q = bx->queries[r];
@@ -587,7 +587,6 @@ void front_end::set_latency_limit_ms(unsigned int l) {
 static void match_loop() {
 	unsigned int head, head_plus_one;
 	tagmatch_query * p;
-
 	for(;;) {
 check_latency:
 		if (flush_limit > milliseconds(0)) {
@@ -666,6 +665,11 @@ static void enqueue_flush_job(partition_queue * q) {
 }
 
 static void processing_thread() {
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		while (processing_state == FE_INITIAL)
+			processing_cv.wait(lock);
+	} while(0);
 	match_loop();
 	flush_loop();
 }
@@ -673,19 +677,27 @@ static void processing_thread() {
 static vector<thread *> thread_pool;
 
 void front_end::start(unsigned int threads) {
+	if (threads == 0)
+		return;
+
 	unique_lock<mutex> lock(processing_mtx);
-	if (processing_state == FE_INITIAL && threads > 0) {
-		processing_state = FE_MATCHING;
-		matching_threads = threads;
-		do {
-			thread_pool.push_back(new thread(processing_thread));
-		} while(--threads > 0);
-	}
+	while (processing_state != FE_INITIAL)
+		processing_cv.wait(lock);
+
+	matching_threads = threads;
+	do {
+		thread_pool.push_back(new thread(processing_thread));
+	} while(--threads > 0);
+
+	processing_state = FE_MATCHING;
+	processing_cv.notify_all();
 }
 
 void front_end::stop() {
 	do {
 		unique_lock<mutex> lock(processing_mtx);
+		if (processing_state != FE_MATCHING)
+			return;
 		processing_state = FE_FINALIZE_MATCHING;
 		while(processing_state != FE_FLUSHING)
 			processing_cv.wait(lock);
@@ -701,7 +713,6 @@ void front_end::stop() {
 		while(processing_state != FE_FINAL)
 			processing_cv.wait(lock);
 	} while(0);
-
 
 	for(thread * t : thread_pool) {
 		t->join();

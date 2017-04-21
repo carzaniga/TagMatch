@@ -150,7 +150,7 @@ struct stream_handle {
 	tagmatch_query ** last_batch;
 	tagmatch_query ** second_last_batch;
 	unsigned int last_batch_size, second_last_batch_size;
-	void *last_batch_ptr, *second_last_batch_ptr;
+	batch * last_batch_ptr, * second_last_batch_ptr;
 	// these are the buffers we use to communicate with the GPU for
 	// matching.  For each stream, we store the queries of each
 	// batch here, together with their associated tree-interface
@@ -371,11 +371,11 @@ static void compile_fibs() {
 // not release the stream handler, because it forces the front_end to
 // loop on all the streams available
 //
-void* back_end::flush_stream() {
-	void *res = nullptr;
+batch * back_end::flush_stream() {
+	batch * res = nullptr;
 	stream_handle * sh = allocate_stream_handle();
 	gpu::set_device(sh->gpu);
-	//Wait for the data to be copied
+	// Wait for the data to be copied
 	gpu::syncOnResults(sh->stream, sh->gpu);
 	if (sh->second_last_batch != nullptr) {
 		res = sh->second_last_batch_ptr;
@@ -409,9 +409,9 @@ void back_end::release_stream_handles()
 // release the stream handler, because it forces the front_end to loop
 // on all the streams available
 //
-void* back_end::second_flush_stream()
+batch * back_end::second_flush_stream()
 {
-	void *res = nullptr;
+	batch * res = nullptr;
 	stream_handle * sh = allocate_stream_handle();
 	gpu::set_device(sh->gpu);
 	if (sh->last_batch != nullptr) {
@@ -430,8 +430,8 @@ void* back_end::second_flush_stream()
 }
 
 
-void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsigned int batch_size, void *batch_ptr) {
-	void *res = nullptr;
+batch * back_end::process_batch(unsigned int part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
+	batch * res = nullptr;
 #ifndef BACK_END_IS_VOID
 
 // If the partition is small, compute it entirely on the CPU
@@ -441,16 +441,15 @@ void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsig
 		const f_descr_vector & filters = tmp_fib[part];
 		uint32_t fidx = 0;
 		for (const filter_descr & fd : filters) {
-			for (unsigned int i = 0; i < batch_size; ++i) {
-				if (fd.filter.subset_of(batch[i]->p->filter)) {
+			for (unsigned int i = 0; i < q_count; ++i) {
+				if (fd.filter.subset_of(q[i]->p->filter)) {
 					for (const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys) {
-						batch[i]->p->add_output_key(k);
+						q[i]->p->add_output_key(k);
 					}
 				}
 			}
 			fidx++;
 		}
-
 		return batch_ptr;
 	}
 #endif
@@ -467,16 +466,16 @@ void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsig
 	// thing in buffers here on the host, and then we copy those
 	// buffers over to the device.
 	//
-	for (unsigned int i = 0; i < batch_size; ++i) {
+	for (unsigned int i = 0; i < q_count; ++i) {
 		for (int j = blocks; j < GPU_FILTER_WORDS; ++j)
-			*curr_p_buf++ = batch[i]->filter.uint32_value(j);
+			*curr_p_buf++ = q[i]->filter.uint32_value(j);
 	}
 
 	gpu::set_device(sh->gpu);
-	gpu::async_copy_queries(sh->host_queries[sh->flip], batch_size * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
+	gpu::async_copy_queries(sh->host_queries[sh->flip], q_count * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
 	gpu::run_kernel(dev_partitions[sh->gpu][part].fib,
 					dev_partitions[sh->gpu][part].size,
-					batch_size,
+					q_count,
 					sh->dev_results[sh->flip],
 					sh->dev_results[!sh->flip],
 					sh->stream,
@@ -520,8 +519,8 @@ void * back_end::process_batch(unsigned int part, tagmatch_query ** batch, unsig
 	sh->second_last_batch_size = sh->last_batch_size;
 	sh->second_last_batch_ptr = sh->last_batch_ptr;
 
-	sh->last_batch = batch;
-	sh->last_batch_size = batch_size;
+	sh->last_batch = q;
+	sh->last_batch_size = q_count;
 	sh->last_batch_ptr = batch_ptr;
 
 	sh->second_last_partition = sh->last_partition;

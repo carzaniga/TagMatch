@@ -11,6 +11,8 @@
 #include "key.hh"
 #include "tagmatch_query.hh"
 
+union batch;
+
 /// add a prefix f of length n to the front end FIB
 /// 
 class back_end {
@@ -20,11 +22,11 @@ public:
 						   std::vector<tagmatch_key_t>::const_iterator begin,
 						   std::vector<tagmatch_key_t>::const_iterator end);
 	static void start(unsigned int gpu_count);
-	static void * process_batch(unsigned int part,
-								tagmatch_query ** batch, unsigned int batch_size,
-								void * batch_ptr);
-	static void * second_flush_stream();
-	static void * flush_stream();
+	static batch * process_batch(unsigned int part,
+								tagmatch_query ** queries, unsigned int batch_size,
+								batch * batch_ptr);
+	static batch * second_flush_stream();
+	static batch * flush_stream();
 	static void release_stream_handles();
 	static void stop();
 	static void clear();

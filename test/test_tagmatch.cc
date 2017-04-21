@@ -38,14 +38,26 @@ class predicate {
 public:
 	predicate() {
 		tagmatch::set_latency_limit_ms(200);
+		tagmatch::stop();
+		tagmatch::clear();
 	}
 
 	~predicate() {
+		tagmatch::stop();
 		tagmatch::clear();
 	}
 
 	void clear() {
+		tagmatch::stop();
 		tagmatch::clear();
+	}
+
+	void stop() {
+		tagmatch::stop();
+	}
+
+	void start() {
+		tagmatch::start();
 	}
 
 	void consolidate() {
@@ -98,7 +110,7 @@ private:
 	bool found;
 };
 
-bool find_filter (predicate & P, const filter_t & f, tagmatch_key_t i) {
+bool find_filter (const filter_t & f, tagmatch_key_t i) {
 	finder_matcher finder(i);
 	tagmatch_query q(f);
 	tagmatch::match_unique(&q, &finder);
@@ -156,24 +168,87 @@ static const filter_t Q[] = {
 
 BOOST_AUTO_TEST_SUITE( basics )
 
+BOOST_AUTO_TEST_CASE( consolidate_empty ) {
+	tagmatch::set_latency_limit_ms(200);
+	tagmatch::consolidate();
+	tagmatch::clear();
+}
+
+BOOST_AUTO_TEST_CASE( start_and_stop ) {
+	tagmatch::consolidate();
+	tagmatch::start();
+	tagmatch::stop();
+
+	tagmatch::start(4, 1);
+	tagmatch::stop();
+	tagmatch::clear();
+
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
+	tagmatch::stop();
+
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::clear();
+}
+
+BOOST_AUTO_TEST_CASE( consolidate_no_match_action ) {
+	tagmatch::add(F[0], 0);
+	tagmatch::add(F[1], 1);
+	tagmatch::add(F[2], 2);
+	tagmatch::add(F[3], 3);
+	tagmatch::add(F[4], 4);
+	tagmatch::consolidate();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::start(4, 1);
+	tagmatch::stop();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::clear();
+	tagmatch::add(F[0], 0);
+	tagmatch::add(F[1], 1);
+	tagmatch::add(F[2], 2);
+	tagmatch::add(F[3], 3);
+	tagmatch::add(F[4], 4);
+	tagmatch::consolidate();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::clear();
+}
+
+#if 0
+BOOST_AUTO_TEST_CASE( double_stop ) {
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::clear();
+}
+#endif
+
 BOOST_AUTO_TEST_CASE( find_one_filter ) {
 	predicate P;
-	P.add(F[1], 1);
-	P.consolidate();
-	BOOST_CHECK(find_filter(P, F[1], 1));
-	BOOST_CHECK(!find_filter(P, F[2], 1));
-	BOOST_CHECK(!find_filter(P, ALL_ZEROS, 1));
-	BOOST_CHECK(find_filter(P, ALL_ONES, 1));
+	tagmatch::add(F[1], 1);
+	tagmatch::consolidate();
+	tagmatch::start();
+	BOOST_CHECK(find_filter(F[1], 1));
+	BOOST_CHECK(!find_filter(F[2], 1));
+	BOOST_CHECK(!find_filter(ALL_ZEROS, 1));
+	BOOST_CHECK(find_filter(ALL_ONES, 1));
+	tagmatch::stop();
+	tagmatch::clear();
 }
 
 BOOST_AUTO_TEST_CASE( clear ) {
 	predicate P;
 	P.add(F[1], 1);
 	P.consolidate();
-	BOOST_CHECK(find_filter(P, F[1], 1));
+	BOOST_CHECK(find_filter(F[1], 1));
 	P.clear();
 	P.consolidate();
-	BOOST_CHECK(!find_filter(P, F[1], 1));
+	BOOST_CHECK(!find_filter(F[1], 1));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -199,27 +274,29 @@ BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
 	P.add(F[2], 3);
 	P.add(F[3], 4);
 	P.consolidate();
-	BOOST_CHECK(!find_filter(P, F[1], 1));
-	BOOST_CHECK(find_filter(P, F[1], 2));
-	BOOST_CHECK(!find_filter(P, F[2], 1));
-	BOOST_CHECK(!find_filter(P, F[3], 1));
-	BOOST_CHECK(find_filter(P, F[2], 3));
-	BOOST_CHECK(find_filter(P, F[3], 4));
+	BOOST_CHECK(!find_filter(F[1], 1));
+	BOOST_CHECK(find_filter(F[1], 2));
+	BOOST_CHECK(!find_filter(F[2], 1));
+	BOOST_CHECK(!find_filter(F[3], 1));
+	BOOST_CHECK(find_filter(F[2], 3));
+	BOOST_CHECK(find_filter(F[3], 4));
 }
 
 BOOST_AUTO_TEST_CASE( add_and_clear ) {
 	predicate P;
 
-	BOOST_CHECK(!find_filter(P, F[1], 1));
+	P.consolidate();
+	BOOST_CHECK(!find_filter(F[1], 1));
+	P.stop();
 
 	P.add(F[1], 3);
 	P.consolidate();
-	BOOST_CHECK(find_filter(P, F[1], 3));
+	BOOST_CHECK(find_filter(F[1], 3));
 
+	P.stop();
 	P.clear();
-
 	P.consolidate();
-	BOOST_CHECK(!find_filter(P, F[1], 3));
+	BOOST_CHECK(!find_filter(F[1], 3));
 }
 
 BOOST_AUTO_TEST_CASE( add_many_and_find ) {
@@ -237,16 +314,16 @@ BOOST_AUTO_TEST_CASE( add_many_and_find ) {
 	P.add(F[10], 10);
 	P.consolidate();
 
-	BOOST_CHECK(find_filter(P, F[1], 1));
-	BOOST_CHECK(find_filter(P, F[2], 2));
-	BOOST_CHECK(find_filter(P, F[3], 3));
-	BOOST_CHECK(find_filter(P, F[4], 4));
-	BOOST_CHECK(find_filter(P, F[5], 5));
-	BOOST_CHECK(find_filter(P, F[6], 6));
-	BOOST_CHECK(find_filter(P, F[7], 7));
-	BOOST_CHECK(find_filter(P, F[8], 8));
-	BOOST_CHECK(find_filter(P, F[9], 9));
-	BOOST_CHECK(find_filter(P, F[10], 10));
+	BOOST_CHECK(find_filter(F[1], 1));
+	BOOST_CHECK(find_filter(F[2], 2));
+	BOOST_CHECK(find_filter(F[3], 3));
+	BOOST_CHECK(find_filter(F[4], 4));
+	BOOST_CHECK(find_filter(F[5], 5));
+	BOOST_CHECK(find_filter(F[6], 6));
+	BOOST_CHECK(find_filter(F[7], 7));
+	BOOST_CHECK(find_filter(F[8], 8));
+	BOOST_CHECK(find_filter(F[9], 9));
+	BOOST_CHECK(find_filter(F[10], 10));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -44,7 +44,7 @@
 #include <mutex>
 #include <condition_variable>
 
-#define USE_GPU 0
+#define USE_GPU 1
 
 #include "partitioning.hh"
 
