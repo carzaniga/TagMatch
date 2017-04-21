@@ -233,11 +233,35 @@ BOOST_AUTO_TEST_CASE( find_one_filter ) {
 	tagmatch::add(F[1], 1);
 	tagmatch::consolidate();
 	tagmatch::start();
-	BOOST_CHECK(find_filter(F[1], 1));
-	BOOST_CHECK(!find_filter(F[2], 1));
-	BOOST_CHECK(!find_filter(ALL_ZEROS, 1));
-	BOOST_CHECK(find_filter(ALL_ONES, 1));
+
+	finder_matcher f1(1);
+	tagmatch_query q1(F[1]);
+	tagmatch::match_unique(&q1, &f1);
+
+	finder_matcher f2(1);
+	tagmatch_query q2(F[2]);
+	tagmatch::match_unique(&q2, &f2);
+
+	finder_matcher f3(1);
+	tagmatch_query q3(ALL_ZEROS);
+	tagmatch::match_unique(&q3, &f3);
+
+	finder_matcher f4(1);
+	tagmatch_query q4(ALL_ZEROS);
+	tagmatch::match_unique(&q4, &f4);
+
 	tagmatch::stop();
+
+	f1.synchronize_and_process();
+	f2.synchronize_and_process();
+	f3.synchronize_and_process();
+	f4.synchronize_and_process();
+
+	BOOST_CHECK(f1.result());
+	BOOST_CHECK(!f2.result());
+	BOOST_CHECK(!f3.result());
+	BOOST_CHECK(f4.result());
+
 	tagmatch::clear();
 }
 

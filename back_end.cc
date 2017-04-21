@@ -12,12 +12,13 @@
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
+#include <time.h>
+#include <mutex>
 
 #include "tagmatch.hh"
 #include "gpu.hh"
 #include "back_end.hh"
-#include <time.h> 
-#include <mutex>
+#include "fib.hh"
 
 #define SORT_FILTERS 0
 #define COMBO 0
@@ -54,36 +55,34 @@ unsigned int back_end::gpu_count() {
 // we store filters on the gpu using 32-bit blocks.
 //
 static const unsigned int BACKEND_BLOCK_SIZE = (GPU_WORD_SIZE * CHAR_BIT);
-uint32_t absolute_id = 0;
-// TEMPORARY FIB
+
+// temporary part of the back-end FIB.  This maps a partition id into
+// the vector of the filters in that partition.  We keep this as a
+// separate and temporary map because we can get rid of it as soon as
+// we copy everything into the GPU.
 //
-typedef vector<tagmatch_key_t> keys_vector;
-
-struct filter_descr {
-	filter_t filter;
-	uint32_t id;
-	filter_descr(const filter_t & f,
-				 uint32_t i)
-		: filter(f), id(i) {
-	};
-};
-
-typedef vector<filter_descr> f_descr_vector;
-typedef map<unsigned int, f_descr_vector > tmp_fib_map;
-
+// However, in case we use the CPU-only backend, we do not throw away
+// this fib, and instead we use it in a special cpu back-end matcher.
+//
+typedef map<partition_id_t, vector<filter_t> > tmp_fib_map;
 static tmp_fib_map tmp_fib;
 
+// Permanent (non-temporary) part of the back-end FIB
+//
+// Here we map a partition ID into a vector of vectors of keys.
+//
+typedef vector<tagmatch_key_t> keys_vector;
 typedef vector<keys_vector> f_descr_vector_users;
-typedef map<unsigned int, f_descr_vector_users > tmp_fib_map_users;
+typedef map<partition_id_t, f_descr_vector_users > tmp_fib_map_users;
 
 static tmp_fib_map_users tmp_fib_users;
 
-void back_end::add_filter(unsigned int part, const filter_t & f,
+void back_end::add_filter(partition_id_t part, const filter_t & f,
 						  keys_vector::const_iterator begin,
 						  keys_vector::const_iterator end) {
 	// we simply add this filter to our temporary table
 	//
-	tmp_fib[part].emplace_back(f, absolute_id++);
+	tmp_fib[part].emplace_back(f);
 	tmp_fib_users[part].emplace_back(begin, end);
 }
 
@@ -110,7 +109,6 @@ struct part_descr {
 	//
 	uint32_t * fib;
 
-	filter_t common_bits ;     // common bits among all filters in this partition
 	part_descr(): size(0), fib(0) {};
 
 	void clear() {
@@ -271,9 +269,9 @@ static void compile_fibs() {
 	unsigned int total_filters = 0;
 	unsigned int max = 0;
 
-	for (auto const & pf : tmp_fib) { // reminder: map<unsigned int, f_descr_vector> tmp_fib
+	for (auto const & pf : tmp_fib) { // reminder: map<unsigned int, vector<filter_t>> tmp_fib
 		unsigned int part_id_plus_one = pf.first + 1;
-		const f_descr_vector & filters = pf.second;
+		const vector<filter_t> & filters = pf.second;
 
 		if(max < filters.size())
 			max = filters.size();
@@ -294,21 +292,17 @@ static void compile_fibs() {
 	//
 	uint32_t * host_rep = new uint32_t[max * GPU_FILTER_WORDS];
 
-	filter_t cbits; //common bits
-
 #if SORT_FILTERS
 	for (auto & pf : tmp_fib) 
 #else
 	for (auto const & pf : tmp_fib)
 #endif
 	{
-		cbits.fill();
-
 		unsigned int part = pf.first;
 #if SORT_FILTERS
-		f_descr_vector & filters = pf.second;
+		vector<filter_t> & filters = pf.second;
 #else
-		const f_descr_vector & filters = pf.second;
+		const vector<filter_t> & filters = pf.second;
 #endif
 		for (unsigned int g = 0; g < gpus_in_use; g++)
 			dev_partitions[g][part].size = filters.size();
@@ -322,16 +316,9 @@ static void compile_fibs() {
 		int counter=0;
 
 #if SORT_FILTERS
-		for (filter_descr & fd : filters) {
-			fd.filter ^= cbits ;
-		}
 		std::sort(filters.begin(), filters.end(), compare_filters_decreasing) ;
-#else
-		for (const filter_descr & fd : filters) {
-			cbits &= fd.filter ;
-		}
 #endif
-		for (const filter_descr & fd : filters) {
+		for (const filter_t & f : filters) {
 			// we now store the index in the global tiff table for this fib entry
 			//
 			// we then store the *size* of the tiff table for this fib
@@ -342,9 +329,9 @@ static void compile_fibs() {
 			//
 			for (unsigned int i = full_blocks; i < GPU_FILTER_WORDS; ++i) {
 #ifdef COALESCED_READS
-				host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (fd.filter.uint32_value(i));
+				host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (f.uint32_value(i));
 #else
-				*host_rep_f++ = (fd.filter.uint32_value(i));
+				*host_rep_f++ = (f.uint32_value(i));
 #endif
 			}
 			counter++ ;
@@ -354,9 +341,6 @@ static void compile_fibs() {
 			dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * (GPU_FILTER_WORDS - full_blocks) );
 
 		}
-		// this thing doesn't really need to be in the partition_descriptors!
-		//
-		dev_partitions[0][part].common_bits = cbits;
 	}
 	delete[](host_rep);
 #if !COMBO
@@ -438,11 +422,11 @@ batch * back_end::process_batch(unsigned int part, tagmatch_query ** q, unsigned
 //
 #if COMBO
 	if (dev_partitions[0][part].size < COMBO_SIZE) {
-		const f_descr_vector & filters = tmp_fib[part];
+		const vector<filter_t> & filters = tmp_fib[part];
 		uint32_t fidx = 0;
 		for (const filter_descr & fd : filters) {
 			for (unsigned int i = 0; i < q_count; ++i) {
-				if (fd.filter.subset_of(q[i]->p->filter)) {
+				if (fd.filter.subset_of(q[i]->filter)) {
 					for (const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys) {
 						q[i]->p->add_output_key(k);
 					}

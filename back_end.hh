@@ -10,6 +10,7 @@
 #include "filter.hh"
 #include "key.hh"
 #include "tagmatch_query.hh"
+#include "fib.hh"
 
 union batch;
 
@@ -17,12 +18,12 @@ union batch;
 /// 
 class back_end {
 public:
-	static void add_partition(unsigned int id, const filter_t & prefix);
-	static void add_filter(unsigned int partition, const filter_t & f, 
+	static void add_partition(partition_id_t id, const filter_t & mask);
+	static void add_filter(partition_id_t partition, const filter_t & f,
 						   std::vector<tagmatch_key_t>::const_iterator begin,
 						   std::vector<tagmatch_key_t>::const_iterator end);
 	static void start(unsigned int gpu_count);
-	static batch * process_batch(unsigned int part,
+	static batch * process_batch(partition_id_t part,
 								tagmatch_query ** queries, unsigned int batch_size,
 								batch * batch_ptr);
 	static batch * second_flush_stream();
