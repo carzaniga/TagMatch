@@ -23,6 +23,7 @@
 //
 #include <iostream>
 #include <set>
+#include <vector>
 
 #include "key.hh"
 #include "filter.hh"
@@ -34,57 +35,30 @@ using std::set;
 using std::cout;
 using std::endl;
 
-class predicate {
-public:
-	predicate() {
-		tagmatch::set_latency_limit_ms(200);
-		tagmatch::stop();
-		tagmatch::clear();
-	}
-
-	~predicate() {
-		tagmatch::stop();
-		tagmatch::clear();
-	}
-
-	void clear() {
-		tagmatch::stop();
-		tagmatch::clear();
-	}
-
-	void stop() {
-		tagmatch::stop();
-	}
-
-	void start() {
-		tagmatch::start();
-	}
-
-	void consolidate() {
-		tagmatch::consolidate();
-		tagmatch::start(4, 1);
-	}
-
-	void add(const filter_t & f, tagmatch_key_t k) {
-		tagmatch::add(f, k);
-	}
-};
+static void init_test() {
+	tagmatch::set_latency_limit_ms(200);
+	tagmatch::clear();
+}
 
 class general_matcher : public synchronous_match_handler {
 public:
-	general_matcher(set<tagmatch_key_t> & s): result(s) {};
+	general_matcher(): synchronous_match_handler(), keys() {};
 
 	virtual void process_results(query * q) {
-		std::cerr << "general_matcher::process_results ";
-		for (const tagmatch_key_t & k : q->output_keys) {
-			std::cerr << ' ' << k;
-			result.insert(k);
-		}
-		std::cerr << std::endl;
+		for (const tagmatch_key_t & k : q->output_keys)
+			keys.insert(k);
+	}
+
+	const set<tagmatch_key_t> & result() const {
+		return keys;
+	}
+
+	void reset() {
+		keys.clear();
 	}
 
 private:
-	set<tagmatch_key_t> & result;
+	set<tagmatch_key_t> keys;
 };
 
 class finder_matcher : public synchronous_match_handler {
@@ -92,13 +66,10 @@ public:
 	finder_matcher(tagmatch_key_t t): target(t), found(false) {};
 
 	virtual void process_results(query * q) {
-		std::cerr << "finder_matcher::process_results ";
 		for (const tagmatch_key_t & k : q->output_keys) {
-			std::cerr << ' ' << k;
 			if (k == target)
 				found = true;
 		}
-		std::cerr << std::endl;
 	}
 
 	bool result() const {
@@ -118,14 +89,25 @@ bool find_filter (const filter_t & f, tagmatch_key_t i) {
 	return finder.result();
 }
 
-const set<tagmatch_key_t> & matching_results(predicate & P, const filter_t & f) {
+const set<tagmatch_key_t> & matching_results(const filter_t & f) {
 	static set<tagmatch_key_t> result;
-	result.clear();
-	general_matcher matcher(result);
-	tagmatch_query q(f);
-	tagmatch::match_unique(&q, &matcher);
-	matcher.synchronize_and_process();
 	return result;
+}
+
+static std::ostream & operator << (std::ostream & output, const filter_t & f) {
+	output << '{';
+	for (filter_pos_t i = f.next_bit(0); i < filter_t::WIDTH; i = f.next_bit(i + 1))
+		output << ' ' << (unsigned int)i;
+	output << " }";
+	return output;
+}
+
+static std::ostream & operator << (std::ostream & output, const set<tagmatch_key_t> & s) {
+	output << '{';
+	for (const tagmatch_key_t & k : s)
+		output << ' ' << k;
+	output << " }";
+	return output;
 }
 
 static const filter_t ALL_ONES("111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111");
@@ -166,6 +148,47 @@ static const filter_t Q[] = {
 
 #include <boost/test/unit_test.hpp>
 
+class deferred_matching_checks {
+
+	struct check {
+		tagmatch_query q;
+		general_matcher * handler;
+		set<tagmatch_key_t> expected;
+
+		check(const filter_t & f, const set<tagmatch_key_t> & s)
+			: q(f), handler(nullptr), expected(s) {}
+	};
+
+	std::vector<check> checks;
+
+public:
+	void run_query(const filter_t & f, const set<tagmatch_key_t> & s) {
+		checks.emplace_back(f, s);
+		check & c = checks.back();
+		c.handler = new general_matcher();
+		BOOST_REQUIRE( c.handler != nullptr);
+
+		tagmatch::match(&(c.q), c.handler);
+	}
+
+	void check_results() {
+		for (unsigned int i = 0; i < checks.size(); ++i) {
+			checks[i].handler->synchronize_and_process();
+			std::cout << "running results " << i << std::endl;
+#if 0
+			BOOST_CHECK_MESSAGE( (check[i].handler->result() == check[i].expected) , "on query " << i << " expecting " << expected[i] << " instead of " << handlers[i].result() );
+#else
+			BOOST_CHECK_MESSAGE( (checks[i].handler->result() == checks[i].expected) , "error on query " << i);
+#endif
+		}
+	}
+
+	~deferred_matching_checks() {
+		for (check & c : checks)
+			delete(c.handler);
+	}
+};
+
 BOOST_AUTO_TEST_SUITE( basics )
 
 BOOST_AUTO_TEST_CASE( consolidate_empty ) {
@@ -176,19 +199,30 @@ BOOST_AUTO_TEST_CASE( consolidate_empty ) {
 
 BOOST_AUTO_TEST_CASE( start_and_stop ) {
 	tagmatch::consolidate();
+	BOOST_TEST_MESSAGE("start()");
 	tagmatch::start();
+	BOOST_TEST_MESSAGE("stop()");
 	tagmatch::stop();
 
+	BOOST_TEST_MESSAGE("start(4,1)");
 	tagmatch::start(4, 1);
+	BOOST_TEST_MESSAGE("stop()");
 	tagmatch::stop();
+
+	BOOST_TEST_MESSAGE("clear()");
 	tagmatch::clear();
 
 	tagmatch::consolidate();
+	BOOST_TEST_MESSAGE("start(4,1)");
 	tagmatch::start(4, 1);
+	BOOST_TEST_MESSAGE("stop()");
 	tagmatch::stop();
 
+	BOOST_TEST_MESSAGE("start()");
 	tagmatch::start();
+	BOOST_TEST_MESSAGE("stop()");
 	tagmatch::stop();
+
 	tagmatch::clear();
 }
 
@@ -219,17 +253,32 @@ BOOST_AUTO_TEST_CASE( consolidate_no_match_action ) {
 	tagmatch::clear();
 }
 
-#if 0
-BOOST_AUTO_TEST_CASE( double_stop ) {
+BOOST_AUTO_TEST_CASE( repeated_stop ) {
 	tagmatch::start();
 	tagmatch::stop();
 	tagmatch::stop();
 	tagmatch::clear();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::clear();
+	tagmatch::clear();
+	tagmatch::start();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::stop();
+	tagmatch::clear();
 }
-#endif
 
 BOOST_AUTO_TEST_CASE( find_one_filter ) {
-	predicate P;
+	tagmatch::clear();
 	tagmatch::add(F[1], 1);
 	tagmatch::consolidate();
 	tagmatch::start();
@@ -247,7 +296,7 @@ BOOST_AUTO_TEST_CASE( find_one_filter ) {
 	tagmatch::match_unique(&q3, &f3);
 
 	finder_matcher f4(1);
-	tagmatch_query q4(ALL_ZEROS);
+	tagmatch_query q4(ALL_ONES);
 	tagmatch::match_unique(&q4, &f4);
 
 	tagmatch::stop();
@@ -266,13 +315,33 @@ BOOST_AUTO_TEST_CASE( find_one_filter ) {
 }
 
 BOOST_AUTO_TEST_CASE( clear ) {
-	predicate P;
-	P.add(F[1], 1);
-	P.consolidate();
-	BOOST_CHECK(find_filter(F[1], 1));
-	P.clear();
-	P.consolidate();
-	BOOST_CHECK(!find_filter(F[1], 1));
+	tagmatch::clear();
+	tagmatch::add(F[1], 1);
+	tagmatch::consolidate();
+	tagmatch::start();
+
+	finder_matcher f1(1);
+	tagmatch_query q1(F[1]);
+	tagmatch::match_unique(&q1, &f1);
+
+	tagmatch::stop();
+
+	f1.synchronize_and_process();
+
+	BOOST_CHECK(f1.result());
+
+	tagmatch::clear();
+	tagmatch::consolidate();
+	tagmatch::start();
+
+	finder_matcher f2(1);
+	tagmatch_query q2(F[1]);
+	tagmatch::match_unique(&q2, &f2);
+
+	tagmatch::stop();
+
+	f2.synchronize_and_process();
+	BOOST_CHECK(!f2.result());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -280,11 +349,30 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE( same_filter )
 
 BOOST_AUTO_TEST_CASE( add_same_filter ) {
-	predicate P;
-	P.add(F[1], 2);
-	P.add(F[1], 3);
-	P.add(F[1], 4);
-	P.consolidate();
+	tagmatch::clear();
+	tagmatch::add(F[1], 2);
+	tagmatch::add(F[1], 3);
+	tagmatch::add(F[1], 4);
+	tagmatch::consolidate();
+	tagmatch::start();
+
+	general_matcher m1;
+	tagmatch_query q1(F[1]);
+	tagmatch::match_unique(&q1, &m1);
+
+	general_matcher m2;
+	tagmatch_query q2(F[2]);
+	tagmatch::match_unique(&q2, &m2);
+
+	tagmatch::stop();
+
+	m1.synchronize_and_process();
+	m2.synchronize_and_process();
+
+	BOOST_CHECK(m1.result() == set<tagmatch_key_t>({ 2, 3, 4 }));
+	BOOST_CHECK(m2.result() == set<tagmatch_key_t>({ }));
+
+	tagmatch::clear();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -292,51 +380,101 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_AUTO_TEST_SUITE( finding_filters )
 
 BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
-	predicate P;
-	P.add(F[1], 1);
-	P.add(F[1], 2);
-	P.add(F[2], 3);
-	P.add(F[3], 4);
-	P.consolidate();
-	BOOST_CHECK(!find_filter(F[1], 1));
-	BOOST_CHECK(find_filter(F[1], 2));
-	BOOST_CHECK(!find_filter(F[2], 1));
-	BOOST_CHECK(!find_filter(F[3], 1));
-	BOOST_CHECK(find_filter(F[2], 3));
-	BOOST_CHECK(find_filter(F[3], 4));
+	tagmatch::set_latency_limit_ms(400);
+	tagmatch::clear();
+
+	tagmatch::add(F[1], 1);
+	tagmatch::add(F[1], 2);
+	tagmatch::add(F[2], 3);
+	tagmatch::add(F[3], 4);
+	tagmatch::consolidate();
+	deferred_matching_checks C;
+
+	C.run_query(F[1], set<tagmatch_key_t>({ 1, 2 }));
+	C.run_query(F[2], set<tagmatch_key_t>({ 3 }));
+	C.run_query(F[3], set<tagmatch_key_t>({ 4 }));
+
+	BOOST_TEST_MESSAGE("Starting");
+
+	tagmatch::start();
+
+	BOOST_TEST_MESSAGE("Stopping");
+
+	tagmatch::stop();
+
+	BOOST_TEST_MESSAGE("Running checks");
+
+	C.check_results();
+
+	BOOST_TEST_MESSAGE("Done");
+
+	tagmatch::clear();
 }
 
+BOOST_AUTO_TEST_CASE( add_and_find_multi2 ) {
+	init_test();
+	tagmatch::add(F[1], 1);
+	tagmatch::add(F[1], 2);
+	tagmatch::add(F[2], 3);
+	tagmatch::add(F[3], 4);
+	tagmatch::consolidate();
+	tagmatch::start();
+
+	deferred_matching_checks C;
+
+	C.run_query(F[1], set<tagmatch_key_t>({ 1, 2 }));
+	C.run_query(F[2], set<tagmatch_key_t>({ 3 }));
+	C.run_query(F[3], set<tagmatch_key_t>({ 4 }));
+
+	BOOST_TEST_MESSAGE("Stopping");
+
+//	tagmatch::stop();
+
+	BOOST_TEST_MESSAGE("Running checks");
+
+	C.check_results();
+
+	BOOST_TEST_MESSAGE("Done");
+
+	tagmatch::clear();
+}
+
+#if 0
 BOOST_AUTO_TEST_CASE( add_and_clear ) {
-	predicate P;
+	init_test();
 
-	P.consolidate();
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
 	BOOST_CHECK(!find_filter(F[1], 1));
-	P.stop();
+	tagmatch::stop();
 
-	P.add(F[1], 3);
-	P.consolidate();
+	tagmatch::add(F[1], 3);
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
 	BOOST_CHECK(find_filter(F[1], 3));
 
-	P.stop();
-	P.clear();
-	P.consolidate();
+	tagmatch::stop();
+	tagmatch::clear();
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
 	BOOST_CHECK(!find_filter(F[1], 3));
 }
 
 BOOST_AUTO_TEST_CASE( add_many_and_find ) {
-	predicate P;
+	init_test();
 
-	P.add(F[1], 1);
-	P.add(F[2], 2);
-	P.add(F[3], 3);
-	P.add(F[4], 4);
-	P.add(F[5], 5);
-	P.add(F[6], 6);
-	P.add(F[7], 7);
-	P.add(F[8], 8);
-	P.add(F[9], 9);
-	P.add(F[10], 10);
-	P.consolidate();
+	tagmatch::add(F[1], 1);
+	tagmatch::add(F[2], 2);
+	tagmatch::add(F[3], 3);
+	tagmatch::add(F[4], 4);
+	tagmatch::add(F[5], 5);
+	tagmatch::add(F[6], 6);
+	tagmatch::add(F[7], 7);
+	tagmatch::add(F[8], 8);
+	tagmatch::add(F[9], 9);
+	tagmatch::add(F[10], 10);
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
 
 	BOOST_CHECK(find_filter(F[1], 1));
 	BOOST_CHECK(find_filter(F[2], 2));
@@ -349,35 +487,64 @@ BOOST_AUTO_TEST_CASE( add_many_and_find ) {
 	BOOST_CHECK(find_filter(F[9], 9));
 	BOOST_CHECK(find_filter(F[10], 10));
 }
+#endif
 
 BOOST_AUTO_TEST_SUITE_END()
 
+#if 0
 BOOST_AUTO_TEST_SUITE( subset_search )
 
 BOOST_AUTO_TEST_CASE( misc_subsets ) {
-	predicate P;
+	init_test();
 
 	static const int N = sizeof(F) / sizeof(const filter_t);
 
 	for(unsigned int i = 0; i < N; ++i)
-		P.add(F[i], i);
+		tagmatch::add(F[i], i);
 
 	static const int M = sizeof(Q) / sizeof(const filter_t);
 
-	P.consolidate();
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
 
 	for(unsigned int i = 0; i < M; ++i) {
 		set<tagmatch_key_t> expected_results;
+		expected_results.clear();
 		for (int j = 0; j < N; ++j)
 			if (F[j].subset_of(Q[i]))
 				expected_results.insert(j);
 
-		BOOST_CHECK(matching_results(P, Q[i]) == expected_results);
+		const set<tagmatch_key_t> & results = matching_results(Q[i]);
+		BOOST_CHECK(results == expected_results);
+		if (!(results == expected_results)) {
+			std::cout << "failure with i = " << i << std::endl;
+			std::cout << "results = ";
+			for (const tagmatch_key_t & k : results) 
+				std::cout << ' ' << k;
+			std::cout << std::endl << "expected = ";
+			for (const tagmatch_key_t & k : expected_results) 
+				std::cout << ' ' << k;
+			std::cout << std::endl;
+		}
 	}
 }
 
+BOOST_AUTO_TEST_CASE( misc_subsets_Q1 ) {
+	init_test();
+
+	static const int N = sizeof(F) / sizeof(const filter_t);
+
+	for(unsigned int i = 0; i < N; ++i)
+		tagmatch::add(F[i], i);
+
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
+
+	BOOST_CHECK(matching_results(Q[1]) == set<tagmatch_key_t>({ 2 }));
+}
+
 BOOST_AUTO_TEST_CASE( corner_case_filters ) {
-	predicate P;
+	init_test();
 	filter_t f_first;
 	filter_t f_last;
 	f_first.clear();
@@ -385,8 +552,8 @@ BOOST_AUTO_TEST_CASE( corner_case_filters ) {
 	f_last.clear();
 	f_last.set_bit(filter_t::WIDTH - 1);
 
-	P.add(f_first, 1);
-	P.add(f_last, 2);
+	tagmatch::add(f_first, 1);
+	tagmatch::add(f_last, 2);
 
 	filter_t has_first;
 	has_first.clear();
@@ -416,49 +583,53 @@ BOOST_AUTO_TEST_CASE( corner_case_filters ) {
 	has_both.set_bit(100);
 	has_both.set_bit(filter_t::WIDTH - 1);
 
-	P.consolidate();
-	BOOST_CHECK(matching_results(P, has_none) == set<tagmatch_key_t>({}));
-	BOOST_CHECK(matching_results(P, has_first) == set<tagmatch_key_t>({ 1 }));
-	BOOST_CHECK(matching_results(P, has_last) == set<tagmatch_key_t>({ 2 }));
-	BOOST_CHECK(matching_results(P, has_both) == set<tagmatch_key_t>({ 1, 2 }));
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
+	BOOST_CHECK(matching_results(has_none) == set<tagmatch_key_t>({}));
+	BOOST_CHECK(matching_results(has_first) == set<tagmatch_key_t>({ 1 }));
+	BOOST_CHECK(matching_results(has_last) == set<tagmatch_key_t>({ 2 }));
+	BOOST_CHECK(matching_results(has_both) == set<tagmatch_key_t>({ 1, 2 }));
 }
 
 BOOST_AUTO_TEST_CASE( single_bit_filters ) {
-	predicate P;
+	init_test();
 
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
 		filter_t f;
 		f.clear();
 		f.set_bit(i);
-		P.add(f, i);
+		tagmatch::add(f, i);
 	}
 
 	set<tagmatch_key_t> all_interfaces;
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
 		all_interfaces.insert(i);
 
-	P.consolidate();
-	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
+	BOOST_CHECK(matching_results(ALL_ONES) == all_interfaces);
 }
 
 BOOST_AUTO_TEST_CASE( deepest_trie ) {
-	predicate P;
+	init_test();
 
 	filter_t f;			// all-zero
 	f.clear();
 
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i) {
 		f.set_bit(i);
-		P.add(f, i);
+		tagmatch::add(f, i);
 	}
 
 	set<tagmatch_key_t> all_interfaces;
 	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
 		all_interfaces.insert(i);
 
-	P.consolidate();
-	BOOST_CHECK(matching_results(P, ALL_ONES) == all_interfaces);
+	tagmatch::consolidate();
+	tagmatch::start(4, 1);
+	BOOST_CHECK(matching_results(ALL_ONES) == all_interfaces);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
 
+#endif

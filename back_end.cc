@@ -19,9 +19,10 @@
 #include "gpu.hh"
 #include "back_end.hh"
 #include "fib.hh"
+#include "filter.hh"
 
 #define SORT_FILTERS 0
-#define COMBO 0
+#define COMBO 1
 #define COMBO_SIZE 30000000
 
 using std::vector;
@@ -86,9 +87,9 @@ void back_end::add_filter(partition_id_t part, const filter_t & f,
 	tmp_fib_users[part].emplace_back(begin, end);
 }
 
-vector<uint8_t> prefix_block_lengths;
+vector<filter_pos_t> prefix_block_lengths;
 
-void back_end::add_partition(unsigned int id, const filter_t & prefix) {
+void back_end::add_partition(partition_id_t id, const filter_t & prefix) {
 	if (id >= prefix_block_lengths.size())
 		prefix_block_lengths.resize(id + 1);
 	prefix_block_lengths[id] = 0;
@@ -414,7 +415,7 @@ batch * back_end::second_flush_stream()
 }
 
 
-batch * back_end::process_batch(unsigned int part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
+batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
 	batch * res = nullptr;
 #ifndef BACK_END_IS_VOID
 
@@ -422,17 +423,22 @@ batch * back_end::process_batch(unsigned int part, tagmatch_query ** q, unsigned
 //
 #if COMBO
 	if (dev_partitions[0][part].size < COMBO_SIZE) {
-		const vector<filter_t> & filters = tmp_fib[part];
-		uint32_t fidx = 0;
-		for (const filter_descr & fd : filters) {
+		tmp_fib_map::const_iterator fi = tmp_fib.find(part);
+		assert(fi != tmp_fib.end());
+		const vector<filter_t> & filters = fi->second;
+
+		tmp_fib_map_users::const_iterator ki = tmp_fib_users.find(part);
+		assert(ki != tmp_fib_map_users.end());
+		const vector<keys_vector> & key_vectors = ki->second;
+
+		for (unsigned int j = 0; j < filters.size(); ++j) {
 			for (unsigned int i = 0; i < q_count; ++i) {
-				if (fd.filter.subset_of(q[i]->filter)) {
-					for (const tagmatch_key_t & k : tmp_fib_users[part][fidx].keys) {
-						q[i]->p->add_output_key(k);
+				if (filters[j].subset_of(q[i]->filter)) {
+					for (const tagmatch_key_t & k : key_vectors[j]) {
+						q[i]->add_output(k);
 					}
 				}
 			}
-			fidx++;
 		}
 		return batch_ptr;
 	}
@@ -585,5 +591,7 @@ void back_end::clear() {
 	destroy_stream_handlers();
 	gpu::shutdown(gpus_in_use);
 	gpus_in_use = 0;
+	tmp_fib.clear();
+	tmp_fib_users.clear();
 #endif
 }

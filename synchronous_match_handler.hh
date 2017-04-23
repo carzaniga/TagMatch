@@ -1,6 +1,7 @@
 #ifndef SYNCHRONOUS_MATCH_HANDLER_HH_INCLUDED
 #define SYNCHRONOUS_MATCH_HANDLER_HH_INCLUDED
 
+#include <cassert>
 #include <mutex>
 #include <condition_variable>
 
@@ -24,22 +25,27 @@ private:
 
 public:
 	synchronous_match_handler()
-		: ready_query(nullptr) {};
+		: mtx(), cv(), ready_query(nullptr) {};
 
 	virtual void process_results(query * q) = 0;
 
 	virtual void match_done(query * q) {
+		assert(q);
 		std::unique_lock<std::mutex> lock(mtx);
 		ready_query = q;
 		cv.notify_all();
 	};
 
 	virtual void synchronize_and_process() {
-		std::unique_lock<std::mutex> lock(mtx);
-		while (! ready_query)
-			cv.wait(lock);
-		process_results(ready_query);
-		ready_query = nullptr;
+		query * q;
+		do {
+			std::unique_lock<std::mutex> lock(mtx);
+			while (! ready_query)
+				cv.wait(lock);
+			q = ready_query;
+			ready_query = nullptr;
+		} while (0);
+		process_results(q);
 	};
 };
 

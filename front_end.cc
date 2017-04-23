@@ -18,11 +18,13 @@
 #include <iostream>
 
 #include "parameters.hh"
-#include "tagmatch_query.hh"
 #include "front_end.hh"
-#include "back_end.hh"
 #include "fib.hh"
+#include "filter.hh"
+#include "tagmatch.hh"
+#include "tagmatch_query.hh"
 #include "gpu.hh"
+#include "back_end.hh"
 
 using std::vector;
 using std::thread;
@@ -89,16 +91,15 @@ using std::ostream;
 class batch_pool;
 
 union batch {
-private:
-	batch * next;
-
-	friend batch_pool;
-
 public:
 	struct {
 		unsigned int bsize;
 		tagmatch_query * queries[QUERIES_BATCH_SIZE];
 	};
+private:
+	batch * next;
+
+	friend batch_pool;
 };
 
 // A free-list allocator of query batches.
@@ -146,7 +147,7 @@ public:
 		return b;
 	}
 
-	static void put(batch * b) {
+	static void recycle(batch * b) noexcept {
 		b->next = head.load(std::memory_order_acquire);
 		do {
 		} while(!head.compare_exchange_weak(b->next, b));
@@ -164,10 +165,10 @@ atomic<batch *> batch_pool::head(nullptr);
 class partition_queue {
 	// primary information:
 	//
-	unsigned int partition_id;
-	atomic<unsigned int> tail; // one-past the last element
-	atomic<unsigned int> written; // number of elements actually written in the queue
-	batch * b;				   // query buffer
+	partition_id_t partition_id;
+	atomic<unsigned int> tail;		// one-past the last element
+	atomic<unsigned int> written;	// number of elements actually written in the queue
+	batch * b;						// query buffer
 
 	// statistics and timing information
 	//
@@ -178,19 +179,35 @@ class partition_queue {
 	unsigned int enqueue_count;
 #endif
 
-	// We also maintain a (global) list of pending queues.  These are
+	// We also maintain a global list of pending queues.  These are
 	// queues with at least one element, that therefore need to be
-	// flushed to the back-end.  We add each queue to the back of the
-	// list when we enqueue the first query, and we remove the queue
-	// from the list whenever we flush the queue.  We use these two
-	// pointers, plus a static (global) "sentinel" to implement the
-	// list in the most efficient and simple way.
+	// flushed to the back-end at some point.  We add each queue to
+	// the back of the list when we enqueue the first query, and we
+	// remove the queue from the list whenever we flush the queue.  We
+	// use these two pointers, plus a static (global) "sentinel" to
+	// implement the list in the most efficient and simple way.
 	//
 	partition_queue * prev_pending;
 	partition_queue * next_pending;
+	static partition_queue pending_list; // list sentinel
+	static mutex pending_list_mtx;		 // mutex to access list
 
-	void add_to_pending_pq_list() noexcept;
-	void remove_from_pending_pq_list() noexcept;
+	void add_to_pending_list() noexcept {
+		// append this queue to the pending list
+		std::lock_guard<std::mutex> lock(pending_list_mtx);
+		next_pending = &pending_list;
+		prev_pending = pending_list.prev_pending;
+		pending_list.prev_pending->next_pending = this;
+		pending_list.prev_pending = this;
+	}
+
+	void remove_from_pending_list() noexcept {
+		std::lock_guard<std::mutex> lock(pending_list_mtx);
+		next_pending->prev_pending = prev_pending;
+		prev_pending->next_pending = next_pending;
+	}
+
+	void do_flush(unsigned int size) noexcept;
 
 public:
 	partition_queue() noexcept
@@ -216,19 +233,38 @@ public:
 #endif
 	}
 
+	~partition_queue() noexcept {
+		if (b) {
+			batch_pool::recycle(b);
+		}
+	}
+
 	void enqueue(tagmatch_query * p) noexcept;
 	void flush() noexcept;
 
-	// Flush the first pending queue.  Returns false when no pending
-	// queue is found.
+	// Get the first pending queue whose current latency is greater
+	// than the given limit.  Returns false (nullptr) if no such
+	// pending queue is found.
 	//
-	static partition_queue * first_pending();
+	static partition_queue * first_pending(milliseconds latency_limit) noexcept {
+		// we don't care about synchronizing this operation, since it is
+		// the flush operation on the returned partition queue that really
+		// matters, and that actually removes that partition queue from
+		// the pending list.
+		//
+		// So, two threads might grab the same pending queue here, but
+		// then only one will go into do_flush().
+		//
+		partition_queue * q = pending_list.next_pending;
+		if (q == &pending_list)
+			return nullptr;
 
-	// Flush the first pending queue whose current latency is greater
-	// than the given limit.  Returns false if no such pending queue
-	// is found.
-	//
-	static partition_queue * first_pending(milliseconds latency_limit) noexcept;
+		milliseconds current_latency
+			= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
+		if (current_latency < latency_limit)
+			return nullptr;
+		return q;
+	}
 
 #ifdef WITH_FRONTEND_STATISTICS
 	unsigned int get_max_latency_ms() const noexcept {
@@ -274,60 +310,48 @@ public:
 #endif
 };
 
-// This is the sentinel of the list of pending partition queues.
-//
-static partition_queue pending_pq_list;
-static mutex pending_pq_list_mtx;
-
-void partition_queue::add_to_pending_pq_list() noexcept {
-    std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
-	next_pending = &pending_pq_list;
-	prev_pending = pending_pq_list.prev_pending;
-	pending_pq_list.prev_pending->next_pending = this;
-	pending_pq_list.prev_pending = this;
+static void finalize_batch(batch * bx) {
+	for (unsigned int r = 0; r < bx->bsize; r++) {
+		tagmatch_query * q = bx->queries[r];
+		q->partition_done();
+		if (q->is_matching_complete())
+			if (q->finalize_matching());
+	}
+	batch_pool::recycle(bx) ;
 }
 
-void partition_queue::remove_from_pending_pq_list() noexcept {
-    std::lock_guard<std::mutex> lock(pending_pq_list_mtx);
-	next_pending->prev_pending = prev_pending;
-	prev_pending->next_pending = next_pending;
+partition_queue partition_queue::pending_list;
+mutex partition_queue::pending_list_mtx;
+
+void partition_queue::do_flush(unsigned int size) noexcept {
+	while(written.load(std::memory_order_relaxed) < size)
+		; // we loop waiting until every thread that acquired some
+	      // (good) position in the queue, even earlier position than
+	      // this one, actually completes the writing in the queue
+		  //
+	      // The following fence synchronizes with the atomic
+	      // increments in enqueue(), and therefore guarantees that
+	      // this thread will see all values written into the batch
+	      // (non-atomic).
+	std::atomic_thread_fence(std::memory_order_acquire);
+	batch * bx = b;
+	b = batch_pool::get();
+#ifdef WITH_FRONTEND_STATISTICS
+	update_flush_statistics();
+#endif
+	remove_from_pending_list();
+	written.store(0, std::memory_order_release);
+	tail.store(0, std::memory_order_release);
+	bx->bsize = size;
+	bx = back_end::process_batch(partition_id, bx->queries, size, bx);
+	if(bx)
+		finalize_batch(bx);
 }
 
-partition_queue * partition_queue::first_pending(milliseconds latency_limit) noexcept {
-	// we don't care about synchronizing this operation, since it is
-	// the flush operation on q that really matters, and that removes
-	// q from the pending list.
-	//
-	// So, two threads might grab the same pending queue, but then
-	// only one will succeed, and the other one will simply waste some
-	// cycles.
-	//
-	partition_queue * q = pending_pq_list.next_pending;
-	if (q == &pending_pq_list)
-		return nullptr;
-
-	milliseconds current_latency
-		= duration_cast<milliseconds>(high_resolution_clock::now() - q->first_enqueue_time);
-	if (current_latency < latency_limit)
-		return nullptr;
-	return q;
-}
-
-partition_queue * partition_queue::first_pending() {
-	// We don't care to synchronize this operation; see comment above.
-	//
-	partition_queue * q = pending_pq_list.next_pending;
-	if (q == &pending_pq_list)
-		return nullptr;
-
-	return q;
-}
-
-void partition_queue::enqueue(tagmatch_query * p) noexcept {
+void partition_queue::enqueue(tagmatch_query * q) noexcept {
 	assert(tail <= QUERIES_BATCH_SIZE);
-	p->add_partition(partition_id);
+	q->add_partition(partition_id);
 	unsigned int t = tail.load(std::memory_order_acquire);
-
 	do {
 		while (t == QUERIES_BATCH_SIZE)
 			t = tail.load(std::memory_order_acquire);
@@ -336,40 +360,18 @@ void partition_queue::enqueue(tagmatch_query * p) noexcept {
 #ifdef WITH_FRONTEND_STATISTICS
 	enqueue_count += 1;
 #endif
-	b->queries[t] = p;
-	++written;
+	b->queries[t] = q;
+	// The following atomic (incremet) release on the "written"
+	// counter is intended to synchonize with the atomic acquire fence
+	// in do_flush.  This guarantees that all queries written in the
+	// batch in the line above are indeed read by the flushing thread.
+	written.fetch_add(1, std::memory_order_release);
 	if (t + 1 == QUERIES_BATCH_SIZE) {
-		batch * bx = b;
-		while(written.load(std::memory_order_acquire) < QUERIES_BATCH_SIZE)
-			; // we loop waiting until every thread that acquired some
-			  // (good) position in the queue, even earlier position
-			  // than this one, actually completes the writing in the
-			  // queue
-			  //
-		b = batch_pool::get();
-#ifdef WITH_FRONTEND_STATISTICS
-		update_flush_statistics();
-#endif
-		remove_from_pending_pq_list();
-		written.store(0, std::memory_order_release);
-		tail.store(0, std::memory_order_release);
-		bx->bsize = QUERIES_BATCH_SIZE;
-		bx = back_end::process_batch(partition_id, bx->queries, QUERIES_BATCH_SIZE, bx);
-		if (bx != NULL) {
-			for (unsigned int r = 0; r < bx->bsize; r++) {
-				tagmatch_query * q = bx->queries[r];
-		  		q->partition_done();
-				if (q->is_matching_complete()) {
-					if (q->finalize_matching()) {
-					}
-				}
-			}
-			batch_pool::put(bx);
-		}
+		do_flush(QUERIES_BATCH_SIZE);
 	} else  {
 		if (t == 0) {
 			first_enqueue_time = high_resolution_clock::now();
-			add_to_pending_pq_list();
+			add_to_pending_list();
 		}
 	}
 }
@@ -377,37 +379,13 @@ void partition_queue::enqueue(tagmatch_query * p) noexcept {
 void partition_queue::flush() noexcept {
 	unsigned int bx_size = tail.load(std::memory_order_acquire);
 	do {
-		while (bx_size == QUERIES_BATCH_SIZE)
-			bx_size = tail.load(std::memory_order_acquire);
+		if (bx_size == QUERIES_BATCH_SIZE)
+			return;
 
 		if (bx_size == 0)
 			return;
 	} while(!tail.compare_exchange_weak(bx_size, QUERIES_BATCH_SIZE));
-
-	batch * bx = b;
-	while(written.load(std::memory_order_acquire) < bx_size)
-		; // we loop waiting until every thread that acquired some
-	      // (good) position in the queue, even earlier position than
-	      // this one, actually completes the writing in the queue
-		  //
-	b = batch_pool::get();
-#ifdef WITH_FRONTEND_STATISTICS
-	update_flush_statistics();
-#endif
-	remove_from_pending_pq_list();
-	written.store(0, std::memory_order_release);
-	tail.store(0, std::memory_order_release);
-	bx->bsize = bx_size;
-	bx = back_end::process_batch(partition_id, bx->queries, bx_size, bx);
-	if (bx != NULL) {
-		for (unsigned int r = 0; r < bx->bsize; r++) {
-			tagmatch_query * q = bx->queries[r];
-		  	q->partition_done();
-			if (q->is_matching_complete())
-				q->finalize_matching();
-		}
-		batch_pool::put(bx);
-	}
+	do_flush(bx_size);
 }
 
 class mask_queue_pair : public partition_queue {
@@ -485,7 +463,7 @@ void front_end::consolidate() {
 
 // This is the main matching function
 //
-static void match(tagmatch_query * q) {
+static void do_match(tagmatch_query * q) {
 	const filter_t & f = q->filter;
 	for (filter_pos_t i = f.next_bit(0); i < filter_t::WIDTH; i = f.next_bit(i + 1))
 		for(mask_queue_pair * mqp = ptable[i]; mqp != ptable[i + 1]; ++mqp)
@@ -497,7 +475,7 @@ static void match(tagmatch_query * q) {
 	// and has already finished the match in the back_end
 	//
 	if (q->is_matching_complete())
-		if (q->finalize_matching());
+		q->finalize_matching();
 }
 
 // FRONT-END EXECUTION THREADS
@@ -521,8 +499,7 @@ enum front_end_state {
 	FE_MATCHING = 1,
 	FE_FINALIZE_MATCHING = 2,
 	FE_FLUSHING = 3,
-	FE_FINALIZE_FLUSHING = 4,
-	FE_FINAL = 5,
+	FE_FINALIZE_FLUSHING = 4
 };
 
 static atomic<front_end_state> processing_state(FE_INITIAL);
@@ -555,7 +532,8 @@ static atomic<unsigned int> matching_job_queue_tail(0);		// one-past position of
 static atomic<unsigned int> flushing_job_queue_head(0);	// position of the first element
 static unsigned int flushing_job_queue_tail = 0;		// one-past position of the last element
 
-static unsigned int matching_threads;
+// number of threads that are still in the matching loop
+static atomic<unsigned int> matching_threads(0);
 
 //
 // This is used to enqueue a matching job.  It suspends in a spin loop
@@ -571,7 +549,7 @@ void front_end::match(tagmatch_query * p) noexcept {
 		;		// full queue => spin
 
 	job_queue[matching_job_queue_tail].p = p;
-	matching_job_queue_tail = tail_plus_one;
+	matching_job_queue_tail.store(tail_plus_one, std::memory_order_release);
 }
 
 static milliseconds flush_limit(0);
@@ -585,67 +563,63 @@ void front_end::set_latency_limit_ms(unsigned int l) {
 }
 
 static void match_loop() {
+	static const unsigned int LATENCY_CHECK_SLACK_LIMIT = 10;
+	unsigned int latency_check_slack = 0;
 	unsigned int head, head_plus_one;
 	tagmatch_query * p;
 	for(;;) {
-check_latency:
-		if (flush_limit > milliseconds(0)) {
-			partition_queue * q;
-			while((q = partition_queue::first_pending(flush_limit)))
-				q->flush();
-		}
-		do {
-			head = matching_job_queue_head.load(std::memory_order_acquire);
-			while (head == matching_job_queue_tail) {
-				// empty queue
-				if (processing_state == FE_MATCHING) {
-					// if we are still matching, then we spin
-					goto check_latency;
-				} else {
-					// otherwise, if we are stopped, then we switch to flushing
-					unique_lock<mutex> lock(processing_mtx);
-					if (processing_state == FE_FINALIZE_MATCHING) {
-						if (--matching_threads == 0) {
-							processing_state = FE_FLUSHING;
-							processing_cv.notify_all();
-						}
-					}
-					return;
+	main_loop:
+		if (latency_check_slack < LATENCY_CHECK_SLACK_LIMIT) {
+			++latency_check_slack;
+		} else {
+			latency_check_slack = 0;
+			if (flush_limit > milliseconds(0)) {
+				partition_queue * q;
+				while((q = partition_queue::first_pending(flush_limit))) {
+					q->flush();
 				}
+			}
+		}
+		head = matching_job_queue_head.load(std::memory_order_acquire);
+		do {
+			if (head == matching_job_queue_tail) {
+                // empty queue
+				if (processing_state.load(std::memory_order_acquire) == FE_MATCHING)
+					// if we are still matching, then we spin
+					goto main_loop;
+				else
+					// otherwise we get out of the match loop
+					return;
 			}
 			p = job_queue[head].p;
 			head_plus_one = (head + 1) % JOB_QUEUE_SIZE;
 		} while (!matching_job_queue_head.compare_exchange_weak(head, head_plus_one));
-		match(p);
+        std::atomic_thread_fence(std::memory_order_acquire);
+		do_match(p);
 	}
 }
 
 static void flush_loop() {
 	unsigned int head, head_plus_one;
 	partition_queue * q;
-
 	for(;;) {
+	main_loop:
 		head = flushing_job_queue_head.load(std::memory_order_acquire);
 		do {
-			while (head == flushing_job_queue_tail) {
-				// empty queue
-				if (processing_state == FE_FLUSHING) {
+			if (head == flushing_job_queue_tail) {
+			// empty queue
+				if (processing_state.load(std::memory_order_acquire) == FE_FLUSHING) {
 					// if we are still flushing, then we spin
-					head = flushing_job_queue_head.load(std::memory_order_acquire);
-					continue;
+					goto main_loop;
 				} else {
-					// otherwise, if we are done, then we terminate
-					unique_lock<mutex> lock(processing_mtx);
-					if (processing_state == FE_FINALIZE_FLUSHING) {
-						processing_state = FE_FINAL;
-						processing_cv.notify_all();
-					}
+					// otherwise we are done
 					return;
 				}
 			}
 			q = job_queue[head].q;
 			head_plus_one = (head + 1) % JOB_QUEUE_SIZE;
 		} while (!flushing_job_queue_head.compare_exchange_weak(head, head_plus_one));
+        std::atomic_thread_fence(std::memory_order_acquire);
 		q->flush();
 	}
 }
@@ -665,12 +639,32 @@ static void enqueue_flush_job(partition_queue * q) {
 }
 
 static void processing_thread() {
+	// Barrier: we hold until the state transition: FE_INITIAL ->
+	// FE_MATCHING, at which point we enter the match loop
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		while (processing_state == FE_INITIAL)
 			processing_cv.wait(lock);
 	} while(0);
+
 	match_loop();
+
+	// We got out of the match_loop, and if we are the last thread to
+	// do so, we signal the stopping thread
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		--matching_threads;
+		processing_cv.notify_all();
+	} while (0);
+	// Barrier: we hold until the state transition:
+	// FE_FINALIZE_MATCHING -> FE_FLUSHING, at which point we enter
+	// the flush loop.
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		while (processing_state == FE_FINALIZE_MATCHING)
+			processing_cv.wait(lock);
+	} while(0);
+
 	flush_loop();
 }
 
@@ -681,76 +675,101 @@ void front_end::start(unsigned int threads) {
 		return;
 
 	unique_lock<mutex> lock(processing_mtx);
-	while (processing_state != FE_INITIAL)
-		processing_cv.wait(lock);
+
+	// In order to make this method reentrant, we proceed only if the
+	// front end is in the FE_INITIAL state.  Notice that this whole
+	// method is synchronized, so only one start thread can proceed
+	// beyond this barrier.
+	//
+	if (processing_state != FE_INITIAL)
+		return;
+
+	for (unsigned int i = 0; i < threads; ++i)
+		thread_pool.push_back(new thread(processing_thread));
 
 	matching_threads = threads;
-	do {
-		thread_pool.push_back(new thread(processing_thread));
-	} while(--threads > 0);
-
 	processing_state = FE_MATCHING;
 	processing_cv.notify_all();
 }
 
 void front_end::stop() {
+	// We proceed only when the front end is in the FE_MATCHING state.
+	// This is because (1) FE_INITIAL means we are already stopped,
+	// and (2) any other state beyond FE_MATCHING means that the
+	// stopping process has already started.  This way, we make stop()
+	// fully reentrant.
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		if (processing_state != FE_MATCHING)
 			return;
+
+		// We switch from FE_MATCHING to FE_FINALIZE_MATCHING, which
+		// causes the worker threads to get out of the matching loop.
 		processing_state = FE_FINALIZE_MATCHING;
-		while(processing_state != FE_FLUSHING)
+		processing_cv.notify_all();
+	} while (0);
+
+	// Barrier: we wait for all the worker threads to terminate the
+	// matching loop, and then we switch to FE_FLUSHING
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		while (matching_threads > 0)
 			processing_cv.wait(lock);
+		processing_state = FE_FLUSHING;
+		processing_cv.notify_all();
 	} while(0);
 
-	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
-		for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
-			enqueue_flush_job(q);
-
+	// We then enqueue all pending batches for processing in the flush loop.
+	if (ptable[0]) {
+		for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+			for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
+				enqueue_flush_job(q);
+	}
+	// When all pending batches are in the flush queue, we switch to
+	// FE_FINALIZE_FLUSHING, which signals the worker threads that
+	// they can get out of the flush loop as soon as they hit the end
+	// of the flush queue.
 	do {
 		unique_lock<mutex> lock(processing_mtx);
 		processing_state = FE_FINALIZE_FLUSHING;
-		while(processing_state != FE_FINAL)
-			processing_cv.wait(lock);
+		processing_cv.notify_all();
 	} while(0);
 
+	// Barrier: we wait for all the worker threads to terminate.
+	//
 	for(thread * t : thread_pool) {
 		t->join();
 		delete(t);
 	}
 
+	// Now there are no more threads (this is the only thread
+	// operating on the front end), so we clean things up in the front
+	// end
 	thread_pool.clear();
 
-	for (unsigned int s = 0; s < back_end::gpu_count() * GPU_STREAMS; s++){
-		batch * bx = (batch *)back_end::flush_stream();
-		if(!bx)
-			continue;
-		for (unsigned int r = 0; r < bx->bsize; r++) {
-			tagmatch_query * q = bx->queries[r];
-			q->partition_done();
-			if (q->is_matching_complete())
-				if (q->finalize_matching());
-		}
-		batch_pool::put(bx) ;
+	// And we then grab and process the left-over batches from the
+	// back end.  We do that in two stages.
+	//
+	for (unsigned int s = 0; s < back_end::gpu_count() * GPU_STREAMS; s++) {
+		batch * bx = back_end::flush_stream();
+		if(bx)
+			finalize_batch(bx);
 	}
 
 	back_end::release_stream_handles();
 
 	for (unsigned int s = 0; s < back_end::gpu_count() * GPU_STREAMS; s++){
-		batch * bx = (batch *)back_end::second_flush_stream();
-		if(!bx)
-			continue;
-		for (unsigned int r = 0; r < bx->bsize; r++) {
-			tagmatch_query * q = bx->queries[r];
-			q->partition_done();
-			if (q->is_matching_complete())
-				if (q->finalize_matching());
-		}
-		batch_pool::put(bx) ;
+		batch * bx = back_end::second_flush_stream();
+		if(bx)
+			finalize_batch(bx);
 	}
 	back_end::release_stream_handles();
 
-	processing_state = FE_INITIAL;
+	do {
+		unique_lock<mutex> lock(processing_mtx);
+		processing_state = FE_INITIAL;
+		processing_cv.notify_all();
+	} while(0);
 }
 
 void front_end::clear() {
@@ -763,9 +782,10 @@ void front_end::clear() {
 
 ostream & front_end::print_statistics(ostream & os) {
 	os << "partition  max latency (ms) enqueue count  flush count" << std::endl;
-	for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
-		for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
-			q->print_statistics(os);
-
+	if (ptable[0]) {
+		for(filter_pos_t i = 0; i < filter_t::WIDTH; ++i)
+			for(mask_queue_pair * q = ptable[i]; q != ptable[i + 1]; ++q)
+				q->print_statistics(os);
+	}
 	return os;
 }

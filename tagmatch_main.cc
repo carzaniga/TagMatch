@@ -119,7 +119,6 @@ static uint32_t read_filters(std::istream & input, bool binary_format, uint32_t 
 	return cnt;
 }
 
-
 int main(int argc, const char* argv[]) {
 	const char* input_fname = nullptr;
 	const char * queries_fname = nullptr;

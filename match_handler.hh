@@ -18,6 +18,7 @@ public:
 		process_results(q);
 	}
 	virtual void process_results(query * q) = 0;
+	virtual ~match_handler() { };
 };
 
 #endif
