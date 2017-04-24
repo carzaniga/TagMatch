@@ -19,7 +19,7 @@
 // 192 bits / 32-bit words
 #define GPU_FILTER_WORDS 6
 
-struct result_t {
+struct gpu_result {
 	uint32_t count;
 	uint32_t keys[MAX_MATCHES+MAX_MATCHES/4];
 };
@@ -59,18 +59,17 @@ public:
 	static void async_copy_queries(uint32_t * queries, unsigned int size , unsigned int stream, unsigned int gpu);
 	static void async_copy(void * hst_src, void * dev_dst, unsigned int size, unsigned int stream, unsigned int gpu);
 	static void async_set_zero(void * dev_array, unsigned int size, unsigned int stream_id, unsigned int gpu);
-	static void async_get_results(result_t * host_results, result_t * dev_results,  unsigned int size, unsigned int stream, unsigned int gpu);
-	static void syncOnResults(unsigned int stream, unsigned int gpu);		
-	static void get_results(result_t * host_results, result_t * dev_results, 
+	static void async_get_results(gpu_result * host_results, gpu_result * dev_results,  unsigned int size, unsigned int stream, unsigned int gpu);
+	static void syncOnResults(unsigned int stream, unsigned int gpu);
+	static void get_results(gpu_result * host_results, gpu_result * dev_results,
 							unsigned int size);
 
-	static void run_kernel(uint32_t * fib, unsigned int fib_size, 
-						   unsigned int batch_size, 
-						   result_t * dev_results_count,
-						   result_t * dev_results_data,
-						   unsigned int stream, 
-						   unsigned int gpu,
-						   unsigned char blocks);
+	static void run_kernel(uint32_t * fib, unsigned int fib_size,
+						   unsigned int batch_size,
+						   gpu_result * dev_results_count,
+						   gpu_result * dev_results_data,
+						   unsigned int stream,
+						   unsigned int gpu);
 
 	static void synchronize_stream(unsigned int stream, unsigned int gpu);
 	static void synchronize_device();

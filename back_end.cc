@@ -87,13 +87,7 @@ void back_end::add_filter(partition_id_t part, const filter_t & f,
 	tmp_fib_users[part].emplace_back(begin, end);
 }
 
-vector<filter_pos_t> prefix_block_lengths;
-
-void back_end::add_partition(partition_id_t id, const filter_t & prefix) {
-	if (id >= prefix_block_lengths.size())
-		prefix_block_lengths.resize(id + 1);
-	prefix_block_lengths[id] = 0;
-}
+void back_end::add_partition(partition_id_t id, const filter_t & prefix) { }
 
 // ACTUAL FIB
 //
@@ -146,6 +140,7 @@ struct stream_handle {
 	unsigned int stream;
 	unsigned int gpu;
 
+private:
 	tagmatch_query ** last_batch;
 	tagmatch_query ** second_last_batch;
 	unsigned int last_batch_size, second_last_batch_size;
@@ -156,12 +151,51 @@ struct stream_handle {
 	// keys, one for each query, in a separate buffer.  We then
 	// store the results that come back from the GPU.
 	//
-	bool flip;
+	uint8_t current_buf;
 	uint32_t * host_queries[2];
-	result_t * host_results[2];
-	result_t * dev_results[2];
+	gpu_result * host_results[2];
+	gpu_result * dev_results[2];
 	uint32_t last_partition;
 	uint32_t second_last_partition;
+
+public:
+
+	void flip_buffers() {
+		current_buf ^= 1;
+	}
+
+	uint32_t * current_host_queries() const { return host_queries[current_buf]; }
+
+	gpu_result * current_dev_results() const {
+		return dev_results[current_buf];
+	}
+
+	gpu_result * other_dev_results() const {
+		return dev_results[current_buf ^ 1];
+	}
+
+	gpu_result * current_host_results() const {
+		return host_results[current_buf];
+	}
+
+	gpu_result * other_host_results() const {
+		return host_results[current_buf ^ 1];
+	}
+
+	tagmatch_query * current_results_query(unsigned int i) const {
+		return second_last_batch[(host_results[current_buf]->keys[5*(i/4)] >> (8*(i % 4))) & 0xFF];
+	}
+
+	const keys_vector & current_results_keys(unsigned int i) const {
+		unsigned int keys_idx = host_results[current_buf]->keys[5*(i/4) + 1 + (i % 4)];
+		return tmp_fib_users[second_last_partition][keys_idx];
+	}
+
+	uint32_t current_results_count() const {
+		return host_results[current_buf]->count;
+	}
+
+	batch * flush_one_batch();
 
 	void initialize(unsigned int stream_, unsigned int gpu_, unsigned int next_) {
 		stream = stream_;
@@ -174,12 +208,13 @@ struct stream_handle {
 		// for the staged computation that is taking place in
 		// process_batch
 		//
+		current_buf = 0;
 		for (unsigned int f = 0; f < 2; f++) {
 			host_queries[f] = gpu::allocate_host_pinned<uint32_t>(QUERIES_BATCH_SIZE*GPU_FILTER_WORDS);
-			host_results[f] = gpu::allocate_host_pinned<result_t>(1);
+			host_results[f] = gpu::allocate_host_pinned<gpu_result>(1);
 			host_results[f]->count = 0;
-			dev_results[f] = gpu::allocate<result_t>(1);
-			gpu::async_set_zero(dev_results[f], sizeof(result_t),0,gpu);
+			dev_results[f] = gpu::allocate<gpu_result>(1);
+			gpu::async_set_zero(dev_results[f], sizeof(gpu_result),0,gpu);
 		}
 		last_batch = second_last_batch = nullptr;
 		last_batch_ptr = second_last_batch_ptr = nullptr;
@@ -194,7 +229,78 @@ struct stream_handle {
 			gpu::release_memory(dev_results[f]);
 		}
 	}
+
+	void async_copy_results_from_gpu() {
+		gpu::async_get_results(current_host_results(), current_dev_results(),
+							   current_results_count(),
+							   stream, gpu);
+	}
+
+	batch * process_batch(partition_id_t part, tagmatch_query ** q, unsigned int count, batch * bp);
+	batch * process_available_results();
 };
+
+batch * stream_handle::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count,
+									 batch * batch_ptr) {
+	batch * res;
+	flip_buffers();
+	// We first copy every query (filter plus tree-interface pair)
+	// over to the device.  To do that we first assemble the whole
+	// thing in buffers here on the host, and then we copy those
+	// buffers over to the device.
+	//
+	uint32_t * hq = current_host_queries();
+	for (unsigned int i = 0; i < q_count; ++i)
+		for (int j = 0; j < GPU_FILTER_WORDS; ++j)
+			*hq++ = q[i]->filter.uint32_value(j);
+
+	gpu::set_device(gpu);
+	gpu::async_copy_queries(host_queries[current_buf], q_count * GPU_FILTER_WORDS, stream, gpu);
+	gpu::run_kernel(dev_partitions[gpu][part].fib, dev_partitions[gpu][part].size,
+					q_count, current_dev_results(), other_dev_results(), stream, gpu);
+
+	res = process_available_results();
+
+	uint32_t count = current_results_count();
+	assert(count <= MAX_MATCHES);
+	// copy results from current_dev into current_host
+	gpu::async_get_results(current_host_results(), current_dev_results(), count, stream, gpu);
+	// clear current_dev
+	gpu::async_set_zero(current_dev_results(),  sizeof(uint32_t)*(1 + count +(count + 3)/4),
+						stream, gpu);
+
+	// Update the info about the staged computation; drop the second
+	// last iteration and store the info about the current iteration
+	// for the next cycles
+	//
+	second_last_batch = last_batch;
+	second_last_batch_size = last_batch_size;
+	second_last_batch_ptr = last_batch_ptr;
+
+	last_batch = q;
+	last_batch_size = q_count;
+	last_batch_ptr = batch_ptr;
+
+	second_last_partition = last_partition;
+	last_partition = part;
+	return res;
+}
+
+batch * stream_handle::process_available_results() {
+	if (second_last_batch != nullptr) {
+		gpu::set_device(gpu);
+		gpu::syncOnResults(stream, gpu); // Wait for the data to be copied
+		assert(current_results_count() <= MAX_MATCHES);
+		for (unsigned int i = 0; i < current_results_count(); ++i) {
+			const keys_vector & k = current_results_keys(i);
+			current_results_query(i)->add_output(k.begin(), k.end());
+		}
+		return second_last_batch_ptr;
+	} else if (last_batch != nullptr) {
+		gpu::syncOnResults(stream, gpu);
+	}
+	return nullptr;
+}
 
 // We maintain a lock-free allocation list for stream handles.
 //
@@ -222,7 +328,7 @@ static stream_handle * allocate_stream_handle() {
 	return stream_handles + sp;
 }
 
-static void release_stream_handle(stream_handle * h) {
+static void recycle_stream_handle(stream_handle * h) {
 	unsigned char sp = h - stream_handles;
 	h->next = free_stream_handles.load(std::memory_order_acquire);
 	do {
@@ -294,7 +400,7 @@ static void compile_fibs() {
 	uint32_t * host_rep = new uint32_t[max * GPU_FILTER_WORDS];
 
 #if SORT_FILTERS
-	for (auto & pf : tmp_fib) 
+	for (auto & pf : tmp_fib)
 #else
 	for (auto const & pf : tmp_fib)
 #endif
@@ -309,7 +415,6 @@ static void compile_fibs() {
 			dev_partitions[g][part].size = filters.size();
 
 		unsigned int * host_rep_f = host_rep;
-		unsigned int full_blocks = prefix_block_lengths[part];
 		int blocks_in_partition = dev_partitions[0][part].size / (GPU_BLOCK_SIZE) ;
 
 		if (dev_partitions[0][part].size % GPU_BLOCK_SIZE != 0)
@@ -328,9 +433,9 @@ static void compile_fibs() {
 			// then we copy the filter in the host table, using the
 			// appropriate layout.
 			//
-			for (unsigned int i = full_blocks; i < GPU_FILTER_WORDS; ++i) {
+			for (unsigned int i = 0; i < GPU_FILTER_WORDS; ++i) {
 #ifdef COALESCED_READS
-				host_rep_f[dev_partitions[0][part].size * (i-full_blocks) + counter] = (f.uint32_value(i));
+				host_rep_f[dev_partitions[0][part].size * i + counter] = (f.uint32_value(i));
 #else
 				*host_rep_f++ = (f.uint32_value(i));
 #endif
@@ -339,8 +444,7 @@ static void compile_fibs() {
 		}
 		for (unsigned int g = 0; g < gpus_in_use; g++) {
 			gpu::set_device(g);
-			dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * (GPU_FILTER_WORDS - full_blocks) );
-
+			dev_partitions[g][part].fib = gpu::allocate_and_copy<uint32_t>(host_rep, dev_partitions[g][part].size * GPU_FILTER_WORDS);
 		}
 	}
 	delete[](host_rep);
@@ -350,42 +454,26 @@ static void compile_fibs() {
 }
 #endif // BACK_END_IS_VOID
 
-
 // this is called at the end of the computation, to extract results
 // from the second last iterations of the process_batch loop it does
 // not release the stream handler, because it forces the front_end to
 // loop on all the streams available
 //
 batch * back_end::flush_stream() {
-	batch * res = nullptr;
 	stream_handle * sh = allocate_stream_handle();
-	gpu::set_device(sh->gpu);
-	// Wait for the data to be copied
-	gpu::syncOnResults(sh->stream, sh->gpu);
-	if (sh->second_last_batch != nullptr) {
-		res = sh->second_last_batch_ptr;
-		assert(sh->host_results[!sh->flip]->count <= MAX_MATCHES);
-		for (unsigned int i = 0; i < sh->host_results[!sh->flip]->count; ++i) {
-			unsigned char qry_idx = (sh->host_results[sh->flip]->keys[5*(i/4)] >> (8*(i%4)))& 0xFF;
-			uint32_t id = sh->host_results[sh->flip]->keys[5*(i/4)+1+(i%4)];
-			tagmatch_query * qry = sh->second_last_batch[qry_idx];
-			const keys_vector & keys = tmp_fib_users[sh->second_last_partition][id];
-			qry->add_output(keys.begin(), keys.end());
-		}
-	}
-	gpu::async_get_results(sh->host_results[!sh->flip], sh->dev_results[!sh->flip], sh->host_results[sh->flip]->count, sh->stream, sh->gpu);
+	batch * res = sh->process_available_results();
+	sh->flip_buffers();
+	sh->async_copy_results_from_gpu();
 	return res;
 }
-
 
 // This is used by the front_end to release stream handlers when
 // moving from the first stage of the final flushing to the second
 //
-void back_end::release_stream_handles()
-{
+void back_end::release_stream_handles() {
 	for (unsigned char i=0; i < gpus_in_use * GPU_STREAMS; i++) {
 		stream_handle * sh = stream_handles + i;
-		release_stream_handle(sh);
+		recycle_stream_handle(sh);
 	}
 }
 
@@ -394,26 +482,10 @@ void back_end::release_stream_handles()
 // release the stream handler, because it forces the front_end to loop
 // on all the streams available
 //
-batch * back_end::second_flush_stream()
-{
-	batch * res = nullptr;
+batch * back_end::second_flush_stream() {
 	stream_handle * sh = allocate_stream_handle();
-	gpu::set_device(sh->gpu);
-	if (sh->last_batch != nullptr) {
-		res = sh->last_batch_ptr;
-		gpu::syncOnResults(sh->stream, sh->gpu);
-		assert(sh->host_results[sh->flip]->count <= MAX_MATCHES);
-		for (unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
-			unsigned char qry_idx = (sh->host_results[!sh->flip]->keys[5*(i/4)] >> (8*(i%4)))& 0xFF;
-			uint32_t id = sh->host_results[!sh->flip]->keys[5*(i/4)+1+i%4];
-			tagmatch_query * qry = sh->last_batch[qry_idx];
-			const keys_vector & keys = tmp_fib_users[sh->last_partition][id];
-			qry->add_output(keys.begin(), keys.end());
-		}
-	}
-	return res;
+	return sh->process_available_results();
 }
-
 
 batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
 	batch * res = nullptr;
@@ -444,80 +516,8 @@ batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsign
 	}
 #endif
 	stream_handle * sh = allocate_stream_handle();
-	uint8_t blocks = prefix_block_lengths[part];
-
-	// Flip the buffers for the staged computation to avoid overwriting
-	//
-	sh->flip = !sh->flip;
-	uint32_t * curr_p_buf = sh->host_queries[sh->flip];
-
-	// We first copy every query (filter plus tree-interface pair)
-	// over to the device.  To do that we first assemble the whole
-	// thing in buffers here on the host, and then we copy those
-	// buffers over to the device.
-	//
-	for (unsigned int i = 0; i < q_count; ++i) {
-		for (int j = blocks; j < GPU_FILTER_WORDS; ++j)
-			*curr_p_buf++ = q[i]->filter.uint32_value(j);
-	}
-
-	gpu::set_device(sh->gpu);
-	gpu::async_copy_queries(sh->host_queries[sh->flip], q_count * (GPU_FILTER_WORDS-blocks), sh->stream, sh->gpu);
-	gpu::run_kernel(dev_partitions[sh->gpu][part].fib,
-					dev_partitions[sh->gpu][part].size,
-					q_count,
-					sh->dev_results[sh->flip],
-					sh->dev_results[!sh->flip],
-					sh->stream,
-					sh->gpu,
-					blocks);
-	// If the second last batch is set, then we have some results to
-	// check from that computation
-	//
-	if (sh->second_last_batch != nullptr) {
-		res = sh->second_last_batch_ptr;
-		gpu::syncOnResults(sh->stream, sh->gpu);
-
-		// If there are more results than slots available for the results, some results will be
-		// ignored, and the following assertion is triggered
-		//
-		assert(sh->host_results[sh->flip]->count <= MAX_MATCHES);
-		for (unsigned int i = 0; i < sh->host_results[sh->flip]->count; ++i) {
-			unsigned char qry_idx = (sh->host_results[!sh->flip]->keys[5*(i/4)] >> (8*(i%4))) & 0xFF;
-			uint32_t id = sh->host_results[!sh->flip]->keys[5*(i/4)+1+(i%4)];
-			tagmatch_query * qry = sh->second_last_batch[qry_idx];
-			const keys_vector & keys = tmp_fib_users[sh->second_last_partition][id];
-			qry->add_output(keys.begin(), keys.end());
-		}
-	}
-	// If we are at the 2nd cycle, synchronize on the results from the
-	// previous iteration, so that the counter for the results to be
-	// copied hereafter is correct
-	//
-	else if (sh->second_last_batch == nullptr && sh->last_batch != nullptr) {
-		gpu::syncOnResults(sh->stream, sh->gpu);
-	}
-	assert(sh->host_results[!sh->flip]->count <= MAX_MATCHES);
-	gpu::async_get_results(sh->host_results[sh->flip], sh->dev_results[sh->flip],sh->host_results[!sh->flip]->count, sh->stream, sh->gpu);
-	gpu::async_set_zero(sh->dev_results[sh->flip],  sizeof(uint32_t)*(1+(sh->host_results[!sh->flip]->count)+(sh->host_results[!sh->flip]->count+ 3)/4), sh->stream, sh->gpu);
-
-	// Update the info about the staged computation; drop the second
-	// last iteration and store the info about the current iteration
-	// for the next cycles
-	//
-	sh->second_last_batch = sh->last_batch;
-	sh->second_last_batch_size = sh->last_batch_size;
-	sh->second_last_batch_ptr = sh->last_batch_ptr;
-
-	sh->last_batch = q;
-	sh->last_batch_size = q_count;
-	sh->last_batch_ptr = batch_ptr;
-
-	sh->second_last_partition = sh->last_partition;
-	sh->last_partition = part;
-
-	release_stream_handle(sh);
-
+	res = sh->process_batch(part, q, q_count, batch_ptr);
+	recycle_stream_handle(sh);
 #else // BACK_END_IS_VOID
 
 #ifndef NO_FRONTEND_OUTPUT_LOOP
@@ -528,14 +528,6 @@ batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsign
 	// worst case, where we set ALL output interfaces.
 	for (unsigned int i = 0; i < batch_size; ++i) {
 		batch[i]->partition_done();
-#if 0
-		// this is where we could check whether the processing of
-		// message batch[i] is complete, in which case we could
-		// release whatever resources are associated with the query
-		//
-		if (batch[i]->is_matching_complete())
-			deallocate_query(batch[i]);
-#endif
 	}
 #endif
 #endif // BACK_END_IS_VOID
