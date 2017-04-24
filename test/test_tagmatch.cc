@@ -388,6 +388,7 @@ BOOST_AUTO_TEST_CASE( add_and_find_multi ) {
 	tagmatch::add(F[2], 3);
 	tagmatch::add(F[3], 4);
 	tagmatch::consolidate();
+
 	deferred_matching_checks C;
 
 	C.run_query(F[1], set<tagmatch_key_t>({ 1, 2 }));

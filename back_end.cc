@@ -21,6 +21,8 @@
 #include "fib.hh"
 #include "filter.hh"
 
+#include "debugging.hh"
+
 #define SORT_FILTERS 0
 #define COMBO 1
 #define COMBO_SIZE 30000000
@@ -240,8 +242,7 @@ public:
 	batch * process_available_results();
 };
 
-batch * stream_handle::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count,
-									 batch * batch_ptr) {
+batch * stream_handle::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
 	batch * res;
 	flip_buffers();
 	// We first copy every query (filter plus tree-interface pair)
@@ -287,7 +288,7 @@ batch * stream_handle::process_batch(partition_id_t part, tagmatch_query ** q, u
 }
 
 batch * stream_handle::process_available_results() {
-	if (second_last_batch != nullptr) {
+	if (second_last_batch_ptr != nullptr) {
 		gpu::set_device(gpu);
 		gpu::syncOnResults(stream, gpu); // Wait for the data to be copied
 		assert(current_results_count() <= MAX_MATCHES);
@@ -460,10 +461,12 @@ static void compile_fibs() {
 // loop on all the streams available
 //
 batch * back_end::flush_stream() {
+	DEBUG_PRINTLN("back_end::flush_stream");
 	stream_handle * sh = allocate_stream_handle();
 	batch * res = sh->process_available_results();
 	sh->flip_buffers();
 	sh->async_copy_results_from_gpu();
+	DEBUG_PRINTLN("res=" << res);
 	return res;
 }
 
@@ -483,12 +486,16 @@ void back_end::release_stream_handles() {
 // on all the streams available
 //
 batch * back_end::second_flush_stream() {
+	DEBUG_PRINTLN("back_end::second_flush_stream");
 	stream_handle * sh = allocate_stream_handle();
-	return sh->process_available_results();
+	batch * res = sh->process_available_results();
+	DEBUG_PRINTLN("res=" << res);
+	return res;
 }
 
 batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsigned int q_count, batch * batch_ptr) {
-	batch * res = nullptr;
+	DEBUG_PRINTLN("back_end::process_batch: part=" << part << " q=" << q << " count=" << q_count << " batch_ptr=" << batch_ptr);
+	batch * res;
 #ifndef BACK_END_IS_VOID
 
 // If the partition is small, compute it entirely on the CPU
@@ -515,6 +522,7 @@ batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsign
 		return batch_ptr;
 	}
 #endif
+	DEBUG_PRINTLN("back_end::process_batch: using GPU");
 	stream_handle * sh = allocate_stream_handle();
 	res = sh->process_batch(part, q, q_count, batch_ptr);
 	recycle_stream_handle(sh);

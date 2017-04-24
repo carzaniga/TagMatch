@@ -8,11 +8,14 @@
 #include <atomic>
 #include <vector>
 #include <mutex>
+#include <cassert>
 
 #include "filter.hh"
 #include "key.hh"
 #include "query.hh"
 #include "match_handler.hh"
+
+#include "debugging.hh"
 
 // this is the class that defines and stores a query and the related
 // meta-data used during the whole matching and forwarding process by
@@ -23,58 +26,41 @@
 //
 class tagmatch_query : public query {
 private:
-    // the query is in FrontEnd state when we are still working with
-    // the prefix matching within the frontend, then it goes into
-    // BackEnd state.
-	//
-    enum matching_state {
-		FrontEnd = 0,
-		BackEnd = 1
+	enum {
+		FRONT_END = 0,
+		BACK_END = 1,
+		FINALIZED = 2,
 	};
-	matching_state state;
-
-	// we count the number of queues, each associated with a
+	std::atomic<unsigned char> state;
+	// We count the number of queues, each associated with a
 	// partition, to which we pass this message for matching by the
 	// backend.  We use this counter to determine when we are done
 	// with the matching in all the partitions.
 	//
 	std::atomic<unsigned int> pending_partitions;
-	std::atomic<bool> finalized;
 	match_handler * handler;
 	std::mutex output_mtx;
 
 public:
 	tagmatch_query()
-		: query(), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
+		: query(), state(FRONT_END), pending_partitions(0), handler(nullptr) { };
 
 	tagmatch_query(const filter_t & f)
-		: query(f), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
+		: query(f), state(FRONT_END), pending_partitions(0), handler(nullptr) { };
 
 	tagmatch_query(const std::string & f)
-		: query(f), state(FrontEnd), pending_partitions(0), finalized(false), handler(nullptr) { };
+		: query(f), state(FRONT_END), pending_partitions(0), handler(nullptr) { };
 
-	tagmatch_query(tagmatch_query && q)
-		: query(std::move(q)),
-		  state(q.state), pending_partitions(q.pending_partitions.load()),
-		  finalized(q.finalized.load()), handler(nullptr),
-		  output_mtx() { };
+	tagmatch_query(tagmatch_query && x)
+		: query(std::move(x)),
+		  state(x.state.load()), pending_partitions(x.pending_partitions.load()), handler(x.handler), output_mtx() { };
 
-	tagmatch_query(const tagmatch_query & q)
-		: query(q),
-		  state(q.state), pending_partitions(q.pending_partitions.load()),
-		  finalized(q.finalized.load()), handler(nullptr),
-		  output_mtx() { };
+	tagmatch_query(const tagmatch_query & x)
+		: query(x),
+		  state(x.state.load()), pending_partitions(x.pending_partitions.load()), handler(x.handler), output_mtx() { };
 
-    void add_partition() {
+    void partition_enqueue() {
 		++pending_partitions;
-    }
-
-    void add_partition(uint32_t id) {
-		++pending_partitions;
-    }
-    void add_partitions(unsigned int p) {
-		if (p > 0)
-			pending_partitions += p;
     }
 
     void partition_done() {
@@ -82,17 +68,17 @@ public:
     }
 
     void reset() {
-        state = FrontEnd;
+        state = FRONT_END;
 		pending_partitions = 0;
-		finalized = false;
     }
 
     void frontend_done() {
-        state = BackEnd;
-    }
-
-    bool is_matching_complete() const {
-        return (state != FrontEnd) && (pending_partitions == 0);
+		DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this);
+		unsigned char s = FRONT_END;
+		if (state.compare_exchange_strong(s, BACK_END))
+			DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this << " switch!");
+		else
+			DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this << " already switched!");
     }
 
 	void add_output(tagmatch_key_t key) {
@@ -115,7 +101,14 @@ public:
     }
 
 	bool finalize_matching() {
-		if (!atomic_exchange(&finalized, true)) {
+		DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this);
+		if (pending_partitions > 0) {
+			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " not done yet");
+			return false;
+		}
+		unsigned char s = BACK_END;
+		if (state.compare_exchange_strong(s, FINALIZED)) {
+			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " DOING IT!");
 			if (match_unique) {
 				// Delete duplicates from the list of output keys
 				std::sort(output_keys.begin(), output_keys.end());
@@ -127,6 +120,7 @@ public:
 			return true;
 		}
 		else {
+			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " already done");
 			// Nothing to do
 			return false;
 		}
