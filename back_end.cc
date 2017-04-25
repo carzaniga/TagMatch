@@ -192,7 +192,7 @@ public:
 	}
 
 	uint32_t current_results_count() const {
-		return host_results[current_buf]->count;
+		return host_results[current_buf ^ 1]->count;
 	}
 
 	batch * flush_one_batch();
