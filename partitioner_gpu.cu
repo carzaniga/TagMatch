@@ -113,7 +113,7 @@ void partitioner_gpu::init(unsigned int part_thread_count, const std::vector<par
 	cudaFreeHost(h_fib);
 	cudaError_t err;
 	if ((err = cudaGetLastError()) != 0)
-		std::cout << "CUDA error on init: " << err << std::endl;
+		std::cout << "CUDA error on init: " << cudaGetErrorString(err) << std::endl;
 }
 
 void partitioner_gpu::reset_buffers(unsigned int tid) {
