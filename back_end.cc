@@ -22,8 +22,6 @@
 #include "filter.hh"
 
 #define SORT_FILTERS 0
-#define COMBO 1
-#define COMBO_SIZE 30000000
 
 using std::vector;
 using std::map;
@@ -152,7 +150,6 @@ private:
 	gpu_result * host_results[2];
 	gpu_result * dev_results[2];
 
-public:
 	uint32_t last_partition;
 	uint32_t second_last_partition;
 	tagmatch_query ** last_batch;
@@ -160,6 +157,7 @@ public:
 	unsigned int last_batch_size, second_last_batch_size;
 	batch * last_batch_ptr, * second_last_batch_ptr;
 
+public:
 	void flip_buffers() {
 		current_buf ^= 1;
 	}
@@ -193,6 +191,17 @@ public:
 
 	uint32_t current_results_count() const {
 		return host_results[current_buf ^ 1]->count;
+	}
+
+	void shift_batches () {
+		// Update the info about the staged computation; drop the second
+		// last iteration and store the info about the current iteration
+		// for the next cycles
+		//
+		second_last_batch = last_batch;
+		second_last_batch_size = last_batch_size;
+		second_last_batch_ptr = last_batch_ptr;
+		second_last_partition = last_partition;
 	}
 
 	batch * flush_one_batch();
@@ -272,16 +281,13 @@ batch * stream_handle::process_batch(partition_id_t part, tagmatch_query ** q, u
 	// last iteration and store the info about the current iteration
 	// for the next cycles
 	//
-	second_last_batch = last_batch;
-	second_last_batch_size = last_batch_size;
-	second_last_batch_ptr = last_batch_ptr;
+	shift_batches();
 
 	last_batch = q;
 	last_batch_size = q_count;
 	last_batch_ptr = batch_ptr;
-
-	second_last_partition = last_partition;
 	last_partition = part;
+
 	return res;
 }
 
@@ -463,10 +469,7 @@ batch * back_end::flush_stream() {
 	batch * res = sh->process_available_results();
 	sh->flip_buffers();
 	sh->async_copy_results_from_gpu();
-	sh->second_last_batch = sh->last_batch;
-	sh->second_last_batch_size = sh->last_batch_size;
-	sh->second_last_batch_ptr = sh->last_batch_ptr;
-	sh->second_last_partition = sh->last_partition;
+	sh->shift_batches();
 	return res;
 }
 
