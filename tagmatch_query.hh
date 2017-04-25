@@ -51,7 +51,9 @@ public:
 
 	tagmatch_query(tagmatch_query && x)
 		: query(std::move(x)),
-		  state(x.state.load()), pending_partitions(x.pending_partitions.load()), handler(x.handler), output_mtx() { };
+		  state(x.state.load()), pending_partitions(x.pending_partitions.load()), handler(x.handler), output_mtx() {
+		x.handler = nullptr;
+	};
 
 	tagmatch_query(const tagmatch_query & x)
 		: query(x),

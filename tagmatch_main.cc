@@ -63,7 +63,7 @@ public:
 	}
 };
 
-vector<tagmatch_query> queries;
+vector<tagmatch_query *> queries;
 
 static void print_usage(const char* progname) {
 	std::cerr << "usage: " << progname
@@ -79,7 +79,7 @@ static void print_usage(const char* progname) {
 			  << std::endl;
 }
 
-static unsigned int read_queries(vector<tagmatch_query> & queries, string fname, bool binary_format, uint32_t limit) {
+static unsigned int read_queries(vector<tagmatch_query *> & queries, string fname, bool binary_format, uint32_t limit) {
 	ifstream is (fname) ;
 	string line;
 
@@ -90,12 +90,12 @@ static unsigned int read_queries(vector<tagmatch_query> & queries, string fname,
 	basic_query bq;
 	if (binary_format) {
 		while(bq.read_binary(is) && res < limit) {
-			queries.emplace_back(bq.filter);
+			queries.push_back(new tagmatch_query(bq.filter));
 			++res;
 		}
 	} else {
 		while(bq.read_ascii(is)) {
-			queries.emplace_back(bq.filter);
+			queries.push_back(new tagmatch_query(bq.filter));
 			++res;
 		}
 	}
@@ -198,9 +198,9 @@ int main(int argc, const char* argv[]) {
 			std::cerr << "Matching " << queries.size() << " queries..." << std::flush;
 			match_counter counter;
 			start = high_resolution_clock::now();
-			for(tagmatch_query & q : queries) {
-				tagmatch::match(&q, &counter);
-			}
+			for(tagmatch_query * q : queries)
+				tagmatch::match(q, &counter);
+
 			stop = high_resolution_clock::now();
 
 			std::cerr << "\t\t" << std::setw(12)
@@ -211,6 +211,9 @@ int main(int argc, const char* argv[]) {
 			std::cerr << "Clearing...";
 			tagmatch::stop();
 			tagmatch::clear();
+
+			for (tagmatch_query * q : queries)
+				delete(q);
 			queries.clear();
 
 			std::cerr << " done!" << std::endl;
