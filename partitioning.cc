@@ -351,7 +351,7 @@ unsigned int partitioning::get_maxp() {
 }
 
 void partitioning::set_cpu_threads(unsigned int t) {
-	part_thread_count = t;
+	part_thread_count = t > MAXTHREADS ? MAXTHREADS : t;
 }
 
 unsigned int partitioning::get_cpu_threads() {

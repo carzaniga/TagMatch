@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE( set_get_parameters ) {
 	partitioning::set_cpu_threads(5);
 	BOOST_CHECK(partitioning::get_cpu_threads() == 5);
 	partitioning::set_cpu_threads(100);
-	BOOST_CHECK(partitioning::get_cpu_threads() == 100);
+	BOOST_CHECK(partitioning::get_cpu_threads() <= 100);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
