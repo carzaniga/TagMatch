@@ -141,10 +141,6 @@ struct stream_handle {
 	unsigned int gpu;
 
 private:
-	tagmatch_query ** last_batch;
-	tagmatch_query ** second_last_batch;
-	unsigned int last_batch_size, second_last_batch_size;
-	batch * last_batch_ptr, * second_last_batch_ptr;
 	// these are the buffers we use to communicate with the GPU for
 	// matching.  For each stream, we store the queries of each
 	// batch here, together with their associated tree-interface
@@ -155,10 +151,14 @@ private:
 	uint32_t * host_queries[2];
 	gpu_result * host_results[2];
 	gpu_result * dev_results[2];
-	uint32_t last_partition;
-	uint32_t second_last_partition;
 
 public:
+	uint32_t last_partition;
+	uint32_t second_last_partition;
+	tagmatch_query ** last_batch;
+	tagmatch_query ** second_last_batch;
+	unsigned int last_batch_size, second_last_batch_size;
+	batch * last_batch_ptr, * second_last_batch_ptr;
 
 	void flip_buffers() {
 		current_buf ^= 1;
@@ -463,6 +463,10 @@ batch * back_end::flush_stream() {
 	batch * res = sh->process_available_results();
 	sh->flip_buffers();
 	sh->async_copy_results_from_gpu();
+	sh->second_last_batch = sh->last_batch;
+	sh->second_last_batch_size = sh->last_batch_size;
+	sh->second_last_batch_ptr = sh->last_batch_ptr;
+	sh->second_last_partition = sh->last_partition;
 	return res;
 }
 
