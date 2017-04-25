@@ -44,11 +44,9 @@
 #include <mutex>
 #include <condition_variable>
 
-#define USE_GPU 1
-
 #include "partitioning.hh"
 
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 #include "partitioner_gpu.hh"
 #endif
 
@@ -59,7 +57,7 @@ using std::vector;
 //
 typedef vector<partition_fib_entry *> fib_t;
 
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 static fib_t::iterator fib_begin;
 #endif
 
@@ -92,7 +90,7 @@ struct partition_candidate {
 		: begin(b), end(e), clean_freq(false) {};
 
 	void compute_frequencies(int tid) {
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 		unsigned int P_size = end - begin;
 		// If the candidate_partition is too small, it may not be efficient to compute
 		// the frequencies on the GPU
@@ -133,7 +131,7 @@ struct partition_candidate {
 	// to have consistency at partition level.
 	//
 	partition_candidate * split_zero(unsigned int pivot, int tid) {
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 		// Update the gpu fib, asynchronously
 		//
 		uint32_t first = begin - fib_begin;
@@ -329,7 +327,7 @@ static void do_balanced_partitioning(size_t max_p, int tid) {
 				p0->next = p;
 				if (p0->mask.is_empty())
 					p0 = nonzero_mask_partitioning(p0, tid);
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 				else
 					partitioner_gpu::reset_buffers(tid);
 #endif
@@ -365,7 +363,7 @@ void partitioning::balanced_partitioning(std::vector<partition_fib_entry *> & fi
 	if (fib.size() == 0)
 		return;
 	PT = nullptr;
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 	fib_begin = fib.begin();
 	partitioner_gpu::init(part_thread_count, fib);
 #endif
@@ -407,7 +405,7 @@ void partitioning::balanced_partitioning(std::vector<partition_fib_entry *> & fi
 		PT = PT->next;
 		delete(tmp);
 	}
-#if USE_GPU
+#if WITH_GPU_PARTITIONING
 	partitioner_gpu::clear(part_thread_count);
 #endif
 }

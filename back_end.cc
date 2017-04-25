@@ -447,7 +447,7 @@ static void compile_fibs() {
 		}
 	}
 	delete[](host_rep);
-#if !COMBO
+#ifndef CPU_BACKEND
 	tmp_fib.clear();
 #endif
 }
@@ -493,8 +493,8 @@ batch * back_end::process_batch(partition_id_t part, tagmatch_query ** q, unsign
 
 // If the partition is small, compute it entirely on the CPU
 //
-#if COMBO
-	if (dev_partitions[0][part].size < COMBO_SIZE) {
+#ifdef CPU_BACKEND
+	if (dev_partitions[0][part].size < CPU_BACKEND) {
 		tmp_fib_map::const_iterator fi = tmp_fib.find(part);
 		assert(fi != tmp_fib.end());
 		const vector<filter_t> & filters = fi->second;

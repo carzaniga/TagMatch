@@ -88,6 +88,27 @@ AC_ARG_ENABLE(assertions,
   [ AC_DEFINE(NDEBUG, 1, [Disables assertions and other debugging code])])
 ])
 dnl
+dnl AC_OPT_GPU_PARTITIONING
+dnl
+
+AC_DEFUN([AC_OPT_GPU_PARTITIONING], [
+AC_ARG_ENABLE(gpu-partitioning,
+  AC_HELP_STRING([--enable-gpu-partitioning],
+  [enable GPU-assisted partitioning (default is YES)]), [], [enable_gpu_partitioning=yes])
+if test "$enable_gpu_partitioning" = yes; then
+   AC_DEFINE(WITH_GPU_PARTITIONING, 1, [Enable GPU-assisted partitioning])
+fi
+])
+dnl
+dnl AC_OPT_CPU_BACKEND
+dnl
+AC_DEFUN([AC_OPT_CPU_BACKEND], [
+AC_ARG_ENABLE(cpu-backend,
+  AC_HELP_STRING([--enable-cpu-backend=N],
+	[enable CPU back-end processing up to partition size N (default is NO)]),
+  [ AC_DEFINE_UNQUOTED([CPU_BACKEND], $enableval, [enable CPU back-end processing up to partition size N])])
+])
+dnl
 dnl AC_CHECK_BUILTIN_CLZL([action-if-available [, action-if-not-available])
 dnl
 AC_DEFUN([AC_CHECK_BUILTIN_CLZL], [
