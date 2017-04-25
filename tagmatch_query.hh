@@ -15,8 +15,6 @@
 #include "query.hh"
 #include "match_handler.hh"
 
-#include "debugging.hh"
-
 // this is the class that defines and stores a query and the related
 // meta-data used during the whole matching and forwarding process by
 // the CPU/GPU TagNet matcher.  In essence, this is a wrapper for a
@@ -73,12 +71,8 @@ public:
     }
 
     void frontend_done() {
-		DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this);
 		unsigned char s = FRONT_END;
-		if (state.compare_exchange_strong(s, BACK_END))
-			DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this << " switch!");
-		else
-			DEBUG_PRINTLN("tagmatch_query::frontend_done q=" << this << " already switched!");
+		state.compare_exchange_strong(s, BACK_END);
     }
 
 	void add_output(tagmatch_key_t key) {
@@ -101,14 +95,11 @@ public:
     }
 
 	bool finalize_matching() {
-		DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this);
-		if (pending_partitions > 0) {
-			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " not done yet");
+		if (pending_partitions > 0)
 			return false;
-		}
+
 		unsigned char s = BACK_END;
 		if (state.compare_exchange_strong(s, FINALIZED)) {
-			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " DOING IT!");
 			if (match_unique) {
 				// Delete duplicates from the list of output keys
 				std::sort(output_keys.begin(), output_keys.end());
@@ -120,7 +111,6 @@ public:
 			return true;
 		}
 		else {
-			DEBUG_PRINTLN("tagmatch_query::finalize_matching q=" << this << " already done");
 			// Nothing to do
 			return false;
 		}

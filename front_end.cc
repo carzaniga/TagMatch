@@ -26,8 +26,6 @@
 #include "gpu.hh"
 #include "back_end.hh"
 
-#include "debugging.hh"
-
 using std::vector;
 using std::thread;
 using std::atomic;
@@ -313,7 +311,6 @@ public:
 };
 
 static void finalize_batch(batch * bx) {
-	DEBUG_PRINTLN("finalize_batch bx=" << bx);
 	for (unsigned int r = 0; r < bx->bsize; r++) {
 		tagmatch_query * q = bx->queries[r];
 		q->partition_done();
@@ -351,7 +348,6 @@ void partition_queue::do_flush(unsigned int size) noexcept {
 }
 
 void partition_queue::enqueue(tagmatch_query * q) noexcept {
-	DEBUG_PRINTLN("partition_queue::enqueue q=" << q << " -> " << b);
 	assert(tail <= QUERIES_BATCH_SIZE);
 	q->partition_enqueue();
 	unsigned int t = tail.load(std::memory_order_acquire);
@@ -467,7 +463,6 @@ void front_end::consolidate() {
 // This is the main matching function
 //
 static void do_match(tagmatch_query * q) {
-	DEBUG_PRINTLN("do_match q=" << q);
 	const filter_t & f = q->filter;
 	for (filter_pos_t i = f.next_bit(0); i < filter_t::WIDTH; i = f.next_bit(i + 1))
 		for(mask_queue_pair * mqp = ptable[i]; mqp != ptable[i + 1]; ++mqp)
@@ -545,8 +540,6 @@ static atomic<unsigned int> matching_threads(0);
 // ** WARNING: THIS IS TO BE USED BY A SINGLE THREAD. **
 //
 void front_end::match(tagmatch_query * p) noexcept {
-	DEBUG_PRINTLN("front_end::match p=" << p);
-
 	assert(processing_state == FE_INITIAL || processing_state == FE_MATCHING);
 	unsigned int tail_plus_one = (matching_job_queue_tail + 1) % JOB_QUEUE_SIZE;
 
