@@ -1,5 +1,5 @@
 
-AC_INIT(maketrees, 0.0.1, [Antonio Carzaniga (firstname.lastname@usi.ch)])
+AC_INIT(TagMatch, 1.0.0, [Antonio Carzaniga (antonio.carzaniga@usi.ch)])
 AC_CONFIG_AUX_DIR([config])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE
