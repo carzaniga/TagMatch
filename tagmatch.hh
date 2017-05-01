@@ -12,20 +12,34 @@
  *
  *  This class implements the main API into the TagMatch hybrid
  *  CPU/GPU subset matcher.  TagMatch implements what amounts to a
- *  table of Bloom filters (see filter.hh), each associated with a
- *  set of keys.
+ *  table of Bloom filters (see filter.hh), each representing a set
+ *  S_i and associated with a set of keys { k_i1, k_i2, ... }.
+ *  Thus, TagMatch builds and uses a tag-set table:
  *
  *      S_1 -> { k_11, k_12, ... }
  *      S_2 -> { k_21, k_22, ... }
  *      ...
  *
- *  Once all sets are added, and the table is consolidated (see
- *  consolidate()), TagMatch is ready for matching.  TagMatch is
- *  designed for stream processing, to the matching operation does not
- *  immediately return the matching results, but rather uses call-back
- *  mechanism through a match_handler object (see match_handler.hh).
- *  This mechanism can be made synchronous with a simple helper class
- *  synchronous_match_handler (see synchronous_match_handler.hh).
+ *  The tagset table is built incrementally by adding and removing
+ *  individual relations S_i -> { k_i1, k_i2, ... }, or individual
+ *  relations S_i -> k_ij.
+ *
+ *  Once all sets and corresponding keys are in the table (added or
+ *  removed as needed), the table must be consolidated before it can
+ *  be used for subset matching (see consolidate()).
+ *
+ *  TagMatch supports two subset-matching operations on an input set
+ *  Q, which we call the "query". The match() operation returns a
+ *  multi-set of the keys associated with the sets S_i\subseteq Q.
+ *  The match_unique() operation returns a set of the keys associated
+ *  with the sets S_i\subseteq Q (no duplicated keys).
+ *
+ *  TagMatch is designed for stream processing, so the matching
+ *  operations does not immediately return matching results, but
+ *  rather use a call-back mechanism through a match_handler object
+ *  (see match_handler.hh).  This mechanism can be made synchronous
+ *  with a simple helper class synchronous_match_handler (see
+ *  synchronous_match_handler.hh).
  */
 class tagmatch {
 public:
