@@ -11,6 +11,12 @@
 using std::endl;
 using std::cout;
 
+static const unsigned int GPU_THREADS = 256;
+static const unsigned int GPU_WORDS_PER_FILTER = 6;
+static const unsigned int CPU_WORDS_PER_FILTER = 3;
+static const unsigned int GPU_BITS_PER_WORD = 32;
+static const unsigned int FILTER_WIDTH = 192;
+
 // This does only reset the counters and the frequency buffers on the gpu 
 __global__ void gzero(unsigned int *freqs, uint32_t * rcounter, uint32_t * lcounter) {
 	unsigned int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -78,11 +84,13 @@ __global__ void stable_partition_update(uint32_t * fib,
 		fib[(begin + tid) * GPU_WORDS_PER_FILTER + i] = buffer[(begin + tid) * GPU_WORDS_PER_FILTER + i];
 }
 
-
-static uint32_t *g_fib, *g_freqs[MAXTHREADS], *g_buffer, *g_rcounter[MAXTHREADS], *g_lcounter[MAXTHREADS];
+static uint32_t *g_fib;
+static uint32_t *g_freqs[partitioner_gpu::MAXTHREADS];
+static uint32_t *g_buffer;
+static uint32_t *g_rcounter[partitioner_gpu::MAXTHREADS];
+static uint32_t *g_lcounter[partitioner_gpu::MAXTHREADS];
 static uint64_t *h_fib;
-static cudaStream_t gstream[MAXTHREADS];
-
+static cudaStream_t gstream[partitioner_gpu::MAXTHREADS];
 
 // Compiles the fib on the host memory, so that it can be copied to the device
 // global memory

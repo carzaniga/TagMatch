@@ -94,7 +94,7 @@ struct partition_candidate {
 		unsigned int P_size = end - begin;
 		// If the candidate_partition is too small, it may not be efficient to compute
 		// the frequencies on the GPU
-		if (P_size < CPU_MAX_PSIZE) {
+		if (P_size < partitioner_gpu::CPU_MAX_PSIZE) {
 			std::memset(freq, 0, sizeof(freq));
 			for(fib_t::const_iterator i = begin; i != end; ++i)
 				for(unsigned int b = (*i)->filter.next_bit(0); b < filter_t::WIDTH; b = (*i)->filter.next_bit(b + 1))
@@ -351,7 +351,11 @@ unsigned int partitioning::get_maxp() {
 }
 
 void partitioning::set_cpu_threads(unsigned int t) {
-	part_thread_count = t > MAXTHREADS ? MAXTHREADS : t;
+#if WITH_GPU_PARTITIONING
+	part_thread_count = t > partitioner_gpu::MAXTHREADS ? partitioner_gpu::MAXTHREADS : t;
+#else
+	part_thread_count = t;
+#endif
 }
 
 unsigned int partitioning::get_cpu_threads() {
